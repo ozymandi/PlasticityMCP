@@ -42,21 +42,27 @@ LLM (Claude) ──stdio──> MCP server (Node/TS) ──WS──> Plasticity
                                                 └─ Phase B: forked + extended opcodes (CAD ops)
 ```
 
-## Phases (revised)
+## Phases (revised after Phase 2 recon — see docs/architecture.md)
 
-| # | Phase | Deliverable | Estimate (h) |
-|---|-------|-------------|--------------|
-| 0 | **Recon** | Reverse-engineer existing WS protocol from `plasticity-blender-addon`; confirm port/auth/binary format; map opcodes; document scene-graph schema | 4–6 |
-| 1 | **MCP MVP — read & mesh push (no fork)** | Node MCP server speaking existing WS. Tools: `connect`, `list_scene`, `get_object`, `subscribe_changes`, `drain_events`, `refacet`, `push_mesh`, `status`. ✅ **Done** — verified against live Plasticity 26.1.2. **Note:** `PUT_SOME_1` not advertised by 26.1.2, so `push_mesh` is wired but server-rejected pending a Plasticity build that exposes it. | 8–12 → ~3 actual |
-| 2 | **Recon CommandExecutor** | Build Plasticity from source; map which `CommandExecutor` commands accept programmatic args; identify clean injection point for new WS opcodes | 6–10 |
-| 3 | **Bridge patch (fork)** | Minimal patch to Plasticity adding `EXEC_COMMAND_1` opcode that invokes named commands with JSON args; rebase-friendly | 8–14 |
-| 4 | **MCP CAD tools** | Tools wrapping commands: `create_box/sphere/cylinder/circle/rectangle`, `extrude`, `boolean_{union,diff,intersect}`, `move/rotate/scale`, `fillet`, `undo/redo` | 8–12 |
-| 5 | **Scene awareness** | `select_by_name`, `get_bbox`, `get_selection`, history inspection, named refs across calls | 6–10 |
-| 6 | **High-level generation** | Composite tools (`make_bracket(specs)`, etc.); prompt-to-geometry recipes | 15+ (open) |
-| 7 | **Verification loop** | Screenshot via Electron `capturePage` returned as image; LLM visual confirmation | 6–10 |
+| # | Phase | Status | Deliverable / Notes |
+|---|-------|--------|---------------------|
+| 0 | **Recon WS protocol** | ✅ Done (~2 h) | Full opcode spec from blender-addon source → `docs/ws-protocol.md` |
+| 1 | **MCP MVP — read/subscribe/refacet/(push-mesh)** | ✅ Done (~3 h) | Verified live against Plasticity 26.1.2. `push_mesh` wired but server-rejected: 26.1.2 does not advertise `PUT_SOME_1`. |
+| 2 | **Recon CommandExecutor** | ✅ Done (~1 h) | **Critical finding:** OSS repo frozen at v1.4-era (2023); current 26.x binary is closed-source. Tags v26.x point at 2023 commit. **Phase 3 fork is dead** — see `docs/architecture.md`. Captured Command/Factory pattern as reference for future paths. |
+| 3 | ~~**Bridge patch (fork)**~~ | ❌ **Dead** | OSS source too stale to fork against. |
+| **Replan** | See architecture.md | — | Six paths analysed (A-F); recommend Path A check first, then Path D spike. |
 
-**Useful-without-fork target (Phases 0–1): ~12–18 h.**
-**Full CAD MVP (Phases 0–4): ~34–54 h.**
+## Active path (post-recon)
+
+**Step 1 (5 min, user action):** Update Plasticity to 26.1.3 → run `npm run smoke` → see if `PUT_SOME_1` appears in supported opcodes.
+- **Yes** → `push_mesh` works → ship as MVP for triangulated-mesh generation. Re-scope.
+- **No** → proceed to Step 2.
+
+**Step 2 — Path D recon spike (~2 h):** Does Plasticity launch with `--remote-debugging-port`? Is there a global `editor` reachable from the renderer? If yes, we can call `editor.executor.enqueue(new SphereCommand(editor))` (or call `SphereFactory.commit()` directly) from injected JS.
+
+**Step 3 — in parallel:** File a feature request at plasticity.canny.io for a documented `EXEC_COMMAND_1` opcode. This is the long-term clean solution regardless of Path D.
+
+**Phases 4–7 (CAD tools, scene awareness, high-level gen, verification loop)** are unchanged in spirit but now sit on top of Path D (or Path A's mesh push, if that's all we have). Estimates only firm up after Step 2's outcome.
 
 ## Risks
 
