@@ -47,7 +47,7 @@ LLM (Claude) ──stdio──> MCP server (Node/TS) ──WS──> Plasticity
 | # | Phase | Deliverable | Estimate (h) |
 |---|-------|-------------|--------------|
 | 0 | **Recon** | Reverse-engineer existing WS protocol from `plasticity-blender-addon`; confirm port/auth/binary format; map opcodes; document scene-graph schema | 4–6 |
-| 1 | **MCP MVP — read & mesh push (no fork)** | Node MCP server speaking existing WS. Tools: `connect`, `list_objects`, `get_object(id)`, `subscribe_changes`, `push_mesh(verts,faces)`, `export_step(path)` *(if exposed)* | 8–12 |
+| 1 | **MCP MVP — read & mesh push (no fork)** | Node MCP server speaking existing WS. Tools: `connect`, `list_scene`, `get_object`, `subscribe_changes`, `drain_events`, `refacet`, `push_mesh`, `status`. ✅ **Done** — verified against live Plasticity 26.1.2. **Note:** `PUT_SOME_1` not advertised by 26.1.2, so `push_mesh` is wired but server-rejected pending a Plasticity build that exposes it. | 8–12 → ~3 actual |
 | 2 | **Recon CommandExecutor** | Build Plasticity from source; map which `CommandExecutor` commands accept programmatic args; identify clean injection point for new WS opcodes | 6–10 |
 | 3 | **Bridge patch (fork)** | Minimal patch to Plasticity adding `EXEC_COMMAND_1` opcode that invokes named commands with JSON args; rebase-friendly | 8–14 |
 | 4 | **MCP CAD tools** | Tools wrapping commands: `create_box/sphere/cylinder/circle/rectangle`, `extrude`, `boolean_{union,diff,intersect}`, `move/rotate/scale`, `fillet`, `undo/redo` | 8–12 |

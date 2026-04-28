@@ -11,6 +11,8 @@
     "build": "tsc",
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
+    "smoke": "tsx src/smoke.ts",
+    "test": "tsx src/protocol.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

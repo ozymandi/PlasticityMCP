@@ -25,7 +25,19 @@ npm install
 npm run build
 ```
 
-## Run
+## Quick verification (live Plasticity)
+
+With Plasticity 26.1.x running and a document open:
+
+```bash
+npm run smoke
+```
+
+Connects, handshakes, lists scene, prints summary. Does not need an MCP client.
+
+> Note: `push_mesh` requires the server to advertise `PUT_SOME_1` (opcode 31). Plasticity 26.1.2 stable does **not** advertise it; the tool will throw a clear error in that case. All other tools work.
+
+## Run as MCP server
 
 In Plasticity, make sure the WebSocket server is running (the Blender bridge add-on enables this implicitly; in 26.x it appears to be on by default — verify in Preferences if not).
 

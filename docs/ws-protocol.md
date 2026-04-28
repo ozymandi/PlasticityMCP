@@ -310,6 +310,25 @@ u32 fname_len
 pad4
 ```
 
+## Verified opcode support (Plasticity 26.1.2)
+
+Empirical handshake against `localhost:8980` on Plasticity 26.1.2 returns these 13 supported opcodes:
+
+```
+TRANSACTION_1, ADD_1, UPDATE_1, DELETE_1,
+NEW_VERSION_1, NEW_FILE_1,
+LIST_ALL_1, LIST_VISIBLE_1,
+SUBSCRIBE_ALL_1, SUBSCRIBE_SOME_1, UNSUBSCRIBE_ALL_1,
+REFACET_SOME_1,
+HANDSHAKE_1
+```
+
+**Notably NOT advertised by 26.1.2:** `PUT_SOME_1` (31), `LIST_SOME_1` (21), `MOVE_1` (4), `ATTRIBUTE_1` (5).
+
+Implications:
+- The Blender addon's `PUT_SOME_1` upload path is gated on a newer/different Plasticity build — possibly an experimental flag or post-26.1.2 release. **Mesh-push from the MCP server will currently fail** in stable 26.1.2; the client correctly throws "Server does not advertise PUT_SOME_1 support" before attempting.
+- `LIST_SOME_1` is documented in the addon enum but the server only sends back `LIST_ALL_1` / `LIST_VISIBLE_1` for list responses.
+
 ## Implementation notes
 
 - **Always send `HANDSHAKE_1` first.** The server replies with the set of supported opcodes; not every Plasticity build supports every opcode (e.g. `PUT_SOME_1` is gated).
