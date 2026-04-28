@@ -52,17 +52,34 @@ LLM (Claude) ──stdio──> MCP server (Node/TS) ──WS──> Plasticity
 | 3 | ~~**Bridge patch (fork)**~~ | ❌ **Dead** | OSS source too stale to fork against. |
 | **Replan** | See architecture.md | — | Six paths analysed (A-F); recommend Path A check first, then Path D spike. |
 
-## Active path (post-recon)
+## Active path (post-recon, post-Path-D verification)
 
-**Step 1 (5 min, user action):** Update Plasticity to 26.1.3 → run `npm run smoke` → see if `PUT_SOME_1` appears in supported opcodes.
-- **Yes** → `push_mesh` works → ship as MVP for triangulated-mesh generation. Re-scope.
-- **No** → proceed to Step 2.
+### Verification matrix (all done 2026-04-28)
 
-**Step 2 — Path D recon spike (~2 h):** Does Plasticity launch with `--remote-debugging-port`? Is there a global `editor` reachable from the renderer? If yes, we can call `editor.executor.enqueue(new SphereCommand(editor))` (or call `SphereFactory.commit()` directly) from injected JS.
+| Probe | Result |
+|-------|--------|
+| Update to 26.1.3 + smoke test for `PUT_SOME_1` | ❌ Same 13 opcodes; 26.1.3 source-zip is byte-identical to 2023 OSS snapshot |
+| `--remote-debugging-port=9222` flag | ❌ Process accepts the flag but Electron strips CDP; port 9222 not listening |
+| `resources/app/` packed as `.asar`? | ❌ Unpacked — but only loader stub. Real code in `index.compiled/index.jsc` (12 MB **bytenode V8 bytecode**) |
+| `window.editor` / `window.cmd` / `window.THREE` | ❌ All `undefined` — debug exports stripped from commercial build |
+| `globalThis` non-enumerable properties | ❌ Only `IDBDatabase`, `openDatabase`, `__THREE__` (THREE.js dev hook = version string) |
+| F12 → DevTools | ✅ Opens, but with no handles to app internals |
 
-**Step 3 — in parallel:** File a feature request at plasticity.canny.io for a documented `EXEC_COMMAND_1` opcode. This is the long-term clean solution regardless of Path D.
+**Conclusion:** Plasticity 26.x is **deliberately, multi-layer locked**. Every modification path we tried was closed by design. The dev has invested significantly in this — it's policy, not oversight.
 
-**Phases 4–7 (CAD tools, scene awareness, high-level gen, verification loop)** are unchanged in spirit but now sit on top of Path D (or Path A's mesh push, if that's all we have). Estimates only firm up after Step 2's outcome.
+### Surviving paths
+
+| Path | Verdict |
+|------|---------|
+| **B. Feature request → official `EXEC_COMMAND_1` opcode** | Submit at plasticity.canny.io. Draft in `docs/feature-request.md`. Long timescale, but the only **clean** path to real CAD generation. |
+| **F. UI automation via Windows-MCP** | Works today, very fragile. Separate project — not really "MCP for Plasticity" but "automate any Windows app". Pursue only if Path B stalls and writes are critical. |
+| **Phase 1 read-only MVP** | Already shipped and useful: live scene read, subscribe, refacet. Real value for "AI as observer/commenter". |
+
+### Recommended posture
+
+**Ship Phase 1 as the MVP today.** File the feature request. Re-evaluate when (a) Plasticity dev responds, (b) PUT_SOME_1 appears in a future build, or (c) we decide we want UI-automation badly enough.
+
+**Phases 4–7 are parked** until a write path opens.
 
 ## Risks
 
