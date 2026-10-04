@@ -44,13 +44,22 @@ step of detailing.
    done:
    - **Knurling / ribs on knobs, dials and rings.** Real knobs have small ribs; a smooth
      cylinder is not a finished knob. Two ways, both named by the user: with booleans (one
-     small cutter on the rim, `array_radial` around the axis, `boolean` difference), or
+     small cutter on the rim, `array_radial` around the axis, `boolean` difference — or,
+     cheaper, one cutter for the whole band: a closed zig-zag polyline around the knob
+     (points alternating a little outside and a little inside its radius) plus a circle
+     around it, the ring between them from `list_regions` extruded to the band height, one
+     `boolean` difference; the same cutter is reused with `copy_bodies` on knobs of the
+     same radius), or
      through unwrap (flatten the face with `unwrap_faces`, make the pattern flat, wrap it
      back with `deform`) — the second for patterns that do not simply run along the axis.
    - **Inscriptions and decals** (the maker's name, scales, numbers, "MADE IN …").
    - **Screws** and other small hardware.
    - **Threads** (sockets, bushings, screw-in rings): a helix from `create_spiral`, a small
-     thread profile swept along it with `sweep_profile`, then `boolean` into the part.
+     thread profile swept along it with `sweep_profile`, then `boolean` into the part. Give
+     the helix a whole number of turns (a fractional count comes out longer than asked), let
+     the profile sit a little inside the wall, and trim the swept body with a box
+     (`boolean` intersection) where it sticks out of the hole — the profile tilts with the
+     helix and ends up lower than drawn.
    After these a body has hundreds of edges, so nothing that needs edge picking may be left
    for later.
 
