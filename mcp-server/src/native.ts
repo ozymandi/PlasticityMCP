@@ -20,6 +20,12 @@ export interface BodyInfo {
   type: string;
   name: string | null;
   boundsMm: { min: Vec3; max: Vec3 } | null;
+  /** Topology counts; 0 for a Wire. */
+  faceCount: number;
+  edgeCount: number;
+  visible: boolean;
+  locked: boolean;
+  selected: boolean;
 }
 
 export interface NativeState {
@@ -54,12 +60,19 @@ const READ_STATE = `function () {
     if (!Number.isInteger(id)) continue;
     let box = null;
     try { box = item.model?.FindBox?.() ?? null; } catch {}
-    const key = this.db.nodes?.item2key?.(item.view);
+    const view = item.view;
+    const nodes = this.db.nodes;
+    const key = nodes.item2key(view);
     bodies.push({
       id,
-      type: item.view?.constructor?.name ?? 'Unknown',
-      name: key === undefined ? null : (this.db.nodes?.getName?.(key) ?? null),
+      type: view?.constructor?.name ?? 'Unknown',
+      name: nodes.getName(key) ?? null,
       boundsMm: box ? { min: mm(box.min), max: mm(box.max) } : null,
+      faceCount: view?.high?.faces?.versionIds?.length ?? 0,
+      edgeCount: view?.high?.edges?.versionIds?.length ?? 0,
+      visible: Boolean(nodes.isVisible(key)) && !nodes.isHidden(key),
+      locked: Boolean(nodes.isLocked(key)),
+      selected: Boolean(this.selection.selected.has(view)),
     });
   }
   bodies.sort((a, b) => a.id - b.id);
@@ -71,6 +84,15 @@ const READ_STATE = `function () {
   };
 }`;
 
+// Snippets shared by the functions below; all run with `this` = editor.
+const BUSY_GUARD = `if (this.executor.isBusy) throw new Error('Plasticity is busy with another command');`;
+const FIND_VIEW = `const find = (id) => {
+    for (const [versionId, item] of this.geo.geometryModel) {
+      if (this.db.lookupStableId(versionId) === id) return item.view;
+    }
+    throw new Error('Unknown body id: ' + id);
+  };`;
+
 /**
  * Wraps a factory setup snippet into a native command. The snippet sees `factory`, `editor`,
  * `args` and the extra bindings; it must not commit. Errors raised inside `execute` are
@@ -78,7 +100,7 @@ const READ_STATE = `function () {
  */
 function commandFunction(commandName: string, extraParams: string[], setup: string): string {
   return `async function (${["Factory", ...extraParams, "args"].join(", ")}) {
-    if (this.executor.isBusy) throw new Error('Plasticity is busy with another command');
+    ${BUSY_GUARD}
     const editor = this;
     let failure;
     const command = new this.commands.${commandName}(this);
@@ -247,7 +269,8 @@ export class NativeSession {
         response.exceptionDetails.exception?.description ??
         response.exceptionDetails.text ??
         "unknown renderer error";
-      throw new Error(`Plasticity command failed: ${detail}`);
+      // First line only: the rest is a renderer stack trace.
+      throw new Error(`Plasticity command failed: ${detail.split("\n")[0]}`);
     }
     return response.result?.value as T;
   }
@@ -337,15 +360,93 @@ export class NativeSession {
 
   undo(): Promise<MutationResult> {
     return this.mutate(`async function () {
-      if (this.executor.isBusy) throw new Error('Plasticity is busy with another command');
+      ${BUSY_GUARD}
       await this.undo();
     }`);
   }
 
   redo(): Promise<MutationResult> {
     return this.mutate(`async function () {
-      if (this.executor.isBusy) throw new Error('Plasticity is busy with another command');
+      ${BUSY_GUARD}
       await this.redo();
     }`);
+  }
+
+  /** Bodies currently selected in the window (whole Solids / Sheets / Wires, not faces or edges). */
+  async getSelection(): Promise<BodyInfo[]> {
+    return (await this.state()).bodies.filter((b) => b.selected);
+  }
+
+  /** Replace the selection with the given bodies; an empty list clears it. Not an undo step. */
+  selectBodies(ids: number[]): Promise<BodyInfo[]> {
+    return this.enqueue(async () => {
+      // Resolve every id before touching the selection, so a bad id changes nothing.
+      await this.call(
+        `function (args) {
+          ${BUSY_GUARD}
+          ${FIND_VIEW}
+          const views = args.ids.map(find);
+          this.selection.selected.removeAll();
+          for (const view of views) this.selection.selected.add(view);
+        }`,
+        [],
+        [{ ids }],
+      );
+      return (await this.call<NativeState>(READ_STATE)).bodies.filter((b) => b.selected);
+    });
+  }
+
+  /** Delete bodies with the native Delete command. Replaces the current selection. */
+  deleteBodies(ids: number[]): Promise<MutationResult> {
+    return this.mutate(
+      `async function (args) {
+        ${BUSY_GUARD}
+        ${FIND_VIEW}
+        const views = args.ids.map(find);
+        this.selection.selected.removeAll();
+        for (const view of views) this.selection.selected.add(view);
+        let failure;
+        const command = new this.commands.DeleteCommand(this);
+        command.remember = false;
+        const execute = command.execute.bind(command);
+        command.execute = async function () {
+          try { return await execute(); }
+          catch (error) { failure = error; throw error; }
+        };
+        await this.exec(command);
+        if (failure) throw failure;
+      }`,
+      [],
+      [{ ids }],
+    );
+  }
+
+  renameBody(id: number, name: string): Promise<BodyInfo> {
+    return this.enqueue(async () => {
+      // Renaming has no command of its own; run it inside a native command so that it
+      // becomes an undo step. GroupSelectedCommand is only the carrier, its body is replaced.
+      await this.call(
+        `async function (args) {
+          ${BUSY_GUARD}
+          ${FIND_VIEW}
+          const editor = this;
+          const view = find(args.id);
+          let failure;
+          const command = new this.commands.GroupSelectedCommand(this);
+          command.remember = false;
+          command.execute = async function () {
+            try { editor.db.nodes.setName(editor.db.nodes.item2key(view), args.name); }
+            catch (error) { failure = error; throw error; }
+          };
+          await this.exec(command);
+          if (failure) throw failure;
+        }`,
+        [],
+        [{ id, name }],
+      );
+      const body = (await this.call<NativeState>(READ_STATE)).bodies.find((b) => b.id === id);
+      if (!body) throw new Error(`Body ${id} disappeared during rename`);
+      return body;
+    });
   }
 }

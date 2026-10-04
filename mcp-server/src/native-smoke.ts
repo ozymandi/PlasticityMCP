@@ -32,13 +32,15 @@ async function main() {
   console.log(`Connected to "${target.title}"`);
 
   const baseline = await native.state();
-  if (!target.title.startsWith("Untitled") || baseline.undoDepth > 0) {
+  const disposable = baseline.undoDepth === 0 || baseline.bodies.length === 0;
+  if (!target.title.startsWith("Untitled") || !disposable) {
     throw new Error(
-      `Refusing to run in "${target.title}" (undo depth ${baseline.undoDepth}). ` +
-        `Use a fresh Untitled document.`,
+      `Refusing to run in "${target.title}" (${baseline.bodies.length} bodies, undo depth ` +
+        `${baseline.undoDepth}). Use a fresh or empty Untitled document.`,
     );
   }
   const baselineIds = baseline.bodies.map((b) => b.id).join(",");
+  const ids = (bodies: BodyInfo[]) => bodies.map((b) => b.id).join(",");
 
   const box = await native.createBox([10, 20, 0], [80, 40, 8], "mcp-smoke-box");
   check("box created", box.created.length === 1, `id ${box.created[0]?.id}`);
@@ -67,10 +69,42 @@ async function main() {
   const redone = await native.redo();
   check("redo restores the cylinder", boundsMatch(redone.created[0], [-55, -5, 0], [-45, 5, 30]));
 
-  // Clean up: undo everything this test did.
-  for (let i = 0; i < 10 && (await native.state()).undoDepth > baseline.undoDepth; i++) {
+  // --- scene: list / rename / select / delete ---
+  const boxId = box.created[0]!.id;
+  const sphereId = sphere.created[0]!.id;
+
+  const listed = (await native.state()).bodies.find((b) => b.id === boxId);
+  check("box is listed with topology and flags",
+    listed?.faceCount === 6 && listed.edgeCount === 12 && listed.visible && !listed.locked,
+    JSON.stringify({ faces: listed?.faceCount, edges: listed?.edgeCount }));
+
+  const renamed = await native.renameBody(boxId, "mcp-smoke-renamed");
+  check("rename", renamed.name === "mcp-smoke-renamed");
+  await native.undo();
+  const unrenamed = (await native.state()).bodies.find((b) => b.id === boxId);
+  check("undo restores the name", unrenamed?.name === "mcp-smoke-box", String(unrenamed?.name));
+
+  const selected = await native.selectBodies([boxId, sphereId]);
+  check("select two bodies", ids(selected) === `${boxId},${sphereId}`, ids(selected));
+  check("get_selection agrees", ids(await native.getSelection()) === `${boxId},${sphereId}`);
+  const badSelect = await native.selectBodies([boxId, 999999]).then(() => null, (e: Error) => e);
+  check("unknown id is rejected", badSelect !== null, badSelect?.message ?? "no error");
+  check("failed select keeps the selection",
+    ids(await native.getSelection()) === `${boxId},${sphereId}`);
+  check("empty list clears the selection", (await native.selectBodies([])).length === 0);
+
+  const deleted = await native.deleteBodies([sphereId]);
+  check("delete removes the sphere",
+    deleted.removedIds.length === 1 && deleted.removedIds[0] === sphereId);
+  const undeleted = await native.undo();
+  check("undo restores the sphere", undeleted.created[0]?.id === sphereId,
+    fmt(undeleted.created[0]));
+
+  // Clean up: undo everything this test did and put the selection back.
+  for (let i = 0; i < 30 && (await native.state()).undoDepth > baseline.undoDepth; i++) {
     await native.undo();
   }
+  await native.selectBodies(baseline.bodies.filter((b) => b.selected).map((b) => b.id));
   const final = await native.state();
   check("document is back to its baseline",
     final.bodies.map((b) => b.id).join(",") === baselineIds, `${final.bodies.length} bodies`);

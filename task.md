@@ -155,11 +155,28 @@ Findings:
 
 **Not verified:** the cold-start path of `launcher.ts` (Plasticity closed → `native_launch`). The same logic passed in the spike script, but the TypeScript version has only run against an already-launched instance.
 
-Changes are **not committed**.
+Committed as `f9642f0` on branch `native-stage-1`.
+
+## Native block 1 — scene — ✅ Done (2026-10-04, ~1.5 h)
+
+New tools: `list_bodies`, `get_selection`, `select_bodies`, `delete_bodies`, `rename_body` (22 tools total). Body records now also carry `faceCount`, `edgeCount`, `visible`, `locked`, `selected`.
+
+Verified live on 26.1.3 (Untitled): `smoke:native` extended and passing (topology counts, rename + Undo, select / get_selection, unknown id rejected without touching the selection, clear selection, delete + Undo); built stdio server exercised end to end incl. validation errors.
+
+Findings:
+- `editor.selection.selected.add(view)` works for Solid and Wire alike; `selected.has(view)` and `selected.items` read it back. Selection changes are not undo steps.
+- Delete = select + native `DeleteCommand`. Rename = `db.nodes.setName` wrapped in a carrier command (`GroupSelectedCommand` with replaced `execute`) so it lands in history.
+- Sketch curves produce extra Wire fragments without a stable id — they are filtered out of all listings.
+- Renderer errors carry a stack trace; only the first line is returned to the client.
+
+**Not verified:** delete / rename on a Wire or Sheet (only selection of a Wire was probed); cold start of `launcher.ts` (still pending from stage 1).
+
+`smoke:native` guard relaxed: runs in an "Untitled" document that is either pristine or has no bodies.
+
+Block 1 changes are **not committed**. The MCP client must be restarted to see the 5 new tools.
 
 ### Next blocks (each proposed separately before implementation)
 
-1. Scene: list bodies with stable ids, select, delete, rename.
 2. Transforms: move, rotate, scale.
 3. Boolean, fillet, extrude.
 4. Curves: polyline, circle, spline.
@@ -210,4 +227,4 @@ PlasticityMCP/
 ## Next action
 
 1. Designer: close Plasticity and call `native_launch` (or `npm run smoke:native`) once to verify the cold-start path; restart the MCP client so it picks up the new tools.
-2. Propose block 1 (scene: list / select / delete / rename).
+2. Commit block 1 (on Designer's word), then propose block 2 (transforms: move / rotate / scale).

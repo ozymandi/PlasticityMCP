@@ -30,6 +30,11 @@ A second channel, independent of the WebSocket bridge: real B-Rep operations thr
 | `create_sphere` | `center` + `radius`. |
 | `create_cylinder` | `base` (bottom cap centre) + `radius` + `height`, optional `axis`. |
 | `undo` / `redo` | Native history. |
+| `list_bodies` | All bodies: stable id, type (Solid / Sheet / Wire), name, bounds, face/edge counts, visible / locked / selected. |
+| `get_selection` | Bodies selected in the window (whole bodies, not faces or edges). |
+| `select_bodies` | Replace the selection; empty list clears it. Not an undo step. |
+| `delete_bodies` | Native Delete by id. Undoable. Clears the selection. |
+| `rename_body` | Rename a body. Undoable. |
 
 Mutating tools return the created bodies (stable id, type, name, bounds) and removed ids.
 
