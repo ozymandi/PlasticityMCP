@@ -9,6 +9,7 @@ import { curves } from "./tools/curves.js";
 import { environment } from "./tools/environment.js";
 import { exchange } from "./tools/exchange.js";
 import { faces } from "./tools/faces.js";
+import { guide, SERVER_INSTRUCTIONS } from "./tools/guide.js";
 import { instances } from "./tools/instances.js";
 import { measure } from "./tools/measure.js";
 import { primitives } from "./tools/primitives.js";
@@ -24,6 +25,7 @@ import { error, type ToolFamily } from "./tools/shared.js";
 
 // Tool families: each file in src/tools/ holds the schemas, definitions and handlers of one.
 const families: Record<string, ToolFamily> = {
+  guide,
   bridge,
   session,
   primitives,
@@ -52,7 +54,7 @@ const handlers = new Map(Object.entries(catalog.handlers));
 
 const server = new Server(
   { name: "plasticity-mcp", version: "0.1.0" },
-  { capabilities: { tools: {} } },
+  { capabilities: { tools: {} }, instructions: SERVER_INSTRUCTIONS },
 );
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));

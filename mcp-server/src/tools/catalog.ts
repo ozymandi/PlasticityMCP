@@ -11,6 +11,7 @@ export type CatalogMode = "full" | "compact";
 
 /** Listed directly in the compact catalog. */
 export const CORE_TOOLS = [
+  "modelling_guide",
   "native_launch",
   "native_connect",
   "native_status",

@@ -2,7 +2,7 @@
 
 What the server can do compared with Plasticity itself: which Plasticity command is behind which tool, what is missing, and where a tool behaves differently from the command in the window.
 
-State on 2026-10-04: **143 tools**, Plasticity **26.1.3**, Indie licence, Windows. Parameters of each tool are in [mcp-server/README.md](../mcp-server/README.md); how each was built and tested is in [task.md](../task.md).
+State on 2026-10-04: **144 tools** (143 for Plasticity, plus `modelling_guide`, which serves the modelling rules), Plasticity **26.1.3**, Indie licence, Windows. Parameters of each tool are in [mcp-server/README.md](../mcp-server/README.md); how each was built and tested is in [task.md](../task.md).
 
 ## How to read this
 

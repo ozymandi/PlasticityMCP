@@ -13,6 +13,9 @@ B-Rep geometry through Plasticity's own commands, so every step lands in Plastic
 history. What each Plasticity command maps to, and what is not available:
 `docs/coverage.md` in the repository.
 
+The server serves a condensed copy of these rules to clients without the skill (tool
+`modelling_guide`, `mcp-server/src/tools/guide.ts`): when a rule changes here, change it there.
+
 ## Modelling rules (from the user)
 
 ### Order of work

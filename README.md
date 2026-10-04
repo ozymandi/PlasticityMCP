@@ -2,7 +2,7 @@
 
 MCP server for [Plasticity](https://www.plasticity.xyz/) — lets an LLM read, create and modify real CAD geometry inside a running Plasticity window.
 
-**Status:** working, for internal use. 143 tools, verified live on **Plasticity 26.1.3 / Windows**. Unofficial: it relies on Plasticity's internal APIs and is pinned to that exact version.
+**Status:** working, for internal use. 144 tools, verified live on **Plasticity 26.1.3 / Windows**. Unofficial: it relies on Plasticity's internal APIs and is pinned to that exact version.
 
 ## What it can do
 
@@ -35,7 +35,9 @@ MCP server for [Plasticity](https://www.plasticity.xyz/) — lets an LLM read, c
 
 Geometry is native B-Rep made by Plasticity's own factories, so every operation lands in Plasticity's history and can be undone there. Units are millimetres. Details per tool: [mcp-server/README.md](mcp-server/README.md).
 
-For models with a small context the server can be started with `--catalog=compact`: it then lists 25 tools (about 5 thousand tokens instead of about 25 thousand) — 23 core ones plus `find_tools` and `call_tool`, through which every other tool is found and run.
+For models with a small context the server can be started with `--catalog=compact`: it then lists 26 tools (about 5 thousand tokens instead of about 25 thousand) — 24 core ones plus `find_tools` and `call_tool`, through which every other tool is found and run.
+
+The modelling rules — order of work, edges, ids, checking the result — are served by the server itself through the tool `modelling_guide`, for clients that have no skill; the server's connection instructions point the model at it.
 
 ## Coverage and limits
 

@@ -1,6 +1,6 @@
 # plasticity-mcp
 
-MCP server for [Plasticity](https://www.plasticity.xyz/) 26.1.3: 143 tools over two independent channels.
+MCP server for [Plasticity](https://www.plasticity.xyz/) 26.1.3: 144 tools over two independent channels.
 
 - **Native channel (CDP)** — real B-Rep modelling through Plasticity's own factories and history. Almost all tools; described first.
 - **Bridge channel (WebSocket)** — the built-in protocol of the official Blender bridge: scene listing, change events, retessellation. Read side only on 26.1.x.
@@ -10,6 +10,12 @@ What is covered compared with Plasticity itself, what is missing and why: [../do
 ## Native CAD tools (CDP, Plasticity 26.1.3 only)
 
 Real B-Rep operations through Plasticity's own factories and history. Unofficial, against internal APIs, pinned to **26.1.3** — any other version is refused. Units are millimetres.
+
+### Guide
+
+| Tool | What it does |
+|------|--------------|
+| `modelling_guide` | The modelling rules as text: basics, the order of work (blocking, refining, merge, fine detail), edges, ids, checking the result. With `topic` — `drawing`, `blocking`, `edges`, `merge`, `detail` — the detailed rules of one stage. Needs no connection and changes nothing. A condensed form of the skill in `../skills/plasticity-mcp`, for clients without it; the server also names it in its connection instructions. |
 
 ### Session
 
@@ -333,17 +339,17 @@ Override server with `PLASTICITY_SERVER=host:port` env var (default `localhost:8
 
 ### Compact catalog (models with a small context)
 
-The full tool list is about 25 thousand tokens. Started with `--catalog=compact`, the server lists 25 tools — about 5 thousand tokens — and nothing is lost:
+The full tool list is about 25 thousand tokens. Started with `--catalog=compact`, the server lists 26 tools — about 5 thousand tokens — and nothing is lost:
 
 ```bash
 node dist/index.js --catalog=compact
 ```
 
-- 23 core tools are listed as usual: `native_launch`, `native_connect`, `native_status`, `undo`, `list_bodies`, `get_body_topology`, `list_regions`, `check_bodies`, `create_box`, `create_cylinder`, `create_polyline`, `create_circle`, `extrude_profile`, `revolve_profile`, `boolean`, `fillet`, `chamfer`, `move_bodies`, `delete_bodies`, `set_view`, `screenshot`, `save_document`, `export_step`.
+- 24 core tools are listed as usual: `modelling_guide`, `native_launch`, `native_connect`, `native_status`, `undo`, `list_bodies`, `get_body_topology`, `list_regions`, `check_bodies`, `create_box`, `create_cylinder`, `create_polyline`, `create_circle`, `extrude_profile`, `revolve_profile`, `boolean`, `fillet`, `chamfer`, `move_bodies`, `delete_bodies`, `set_view`, `screenshot`, `save_document`, `export_step`.
 - `find_tools` returns the full definition (description and input schema) of other tools: by `names`, by the words of a `query` (best matches first), by `family`. Its own description names every tool of the server by family.
 - `call_tool` runs any tool by `name` with its `arguments` — same checks, same result as a direct call.
 
-Without the argument (or with `--catalog=full`) the server lists all 143 tools, as before.
+Without the argument (or with `--catalog=full`) the server lists all 144 tools, as before.
 
 ## Wiring into Claude Code
 

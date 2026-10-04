@@ -2,6 +2,7 @@
 // Run with: npx tsx src/catalog.test.ts
 import { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { catalogMode, compactCatalog, CORE_TOOLS, fullCatalog } from "./tools/catalog.js";
+import { guide, SERVER_INSTRUCTIONS } from "./tools/guide.js";
 import { scene } from "./tools/scene.js";
 import type { ToolFamily } from "./tools/shared.js";
 import { solids } from "./tools/solids.js";
@@ -116,6 +117,34 @@ const fails = async (run: () => Promise<unknown>, part: string) => {
     await fails(() => compact.handlers.call_tool({ name: "mirror_bodies", arguments: {} }), ""),
   );
   check("cannot call itself", await fails(() => compact.handlers.call_tool({ name: "call_tool", arguments: {} }), "Unknown tool"));
+}
+
+{
+  console.log("[modelling guide]");
+  const rules = await text(guide.handlers.modelling_guide({}));
+  check("the rules name the four stages", ["Blocking", "Refining", "Merge", "Fine detail"].every((s) => rules.includes(s)));
+  check("the rules are short", rules.length < 3000, String(rules.length));
+  const topics = ["drawing", "blocking", "edges", "merge", "detail"];
+  check("the rules name every topic", topics.every((t) => rules.includes(`"${t}"`)));
+  const texts = await Promise.all(topics.map((topic) => text(guide.handlers.modelling_guide({ topic }))));
+  check("each topic has its own text", new Set(texts).size === topics.length && texts.every((t) => t.length > 300));
+  check("unknown topic refused", await fails(() => guide.handlers.modelling_guide({ topic: "nope" }), "topic"));
+  check("the guide is the first core tool", CORE_TOOLS[0] === "modelling_guide");
+  check("the server instructions point at the guide", SERVER_INSTRUCTIONS.includes("modelling_guide"));
+  // Every tool the guide names has to exist, or the guide sends a model looking for nothing.
+  const { readdirSync } = await import("node:fs");
+  const known = new Set<string>(["find_tools", "call_tool"]);
+  for (const file of readdirSync(new URL("./tools/", import.meta.url))) {
+    if (file === "shared.ts" || file === "output.ts" || file === "catalog.ts") continue;
+    const mod = (await import(`./tools/${file.replace(/\.ts$/, ".js")}`)) as Record<string, unknown>;
+    for (const value of Object.values(mod)) {
+      const family = value as Partial<ToolFamily>;
+      if (family && typeof family === "object" && Array.isArray(family.tools)) family.tools.forEach((t) => known.add(t.name));
+    }
+  }
+  const named = new Set([rules, ...texts].join(" ").match(/\b[a-z]+(?:_[a-z]+)+\b/g) ?? []);
+  const unknown = [...named].filter((name) => !known.has(name));
+  check("every tool named in the guide exists", unknown.length === 0, unknown.join(", "));
 }
 
 if (failures > 0) {
