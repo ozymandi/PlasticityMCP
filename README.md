@@ -2,7 +2,7 @@
 
 MCP server for [Plasticity](https://www.plasticity.xyz/) — lets an LLM read, create and modify real CAD geometry inside a running Plasticity window.
 
-**Status:** working, for internal use. 39 tools, verified live on **Plasticity 26.1.3 / Windows**. Unofficial: it relies on Plasticity's internal APIs and is pinned to that exact version.
+**Status:** working, for internal use. 42 tools, verified live on **Plasticity 26.1.3 / Windows**. Unofficial: it relies on Plasticity's internal APIs and is pinned to that exact version.
 
 ## What it can do
 
@@ -10,7 +10,7 @@ MCP server for [Plasticity](https://www.plasticity.xyz/) — lets an LLM read, c
 |------|-------|
 | Session | `native_launch`, `native_connect`, `native_status` |
 | Primitives | `create_box`, `create_sphere`, `create_cylinder` |
-| Curves | `create_polyline`, `create_spline`, `create_circle`, `extrude_profile` |
+| Curves and profiles | `create_polyline`, `create_spline`, `create_circle`, `extrude_profile`, `revolve_profile`, `sweep_profile`, `loft_profiles` |
 | Scene | `list_bodies`, `get_selection`, `select_bodies`, `delete_bodies`, `rename_body` |
 | Transforms | `move_bodies`, `rotate_bodies`, `scale_bodies` |
 | Modelling | `get_body_topology`, `boolean`, `fillet_edges`, `chamfer_edges`, `extrude_faces` |
@@ -62,6 +62,7 @@ npm run smoke:native
 - While Plasticity runs with the debugging port, any local process can drive it. The port is bound to loopback and disappears when Plasticity closes.
 - Face and edge ids change after every modification of a body — re-read `get_body_topology` before each fillet / chamfer / face extrusion.
 - Failed operations appear as red toasts in the Plasticity window.
+- `native_launch` starts Plasticity with switches that keep a covered window drawing, so it can sit behind other windows at full speed. A **minimized** window does not draw: `set_view` and `screenshot` then refuse to run and other operations slow down.
 - The developer removes debug access from release builds on purpose. Fine for personal use; think twice before distributing.
 
 ## Repository

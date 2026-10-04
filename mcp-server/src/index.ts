@@ -192,6 +192,32 @@ const ExtrudeProfileArgs = z.object({
   distance: z.number().refine((d) => d !== 0, "distance must be non-zero"),
 });
 
+const RevolveProfileArgs = z.object({
+  id: BodyId,
+  axisOrigin: Vec3Mm,
+  axis: Vec3Mm.refine((a) => Math.hypot(...a) > 0, "axis must be non-zero"),
+  angle: z
+    .number()
+    .min(-360)
+    .max(360)
+    .refine((a) => a !== 0, "angle must be non-zero")
+    .optional()
+    .default(360),
+});
+
+const SweepProfileArgs = z.object({
+  profileId: BodyId,
+  pathId: BodyId,
+  twist: z.number().optional().default(0),
+  scale: z.number().positive().optional().default(1),
+});
+
+const LoftProfilesArgs = z.object({
+  profileIds: z.array(BodyId).min(2),
+  guideIds: z.array(BodyId).optional().default([]),
+  closed: z.boolean().optional().default(false),
+});
+
 const ExportStepArgs = z.object({
   path: z.string().min(1),
   ids: BodyIds.optional(),
@@ -392,7 +418,9 @@ const tools: Tool[] = [
     name: "native_status",
     description:
       "Native connection state: connected window, whether Plasticity is busy with a command, " +
-      "undo/redo depth and body count.",
+      "undo/redo depth, body count, and windowVisible — false when the window is minimized or " +
+      "completely covered by other windows, in which case set_view and screenshot cannot work " +
+      "(modelling tools still do).",
     inputSchema: { type: "object", properties: {} },
   },
   {
@@ -684,6 +712,73 @@ const tools: Tool[] = [
       properties: {
         id: { type: "number", description: "Stable id of the curve (Wire)" },
         distance: { type: "number" },
+      },
+    },
+  },
+  {
+    name: "revolve_profile",
+    description:
+      "Revolve a curve around an axis: a closed planar curve becomes a Solid, an open curve a " +
+      "Sheet; the new body is in `created` and the curve is kept. The axis passes through " +
+      "`axisOrigin` along `axis`; it must lie in the plane of the profile and must not pass " +
+      "through it. `angle` in degrees (default 360) follows the right-hand rule around `axis`; " +
+      "negative turns the other way. Refused when the profile is ambiguous (other curves in " +
+      "its plane cross it or lie inside it). Undoable.",
+    inputSchema: {
+      type: "object",
+      required: ["id", "axisOrigin", "axis"],
+      properties: {
+        id: { type: "number", description: "Stable id of the profile curve (Wire)" },
+        axisOrigin: VEC3_SCHEMA,
+        axis: { ...VEC3_SCHEMA, description: "Axis direction [x, y, z]" },
+        angle: { type: "number", default: 360, description: "Degrees, -360..360, non-zero" },
+      },
+    },
+  },
+  {
+    name: "sweep_profile",
+    description:
+      "Sweep a profile curve along a path curve: a closed planar profile becomes a Solid, an " +
+      "open one a Sheet; the new body is in `created`, both curves are kept. Draw the profile " +
+      "perpendicular to the start of the path; a profile drawn away from the path keeps that " +
+      "offset. Corners of a polyline path are mitred. `twist` (degrees, default 0) rotates the " +
+      "profile gradually along the path, `scale` (default 1) is its relative size at the end. " +
+      "Refused when the profile is ambiguous — note that a path lying in the profile's own " +
+      "plane and crossing it makes it so. Undoable.",
+    inputSchema: {
+      type: "object",
+      required: ["profileId", "pathId"],
+      properties: {
+        profileId: { type: "number", description: "Stable id of the profile curve (Wire)" },
+        pathId: { type: "number", description: "Stable id of the path curve (Wire)" },
+        twist: { type: "number", default: 0 },
+        scale: { type: "number", default: 1 },
+      },
+    },
+  },
+  {
+    name: "loft_profiles",
+    description:
+      "Loft a body through two or more profile curves, in the given order. Closed planar " +
+      "profiles give a Solid, open curves give a Sheet; the two kinds cannot be mixed. The new " +
+      "body is in `created`, the curves are kept. `guideIds` are curves that touch the " +
+      "profiles and steer the surface between them. `closed` joins the last profile back to " +
+      "the first (3+ profiles); it works for open curves, but Plasticity refuses a closed loop " +
+      "of closed profiles — use revolve_profile or sweep_profile for ring-shaped solids. " +
+      "Profiles that turn through more than about half a circle in total also fail. Bounds of " +
+      "lofted bodies can be a few microns large. Undoable.",
+    inputSchema: {
+      type: "object",
+      required: ["profileIds"],
+      properties: {
+        profileIds: {
+          type: "array",
+          items: { type: "number" },
+          minItems: 2,
+          description: "Stable ids of the profile curves, in loft order",
+        },
+        guideIds: { type: "array", items: { type: "number" } },
+        closed: { type: "boolean", default: false },
       },
     },
   },
@@ -1051,6 +1146,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           window: { targetId: target.id, title: target.title },
           version: SUPPORTED_VERSION,
           busy: state.busy,
+          windowVisible: !state.windowHidden,
           bodyCount: state.bodies.length,
           undoDepth: state.undoDepth,
           redoDepth: state.redoDepth,
@@ -1168,6 +1264,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "extrude_profile": {
         const args = ExtrudeProfileArgs.parse(rawArgs ?? {});
         return ok(await native.extrudeProfile(args.id, args.distance));
+      }
+
+      case "revolve_profile": {
+        const args = RevolveProfileArgs.parse(rawArgs ?? {});
+        return ok(await native.revolveProfile(args.id, args.axisOrigin, args.axis, args.angle));
+      }
+
+      case "sweep_profile": {
+        const args = SweepProfileArgs.parse(rawArgs ?? {});
+        return ok(await native.sweepProfile(args.profileId, args.pathId, args.twist, args.scale));
+      }
+
+      case "loft_profiles": {
+        const args = LoftProfilesArgs.parse(rawArgs ?? {});
+        return ok(await native.loftProfiles(args.profileIds, args.guideIds, args.closed));
       }
 
       case "export_step": {

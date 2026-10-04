@@ -50,11 +50,16 @@ A second channel, independent of the WebSocket bridge: real B-Rep operations thr
 | `create_circle` | Circle from `center`, `radius`, optional plane `normal`. |
 | `extrude_profile` | Closed planar curve → Solid, open curve → Sheet, by `distance` along the plane normal. Refuses ambiguous (nested / overlapping) profiles. |
 
+| `revolve_profile` | Revolve a curve around an axis (`axisOrigin`, `axis`, `angle`): closed → Solid, open → Sheet. |
+| `sweep_profile` | Sweep a profile curve along a path curve; optional `twist` and end `scale`. |
+| `loft_profiles` | Loft through ordered profiles; optional `guideIds`, `closed`. Closed profiles → Solid, open → Sheet. |
 | `export_step` | Exact B-Rep export to `.step` / `.stp`; all Solids and Sheets unless `ids` given. |
 | `import_step` | Add a STEP file's geometry to the document. Undoable. |
 | `save_document` | Save a **copy** as `.plasticity`; the open document stays as it is. |
 | `set_view` | Camera to front / back / left / right / top / bottom / isometric; `fit` frames all bodies. |
 | `screenshot` | PNG of the 3D viewport (longest side ≤ 1568 px), returned as an image; optional `path`. |
+
+`native_launch` adds Chromium switches that keep the window drawing while it is covered by other windows, so everything works at full speed with Plasticity in the background. A **minimized** window does not draw: `set_view` and `screenshot` then fail with a clear message (`native_status` reports `windowVisible`) and modelling tools slow down to about two seconds per operation.
 
 File tools take absolute paths, check the extension and never replace an existing file without `overwrite: true`.
 

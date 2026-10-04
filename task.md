@@ -271,13 +271,54 @@ Findings:
 - **Errors thrown inside a native command show up as a red toast in the Plasticity window** (e.g. "Extrude — Body 74 is a Solid, not a curve"). Harmless, but the user sees every refused operation.
 - `set_view` / `screenshot` act on the **first viewport** only; the camera is left where the last `set_view` put it (not part of the undo history).
 
-**Not verified:** screenshot with a minimized or fully covered window; split (multi-viewport) layouts; importing STEP files from other CAD systems (only Plasticity's own export was round-tripped); the refusal path of `native_launch` when Plasticity runs without native access.
+**Not verified:** split (multi-viewport) layouts; importing STEP files from other CAD systems (only Plasticity's own export was round-tripped); the refusal path of `native_launch` when Plasticity runs without native access.
 
 Block 5 is committed; branch `native-stage-1` is merged into `main` (fast-forward) and the root `README.md` is rewritten for the current state. The MCP client must be restarted to see the new tools.
 
 ### Agreed roadmap (blocks 1–5) is complete
 
-Ideas beyond it (not agreed yet): arcs and ellipse; selecting individual Regions for extrusion (plate-with-hole profiles); revolve, sweep, loft; copy / mirror; other exchange formats (IGES, Parasolid, STL, OBJ); opening `.plasticity` files.
+## Native block 6 — revolve, sweep, loft — ✅ Done (2026-10-04, ~3.5 h)
+
+Work is on branch `native-block-6` (`main` is published). Designer chose the **extended** parameter set.
+
+New tools: `revolve_profile` (`axisOrigin`, `axis`, `angle`), `sweep_profile` (`twist`, `scale`), `loft_profiles` (`guideIds`, `closed`) — 42 tools total. `extrude_profile`'s region lookup moved into a shared `profileOf` snippet used by all four profile tools; `commandFunction` can now take the command class as a binding.
+
+Verified live on 26.1.3 (Untitled), `smoke:native` extended and passing:
+- Revolve: rectangle in the XZ plane 360° → 4-face ring, 90° → right-hand-rule sector, open line → Sheet, axis through the profile refused with a hint. This also closes the block 4 gap "profiles in point-defined vertical planes".
+- Sweep: circle along a line → cylinder, around a mitred corner, `scale` 2 doubles the far end, `twist` 45° on a square, closed circular path → torus, path = profile and Solid-as-path refused.
+- Loft: square → circle Solid, guide curve bulges the result, open lines → Sheet, closed loft of three open lines wraps around, mixed closed/open and single profile refused.
+
+Findings:
+- `RevolveFactory` and `SweepFactory` share the extrude-style profile inputs (`regions` for closed curves → Solid, `curves` for open → Sheet). Revolve: `origin`, `axis`, `degrees`. Sweep: `spine`, `twistDegrees`, `scale` (alignment Normal and Mitre corners left at their defaults).
+- Solid loft: `RegionLoftFactory` + `LoftCommand` (`regions`, `guides`, `closed`). Sheet loft: `CurveLoftFactory` + `LoftEdgeCommand` (closure binding; `profiles`, `guides`, `closed`, `join = false`; reads the selection, so it is cleared first).
+- A sweep profile drawn away from the path keeps its offset. A path lying in the profile's own plane and crossing it splits the profile's Region, so the profile is reported as ambiguous (message reworded: "other curves in the same plane cross it or lie inside it").
+- **Kernel limits of Solid lofts:** a closed loop of closed profiles always failed (`PK_BODY_make_lofted_body` 22001), and profiles turning through more than about half a circle failed too (21555) while a 90° arc of four circles worked. Probably profile orientation: Plasticity normalises the plane normal of each Region. The tool appends a hint pointing to `sweep_profile` / `revolve_profile` for ring shapes (the torus sweep is verified).
+- Bounds of lofted bodies come out a few microns large (0.003 mm on a 40 mm part).
+
+### Covered window: slow operations, no camera, no screenshot (found during block 6)
+
+When the Plasticity window is **completely covered by another window** (not only when minimized), Chromium marks the page hidden (`document.hidden`): it stops drawing frames and throttles timers.
+
+Measured on this machine:
+- Every mutating tool takes **≈ 2 s instead of ≈ 50 ms** (the full `smoke:native`: several minutes instead of ≈ 11 s). Results are still correct.
+- `set_view` returned a wrong, half-way camera pose (the animation never advances) and `screenshot` hung until its timeout.
+
+Done now: `set_view` and `screenshot` fail fast with "The Plasticity window is covered or minimized…"; `native_status` reports `windowVisible`; `smoke:native` skips the camera / screenshot section in that state and **always undoes its changes**, even when a check throws (an aborted run had left 24 bodies behind — cleaned up).
+
+**Fix (Designer approved, 2026-10-04) — keep-alive switches in the launcher.** The startup hook of `native_launch` now also appends `disable-features=CalculateNativeWinOcclusion` (merged into whatever `disable-features` holds, including later appends by the app), `disable-backgrounding-occluded-windows`, `disable-renderer-backgrounding` and `disable-background-timer-throttling`, and protects them from `removeSwitch`.
+
+Verified after a cold start, with the Plasticity window fully covered by another maximised window on the same monitor (checked at OS level: not minimized, covering window above it in z-order):
+- child processes carry the switches; `document.hidden` is false, 61 animation frames per second;
+- mutating tools take 64–81 ms (was ≈ 2 s); the full `smoke:native` takes **13 s (was 303 s)** and runs all seven views and the screenshot;
+- a screenshot of the covered window shows the real viewport content.
+
+Limits: a **minimized** window still does not draw (camera and screenshot keep failing fast with the "covered or minimized" message); the switches only apply to an instance started through `native_launch`. A covered Plasticity now keeps rendering, so it uses some GPU while hidden.
+
+**Not verified:** `twist` / `scale` on curved paths; guides on Sheet lofts; lofts of profiles in non-parallel planes beyond the 90° arc; a minimized window after the switches (expected: still refused).
+
+Block 6 and the keep-alive switches are committed on branch `native-block-6` (not merged into `main` yet). The MCP client must be restarted to see the new tools.
+
+Ideas beyond the agreed list (not agreed yet): arcs and ellipse; selecting individual Regions for extrusion (plate-with-hole profiles); copy / mirror; other exchange formats (IGES, Parasolid, STL, OBJ); opening `.plasticity` files.
 
 ## Risks
 
@@ -324,4 +365,4 @@ PlasticityMCP/
 ## Next action
 
 1. Designer: close Plasticity and call `native_launch` (or `npm run smoke:native`) once to verify the cold-start path; restart the MCP client so it picks up the new tools.
-2. The agreed roadmap is complete and merged into `main`. Designer decides what comes next (see the ideas list under "Agreed roadmap (blocks 1–5) is complete").
+2. Merge `native-block-6` into `main` and push (on Designer's word).

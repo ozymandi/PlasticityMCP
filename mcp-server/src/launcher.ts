@@ -4,6 +4,8 @@
  * Plasticity 26.x removes `--remote-debugging-port` during startup, but leaves the Node
  * main-process inspector available. We launch paused with `--inspect-brk`, re-add the switch
  * before any app code runs, then resume. Nothing on disk is modified.
+ *
+ * The same hook adds switches that keep a covered window drawing (see KEEP_ALIVE_SWITCHES).
  */
 import { execFile, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -19,6 +21,17 @@ export const CDP_PORT = 9223;
 export const INSPECTOR_PORT = 9229;
 
 const RENDERER_URL_MARKER = "/renderer/app_window/index.html";
+
+// A window that is completely covered by other windows is treated by Chromium as hidden: it
+// stops drawing frames and throttles timers, which makes every operation take about two seconds
+// and breaks camera navigation and screenshots. These switches keep a covered window alive.
+// (A minimized window still does not draw.)
+const OCCLUSION_FEATURE = "CalculateNativeWinOcclusion";
+const KEEP_ALIVE_SWITCHES = [
+  "disable-backgrounding-occluded-windows",
+  "disable-renderer-backgrounding",
+  "disable-background-timer-throttling",
+];
 
 export function defaultExecutable(): string {
   if (process.env.PLASTICITY_EXE) return process.env.PLASTICITY_EXE;
@@ -106,11 +119,20 @@ async function unlockMainProcess(inspector: CdpClient, rendererPort: number): Pr
     expression: `(() => {
       const { app } = process.mainModule.require('electron');
       const commandLine = app.commandLine;
+      const keep = ${JSON.stringify(["remote-debugging-port", "remote-debugging-pipe", ...KEEP_ALIVE_SWITCHES])};
       const removeSwitch = commandLine.removeSwitch.bind(commandLine);
-      commandLine.removeSwitch = (name) =>
-        name === 'remote-debugging-port' || name === 'remote-debugging-pipe' ? undefined : removeSwitch(name);
+      commandLine.removeSwitch = (name) => (keep.includes(name) ? undefined : removeSwitch(name));
+      // disable-features is a single comma-separated value: merge ours into whatever is set,
+      // now and on any later append by the app.
+      const appendSwitch = commandLine.appendSwitch.bind(commandLine);
+      const withOcclusionOff = (value) =>
+        [...new Set([...String(value ?? '').split(',').filter(Boolean), '${OCCLUSION_FEATURE}'])].join(',');
+      commandLine.appendSwitch = (name, value) =>
+        name === 'disable-features' ? appendSwitch(name, withOcclusionOff(value)) : appendSwitch(name, value);
       commandLine.appendSwitch('remote-debugging-address', '127.0.0.1');
       commandLine.appendSwitch('remote-debugging-port', '${rendererPort}');
+      commandLine.appendSwitch('disable-features', commandLine.getSwitchValue('disable-features'));
+      for (const name of ${JSON.stringify(KEEP_ALIVE_SWITCHES)}) commandLine.appendSwitch(name);
       return { version: app.getVersion() };
     })()`,
   });

@@ -32,6 +32,11 @@ export interface BodyInfo {
 
 export interface NativeState {
   busy: boolean;
+  /**
+   * True when the window is minimized or completely covered by other windows. Chromium then
+   * stops drawing it, so set_view and screenshot cannot work; modelling tools still do.
+   */
+  windowHidden: boolean;
   undoDepth: number;
   redoDepth: number;
   bodies: BodyInfo[];
@@ -136,6 +141,13 @@ const LOAD_TIMEOUT_MS = 40_000;
 const toMeters = (v: Vec3): Vec3 => [v[0] * MM, v[1] * MM, v[2] * MM];
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+/** Append an explanation to a native kernel error that says nothing useful on its own. */
+function withHint<T>(operation: Promise<T>, marker: string, hint: string): Promise<T> {
+  return operation.catch((err: Error) => {
+    throw err.message.includes(marker) ? new Error(`${err.message.trim()} ${hint}`) : err;
+  });
+}
+
 /** The window exists but the app inside it has not built its UI yet. */
 class NotReadyError extends Error {
   constructor() {
@@ -191,6 +203,7 @@ const READ_STATE = `function () {
   bodies.sort((a, b) => a.id - b.id);
   return {
     busy: Boolean(this.executor.isBusy),
+    windowHidden: Boolean(document.hidden),
     undoDepth: this.history?.undoStack?.length ?? 0,
     redoDepth: this.history?.redoStack?.length ?? 0,
     bodies,
@@ -308,19 +321,75 @@ const READ_TOPOLOGY = `function (args) {
   return result;
 }`;
 
+// Resolves a curve to what a profile factory needs: `{ view, region }`. A closed planar curve
+// yields its Region (a Solid profile); an open curve yields `region: null` (a Sheet profile).
+//
+// Plasticity builds Regions automatically from the closed curves of a plane, but a Region does
+// not say which curve it came from. Match by bounding box instead: exactly one Region of that
+// plane may lie inside the box of the curve, and it must fill it. Region boxes come from the
+// display mesh, hence the tolerance.
+const PROFILE_OF = `const profileOf = (id) => {
+    const item = findItem(id);
+    const view = item.view;
+    const type = view.constructor.name;
+    if (type !== 'Wire') throw new Error('Body ' + id + ' is a ' + type + ', not a curve');
+    if (!item.model?.IsClosed?.()) return { view, region: null };
+    let basis;
+    try { basis = editor.curves.lookup(view); }
+    catch { throw new Error('Closed curve ' + id + ' is not planar, so it cannot be used as a profile'); }
+    const sketch = Array.from(editor.curves.read.sketch2basis ?? []).find(([, b]) => b === basis)?.[0];
+    const box = item.model.FindBox();
+    const axes = ['x', 'y', 'z'];
+    const tol = Math.max(1e-5, 0.01 * Math.hypot(...axes.map((k) => box.max[k] - box.min[k])));
+    const inside = (b) => axes.every((k) => b.min[k] >= box.min[k] - tol && b.max[k] <= box.max[k] + tol);
+    const fills = (b) => axes.every((k) => Math.abs(b.min[k] - box.min[k]) <= tol && Math.abs(b.max[k] - box.max[k]) <= tol);
+    const regions = [];
+    for (const [, candidate] of editor.geo.geometryModel) {
+      if (candidate.view?.constructor?.name !== 'SketchIsland') continue;
+      let candidateSketch;
+      try { candidateSketch = editor.sketches.getSketchId(candidate.view); } catch { continue; }
+      if (String(candidateSketch) !== String(sketch)) continue;
+      for (let i = 0; i < (candidate.view.regions?.length ?? 0); i += 1) {
+        const region = candidate.view.regions.get(i);
+        if (region && inside(region.getBoundingBox())) regions.push(region);
+      }
+    }
+    if (regions.length === 0) throw new Error('Plasticity built no region for closed curve ' + id);
+    if (regions.length > 1 || !fills(regions[0].getBoundingBox())) {
+      throw new Error('The profile of curve ' + id + ' is ambiguous: other curves in the same plane cross it or lie inside it. Move or delete them, or build the shape with boolean.');
+    }
+    return { view, region: regions[0] };
+  };`;
+
+// Setup lines shared by the profile factories (extrude, revolve, sweep): `args.id` is the curve.
+const USE_PROFILE = `const profile = profileOf(args.id);
+        if (profile.region) factory.regions = [profile.region];
+        else factory.curves = [profile.view];`;
+
 /**
  * Wraps a factory setup snippet into a native command. The snippet sees `factory`, `editor`,
  * `args` and the extra bindings; it must not commit. Errors raised inside `execute` are
  * rethrown, because the native executor swallows them.
+ *
+ * `commandName` is looked up in `editor.commands`; with `commandBinding` the command class is
+ * instead passed as the second binding (for commands that only exist in the module closure).
  */
-function commandFunction(commandName: string, extraParams: string[], setup: string): string {
-  return `async function (${["Factory", ...extraParams, "args"].join(", ")}) {
+function commandFunction(
+  commandName: string,
+  extraParams: string[],
+  setup: string,
+  commandBinding = false,
+): string {
+  const params = ["Factory", ...(commandBinding ? ["Command"] : []), ...extraParams, "args"];
+  const commandClass = commandBinding ? "Command" : `this.commands.${commandName}`;
+  return `async function (${params.join(", ")}) {
     ${BUSY_GUARD}
     ${FIND_VIEW}
     ${PICK_TOPOLOGY}
+    ${PROFILE_OF}
     const editor = this;
     let failure;
-    const command = new this.commands.${commandName}(this);
+    const command = new ${commandClass}(this);
     command.remember = false;
     command.execute = async function () {
       try {
@@ -832,49 +901,135 @@ export class NativeSession {
    * the same plane).
    */
   extrudeProfile(id: number, distanceMm: number): Promise<MutationResult> {
-    // Plasticity builds Regions automatically from the closed curves of a plane, but a Region
-    // does not say which curve it came from. Match by bounding box instead: exactly one Region
-    // of that plane may lie inside the curve's box, and it must fill it. Region boxes come
-    // from the display mesh, hence the tolerance.
     const setup = `
-        const item = findItem(args.id);
-        const view = item.view;
-        const type = view.constructor.name;
-        if (type !== 'Wire') throw new Error('Body ' + args.id + ' is a ' + type + ', not a curve');
-        if (item.model?.IsClosed?.()) {
-          let basis;
-          try { basis = editor.curves.lookup(view); }
-          catch { throw new Error('Closed curve ' + args.id + ' is not planar, so it has no profile to extrude'); }
-          const sketch = Array.from(editor.curves.read.sketch2basis ?? []).find(([, b]) => b === basis)?.[0];
-          const box = item.model.FindBox();
-          const axes = ['x', 'y', 'z'];
-          const tol = Math.max(1e-5, 0.01 * Math.hypot(...axes.map((k) => box.max[k] - box.min[k])));
-          const inside = (b) => axes.every((k) => b.min[k] >= box.min[k] - tol && b.max[k] <= box.max[k] + tol);
-          const fills = (b) => axes.every((k) => Math.abs(b.min[k] - box.min[k]) <= tol && Math.abs(b.max[k] - box.max[k]) <= tol);
-          const regions = [];
-          for (const [, candidate] of editor.geo.geometryModel) {
-            if (candidate.view?.constructor?.name !== 'SketchIsland') continue;
-            let candidateSketch;
-            try { candidateSketch = editor.sketches.getSketchId(candidate.view); } catch { continue; }
-            if (String(candidateSketch) !== String(sketch)) continue;
-            for (let i = 0; i < (candidate.view.regions?.length ?? 0); i += 1) {
-              const region = candidate.view.regions.get(i);
-              if (region && inside(region.getBoundingBox())) regions.push(region);
-            }
-          }
-          if (regions.length === 0) throw new Error('Plasticity built no region for closed curve ' + args.id);
-          if (regions.length > 1 || !fills(regions[0].getBoundingBox())) {
-            throw new Error('The profile of curve ' + args.id + ' is ambiguous: other closed curves in the same plane are nested in it or overlap it. Move or delete them, or build the shape with boolean.');
-          }
-          factory.regions = regions;
-        } else {
-          factory.curves = [view];
-        }
+        ${USE_PROFILE}
         factory.distance1 = args.distance;`;
     return this.mutate(
       commandFunction("ExtrudeCommand", [], setup),
       ["ExtrudeFactory"],
       [{ id, distance: distanceMm * MM }],
+    );
+  }
+
+  /**
+   * Revolve a curve by `angleDeg` around the axis through `axisOriginMm` along `axis`.
+   * A closed planar curve gives a Solid, an open curve a Sheet.
+   */
+  revolveProfile(
+    id: number,
+    axisOriginMm: Vec3,
+    axis: Vec3,
+    angleDeg = 360,
+  ): Promise<MutationResult> {
+    const setup = `
+        ${USE_PROFILE}
+        factory.origin.fromArray(args.origin);
+        factory.axis.fromArray(args.axis).normalize();
+        factory.degrees = args.degrees;`;
+    return withHint(
+      this.mutate(
+        commandFunction("RevolveCommand", [], setup),
+        ["RevolveFactory"],
+        [{ id, origin: toMeters(axisOriginMm), axis, degrees: angleDeg }],
+      ),
+      "PK_ERROR_impossible_spin",
+      "The axis must lie in the plane of the profile and must not pass through it.",
+    );
+  }
+
+  /**
+   * Sweep a profile curve along a path curve. A closed planar profile gives a Solid, an open
+   * one a Sheet. `twistDeg` rotates the profile along the way, `scale` is its size at the end.
+   */
+  sweepProfile(
+    profileId: number,
+    pathId: number,
+    twistDeg = 0,
+    scale = 1,
+  ): Promise<MutationResult> {
+    if (profileId === pathId) {
+      return Promise.reject(new Error("The sweep path must be a different curve than the profile"));
+    }
+    const setup = `
+        const path = findItem(args.pathId).view;
+        if (path.constructor.name !== 'Wire') {
+          throw new Error('Body ' + args.pathId + ' is a ' + path.constructor.name + ', not a curve');
+        }
+        ${USE_PROFILE}
+        factory.spine = path;
+        factory.twistDegrees = args.twist;
+        factory.scale = args.scale;`;
+    return this.mutate(
+      commandFunction("SweepCommand", [], setup),
+      ["SweepFactory"],
+      [{ id: profileId, pathId, twist: twistDeg, scale }],
+    );
+  }
+
+  /**
+   * Loft through `profileIds` in the given order. Closed planar profiles give a Solid, open
+   * curves a Sheet; the two kinds cannot be mixed. `guideIds` are curves the surface follows
+   * between the profiles; `closed` joins the last profile back to the first (3+ profiles).
+   */
+  async loftProfiles(
+    profileIds: number[],
+    guideIds: number[] = [],
+    closed = false,
+  ): Promise<MutationResult> {
+    if (new Set(profileIds).size !== profileIds.length) throw new Error("Loft profiles must be distinct");
+    if (profileIds.length < 2) throw new Error("A loft needs at least two profiles");
+    if (closed && profileIds.length < 3) throw new Error("A closed loft needs at least three profiles");
+    if (guideIds.some((id) => profileIds.includes(id))) {
+      throw new Error("A loft guide must be a different curve than the profiles");
+    }
+    // Solid and Sheet lofts use different native factories, so look at the curves first.
+    const kinds = await this.enqueue(() =>
+      this.call<Array<{ id: number; type: string; closed: boolean }>>(
+        `function (args) {
+          ${FIND_VIEW}
+          return args.ids.map((id) => {
+            const item = findItem(id);
+            return { id, type: item.view.constructor.name, closed: Boolean(item.model?.IsClosed?.()) };
+          });
+        }`,
+        [],
+        [{ ids: [...profileIds, ...guideIds] }],
+      ),
+    );
+    const notCurve = kinds.find((k) => k.type !== "Wire");
+    if (notCurve) throw new Error(`Body ${notCurve.id} is a ${notCurve.type}, not a curve`);
+    const profiles = kinds.slice(0, profileIds.length);
+    const solid = profiles.every((k) => k.closed);
+    if (!solid && profiles.some((k) => k.closed)) {
+      throw new Error("Loft profiles must be either all closed (Solid) or all open (Sheet)");
+    }
+    const args = [{ profileIds, guideIds, closed }];
+    if (solid) {
+      const setup = `
+        factory.regions = args.profileIds.map((id) => profileOf(id).region);
+        if (args.guideIds.length > 0) factory.guides = args.guideIds.map(find);
+        factory.closed = args.closed;`;
+      // Seen on 26.1.3: closed loops of closed profiles (22001) and profiles that turn through
+      // more than about half a circle (21555) are refused by the kernel.
+      return withHint(
+        this.mutate(commandFunction("LoftCommand", [], setup), ["RegionLoftFactory"], args),
+        "PK_BODY_make_lofted_body",
+        "Plasticity could not build this loft. A closed loop of closed profiles, or profiles " +
+          "that turn through more than about half a circle, are known to fail: use fewer or " +
+          "straighter profiles, or sweep_profile / revolve_profile for ring shapes.",
+      );
+    }
+    // The curve loft reads the selection; LoftEdgeCommand exists only in the module closure.
+    const setup = `
+        editor.selection.selected.removeAll();
+        factory.profiles = args.profileIds.map(find);
+        if (args.guideIds.length > 0) factory.guides = args.guideIds.map(find);
+        factory.closed = args.closed;
+        factory.join = false;`;
+    return this.mutate(
+      commandFunction("LoftEdgeCommand", [], setup, true),
+      ["CurveLoftFactory", "LoftEdgeCommand"],
+      args,
     );
   }
 
@@ -987,7 +1142,7 @@ export class NativeSession {
       const area = await this.call<{ x: number; y: number; width: number; height: number; dpr: number }>(
         `function () {
           if (document.hidden) {
-            throw new Error('The Plasticity window is hidden or minimized; restore it and retry');
+            throw new Error('The Plasticity window is covered or minimized; bring it into view and retry');
           }
           const element = document.querySelector('plasticity-viewport');
           if (!element) throw new Error('Plasticity viewport element was not found');
@@ -1030,6 +1185,10 @@ export class NativeSession {
       const info = await this.call<Omit<CameraInfo, "view">>(
         `async function (args) {
           ${BUSY_GUARD}
+          // Camera navigation is animated frame by frame, and a hidden window draws no frames.
+          if (document.hidden) {
+            throw new Error('The Plasticity window is covered or minimized; bring it into view and retry');
+          }
           const viewport = Array.from(this.viewports)[0];
           if (!viewport) throw new Error('Plasticity viewport is unavailable');
           const camera = viewport.camera;

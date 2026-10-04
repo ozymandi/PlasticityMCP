@@ -18,9 +18,14 @@ function check(label: string, pass: boolean, detail = ""): void {
   if (!pass) process.exitCode = 1;
 }
 
-function boundsMatch(body: BodyInfo | undefined, min: Vec3, max: Vec3): boolean {
+function boundsMatch(
+  body: BodyInfo | undefined,
+  min: Vec3,
+  max: Vec3,
+  tolerance = TOLERANCE_MM,
+): boolean {
   if (!body?.boundsMm) return false;
-  const near = (a: Vec3, b: Vec3) => a.every((v, i) => Math.abs(v - b[i]!) < TOLERANCE_MM);
+  const near = (a: Vec3, b: Vec3) => a.every((v, i) => Math.abs(v - b[i]!) < tolerance);
   return near(body.boundsMm.min, min) && near(body.boundsMm.max, max);
 }
 
@@ -47,6 +52,28 @@ async function main() {
     );
   }
   const baselineIds = baseline.bodies.map((b) => b.id).join(",");
+
+  try {
+    await runChecks(native, target.title);
+  } catch (err) {
+    console.error("SMOKE ERROR:", (err as Error).message);
+    process.exitCode = 1;
+  }
+
+  // Clean up, whatever happened above: undo everything this test did and put the selection back.
+  for (let i = 0; i < 250 && (await native.state()).undoDepth > baseline.undoDepth; i++) {
+    await native.undo();
+  }
+  await native.selectBodies(baseline.bodies.filter((b) => b.selected).map((b) => b.id));
+  const final = await native.state();
+  check("document is back to its baseline",
+    final.bodies.map((b) => b.id).join(",") === baselineIds, `${final.bodies.length} bodies`);
+
+  native.disconnect();
+  console.log(process.exitCode ? "\nSMOKE FAILED" : "\nSMOKE PASSED");
+}
+
+async function runChecks(native: NativeSession, title: string): Promise<void> {
   const ids = (bodies: BodyInfo[]) => bodies.map((b) => b.id).join(",");
 
   const box = await native.createBox([10, 20, 0], [80, 40, 8], "mcp-smoke-box");
@@ -299,6 +326,97 @@ async function main() {
   const noCurve = await native.deleteBodies([bent!.id]);
   check("delete a curve", noCurve.removedIds[0] === bent!.id);
 
+  // --- revolve / sweep / loft (drawn at x >= 700, clear of the curves above) ---
+  const made = (result: { created: BodyInfo[] }, type: string) =>
+    result.created.find((b) => b.type === type);
+  const LOFT_TOLERANCE_MM = 0.05; // bounds of lofted surfaces come out a few microns large
+
+  const section = wire(await native.createPolyline(
+    [[720, 0, 0], [730, 0, 0], [730, 0, 10], [720, 0, 10]], true))!; // in the XZ plane
+  const ringSolid = made(await native.revolveProfile(section.id, [700, 0, 0], [0, 0, 1]), "Solid");
+  check("revolve 360° makes a ring", ringSolid?.faceCount === 4 &&
+    boundsMatch(ringSolid, [670, -30, 0], [730, 30, 10]), fmt(ringSolid));
+  await native.undo();
+  const quarter = made(await native.revolveProfile(section.id, [700, 0, 0], [0, 0, 1], 90), "Solid");
+  check("revolve 90° follows the right-hand rule", quarter?.faceCount === 6 &&
+    boundsMatch(quarter, [700, 0, 0], [730, 30, 10]), fmt(quarter));
+  await native.undo();
+  const slope = wire(await native.createPolyline([[720, 100, 0], [730, 100, 10]]))!;
+  const cone = made(await native.revolveProfile(slope.id, [700, 100, 0], [0, 0, 1]), "Sheet");
+  check("revolving an open curve makes a Sheet",
+    boundsMatch(cone, [670, 70, 0], [730, 130, 10]), fmt(cone));
+  await native.undo();
+  const badAxis = await failure(native.revolveProfile(section.id, [725, 0, 0], [0, 0, 1]));
+  check("axis through the profile is refused with a hint",
+    /axis must lie in the plane/.test(badAxis?.message ?? ""), badAxis?.message ?? "no error");
+
+  const tubeProfile = wire(await native.createCircle([700, 200, 0], 5, [1, 0, 0]))!;
+  const straightPath = wire(await native.createPolyline([[700, 200, 0], [800, 200, 0]]))!;
+  const elbowPath = wire(await native.createPolyline([[700, 200, 0], [800, 200, 0], [800, 280, 0]]))!;
+  const rod2 = made(await native.sweepProfile(tubeProfile.id, straightPath.id), "Solid");
+  check("sweep a circle along a line", rod2?.faceCount === 3 &&
+    boundsMatch(rod2, [700, 195, -5], [800, 205, 5]), fmt(rod2));
+  await native.undo();
+  const elbow = made(await native.sweepProfile(tubeProfile.id, elbowPath.id), "Solid");
+  check("sweep around a corner", elbow?.faceCount === 4 && elbow.boundsMm?.max[1] === 280 &&
+    (elbow.boundsMm?.max[0] ?? 0) > 804, fmt(elbow));
+  await native.undo();
+  const flared = made(await native.sweepProfile(tubeProfile.id, straightPath.id, 0, 2), "Solid");
+  check("sweep with scale 2 doubles the far end",
+    boundsMatch(flared, [700, 190, -10], [800, 210, 10]), fmt(flared));
+  await native.undo();
+  const squareProfile = wire(await native.createPolyline(
+    [[700, 295, -5], [700, 305, -5], [700, 305, 5], [700, 295, 5]], true))!;
+  const squarePath = wire(await native.createPolyline([[700, 300, 0], [800, 300, 0]]))!;
+  const twisted = made(await native.sweepProfile(squareProfile.id, squarePath.id, 45), "Solid");
+  const halfDiagonal = 5 * Math.SQRT2;
+  check("sweep with twist 45°", boundsMatch(twisted,
+    [700, 300 - halfDiagonal, -halfDiagonal], [800, 300 + halfDiagonal, halfDiagonal]), fmt(twisted));
+  await native.undo();
+  const ringPath = wire(await native.createCircle([700, 400, 0], 30))!;
+  const ringProfile = wire(await native.createCircle([730, 400, 0], 5, [0, 1, 0]))!;
+  const torus = made(await native.sweepProfile(ringProfile.id, ringPath.id), "Solid");
+  check("sweep along a closed path makes a torus",
+    boundsMatch(torus, [665, 365, -5], [735, 435, 5], LOFT_TOLERANCE_MM), fmt(torus));
+  await native.undo();
+  const samePath = await failure(native.sweepProfile(tubeProfile.id, tubeProfile.id));
+  check("sweep refuses path = profile", /different curve/.test(samePath?.message ?? ""));
+  const solidPath = await failure(native.sweepProfile(tubeProfile.id, boxId));
+  check("sweep refuses a Solid as path", /not a curve/.test(solidPath?.message ?? ""));
+
+  const loftBase = wire(await native.createPolyline(
+    [[680, 580, 0], [720, 580, 0], [720, 620, 0], [680, 620, 0]], true))!;
+  const loftTop = wire(await native.createCircle([700, 600, 50], 10))!;
+  const funnel = made(await native.loftProfiles([loftBase.id, loftTop.id]), "Solid");
+  check("loft square to circle", boundsMatch(funnel, [680, 580, 0], [720, 620, 50], LOFT_TOLERANCE_MM),
+    fmt(funnel));
+  await native.undo();
+  const loftLid = wire(await native.createPolyline(
+    [[680, 580, 80], [720, 580, 80], [720, 620, 80], [680, 620, 80]], true))!;
+  const bulge = wire(await native.createSpline([[720, 620, 0], [735, 635, 40], [720, 620, 80]]))!;
+  const guided = made(await native.loftProfiles([loftBase.id, loftLid.id], [bulge.id]), "Solid");
+  check("loft follows a guide curve", (guided?.boundsMm?.max[0] ?? 0) > 734 &&
+    (guided?.boundsMm?.min[0] ?? 0) > 679.9, fmt(guided));
+  await native.undo();
+  const posts: number[] = [];
+  for (const degrees of [0, 120, 240]) {
+    const t = (degrees * Math.PI) / 180;
+    const x = 700 + 30 * Math.cos(t);
+    const y = 800 + 30 * Math.sin(t);
+    posts.push(wire(await native.createPolyline([[x, y, 0], [x, y, 40]]))!.id);
+  }
+  const fence = made(await native.loftProfiles(posts.slice(0, 2)), "Sheet");
+  check("loft of open curves makes a Sheet", fence?.faceCount === 1, fmt(fence));
+  await native.undo();
+  const drum = made(await native.loftProfiles(posts, [], true), "Sheet");
+  check("closed loft of open curves wraps around",
+    (drum?.boundsMm?.min[1] ?? 0) < 771 && (drum?.boundsMm?.max[1] ?? 0) > 829, fmt(drum));
+  await native.undo();
+  const mixed = await failure(native.loftProfiles([loftBase.id, posts[0]!]));
+  check("loft refuses mixed closed and open profiles", /all closed .* or all open/.test(mixed?.message ?? ""));
+  const single = await failure(native.loftProfiles([loftBase.id]));
+  check("loft refuses a single profile", /at least two/.test(single?.message ?? ""));
+
   // --- files, camera, screenshot (temporary folder, removed afterwards) ---
   const folder = mkdtempSync(join(tmpdir(), "plasticity-mcp-smoke-"));
   try {
@@ -327,7 +445,16 @@ async function main() {
     check("save a copy", saved.bytes > 0 &&
       readFileSync(saved.path).subarray(0, 10).toString() === "plasticity", `${saved.bytes} bytes`);
     check("saving leaves the document untouched",
-      (await native.state()).undoDepth === before.undoDepth && native.getTarget()?.title === target.title);
+      (await native.state()).undoDepth === before.undoDepth && native.getTarget()?.title === title);
+
+    if ((await native.state()).windowHidden) {
+      const blocked = await failure(native.setView("top"));
+      check("set_view reports a covered window", /covered or minimized/.test(blocked?.message ?? ""));
+      const noShot = await failure(native.screenshot());
+      check("screenshot reports a covered window", /covered or minimized/.test(noShot?.message ?? ""));
+      console.log(" skip  views and screenshot — the Plasticity window is covered or minimized");
+      return;
+    }
 
     const expected: Array<[ViewName, Vec3]> = [
       ["front", [0, -1, 0]], ["back", [0, 1, 0]], ["left", [-1, 0, 0]], ["right", [1, 0, 0]],
@@ -351,18 +478,6 @@ async function main() {
   } finally {
     rmSync(folder, { recursive: true, force: true });
   }
-
-  // Clean up: undo everything this test did and put the selection back.
-  for (let i = 0; i < 150 && (await native.state()).undoDepth > baseline.undoDepth; i++) {
-    await native.undo();
-  }
-  await native.selectBodies(baseline.bodies.filter((b) => b.selected).map((b) => b.id));
-  const final = await native.state();
-  check("document is back to its baseline",
-    final.bodies.map((b) => b.id).join(",") === baselineIds, `${final.bodies.length} bodies`);
-
-  native.disconnect();
-  console.log(process.exitCode ? "\nSMOKE FAILED" : "\nSMOKE PASSED");
 }
 
 main().catch((err) => {
