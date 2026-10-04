@@ -112,7 +112,7 @@ Real B-Rep operations through Plasticity's own factories and history. Unofficial
 
 | Tool | Description |
 |------|-------------|
-| `get_body_topology` | What a body is made of, with ids: faces and edges of a Solid / Sheet (`include`: faces / edges / all) plus the control points of its spline faces, or segments, vertices and control points of a curve. |
+| `get_body_topology` | What a body is made of, with ids: faces and edges of a Solid / Sheet (`include`: faces / edges / all) plus the control points of its spline faces, or segments, vertices and control points of a curve. On a detailed body ask for a part: `box` ({min, max}) keeps what lies inside it, `kinds` (line / circle / curve) keeps edges of those kinds. |
 | `boolean` | `union` / `difference` / `intersection` of `toolIds` against `targetIds`; `keepTools` optional. |
 | `fillet` | Round with `radius`: edges of a body (`edgeIds`), corner vertices of a curve (`vertexIds`), or every corner of a curve. |
 | `chamfer` | Bevel by `distance`: edges of a body, or corners of a curve, the same way. |
@@ -265,6 +265,8 @@ File tools take absolute paths, check the extension and never replace an existin
 The profile tools (`extrude_profile`, `revolve_profile`, `sweep_profile`, `loft_profiles`) take either a curve id or `regionIds` from `list_regions`. A curve id is refused when other curves in its plane cross it or lie inside it; regions are how to pick the plate-with-holes area, or a profile drawn as several lines and arcs.
 
 Face and edge ids — and the segment, vertex and control point ids of a curve — are valid only until the body changes — re-read `get_body_topology` after every operation on it. Region ids likewise change whenever curves in their plane change. Stale ids are rejected.
+
+A full `get_body_topology` of a detailed body is very long — 337 edges come to about 130 thousand characters. Read such a body through the filter: a thin `box` around a plane or a line returns only the edges there (the same body, one plane: 11 edges, 4 thousand characters).
 
 `pivot` is optional for rotate and scale; it defaults to the centre of the bodies' combined bounding box.
 

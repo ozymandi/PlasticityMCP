@@ -12,6 +12,7 @@ import {
   TOPOLOGY_IDS_SCHEMA,
   TopologyIds,
   VEC3_SCHEMA,
+  Vec3Mm,
 } from "./shared.js";
 
 /** Topology and the operations on Solids and Sheets: boolean, cut, faces, edges, patch, join. */
@@ -19,6 +20,11 @@ import {
 const GetBodyTopologyArgs = z.object({
   id: BodyId,
   include: z.enum(["faces", "edges", "all"]).optional().default("all"),
+  box: z
+    .object({ min: Vec3Mm, max: Vec3Mm })
+    .refine((b) => b.min.every((v, i) => v <= b.max[i]), "box min must not exceed max")
+    .optional(),
+  kinds: z.array(z.enum(["line", "circle", "curve"])).min(1).optional(),
 });
 
 const BooleanArgs = z.object({
@@ -164,13 +170,31 @@ const tools: Tool[] = [
       "also lists `controlPoints` — the control points of its surfaces (none on planes, " +
       "cylinders and the like; raise_degree on a face creates them). Millimetres. IMPORTANT: these ids " +
       "are valid only until the body changes — re-read after every operation on it. `include` " +
-      "limits the output for Solids and Sheets with many faces.",
+      "limits the output for Solids and Sheets with many faces. A full listing of a detailed " +
+      "body is very long (a hundred edges is tens of thousands of tokens), so on such a body " +
+      "ask for a part of it: `box` ({min, max}) keeps only what lies inside the box — edges " +
+      "and segments with their start, middle and end inside, faces by their centre, vertices " +
+      "and control points by position; `kinds` keeps only edges / segments of those kinds. A " +
+      "thin box picks the edges in one plane or along one line. With a filter the result has " +
+      "`matched` counts; `faceCount` / `edgeCount` stay the totals of the body.",
     inputSchema: {
       type: "object",
       required: ["id"],
       properties: {
         id: { type: "number" },
         include: { type: "string", enum: ["faces", "edges", "all"], default: "all" },
+        box: {
+          type: "object",
+          required: ["min", "max"],
+          description: "Only what lies inside this box, millimetres",
+          properties: { min: VEC3_SCHEMA, max: VEC3_SCHEMA },
+        },
+        kinds: {
+          type: "array",
+          minItems: 1,
+          items: { type: "string", enum: ["line", "circle", "curve"] },
+          description: "Only edges / segments of these kinds",
+        },
       },
     },
   },
@@ -437,7 +461,7 @@ const tools: Tool[] = [
 const handlers: ToolFamily["handlers"] = {
   get_body_topology: async (rawArgs) => {
     const args = GetBodyTopologyArgs.parse(rawArgs ?? {});
-    return ok(await native.topology(args.id, args.include));
+    return ok(await native.topology(args.id, args.include, { boxMm: args.box, kinds: args.kinds }));
   },
 
   boolean: async (rawArgs) => {

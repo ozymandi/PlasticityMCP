@@ -8,9 +8,11 @@ import {
   BodyTopology,
   BooleanOperation,
   Cutter,
+  EdgeInfo,
   FilletConvexity,
   MutationResult,
   PatchSource,
+  TopologyFilter,
   Vec3,
 } from "./types.js";
 
@@ -164,13 +166,47 @@ export const CONVEXITY_CODES: Record<FilletConvexity, number> = {
 export const PICK_FACES = `const view = typed(args.id, 'Solid', 'Sheet');
         factory.faces = pick(view.high.faces, args.faceIds, 'face');`;
 
+// Coordinates are reported rounded to a micron's thousandth; a point on the box wall is inside.
+const BOX_TOLERANCE_MM = 1e-6;
+
+/** Keep only what passes the filter; `matched` counts what is left of each list. */
+export function filterTopology(topology: BodyTopology, filter: TopologyFilter): BodyTopology {
+  const { boxMm, kinds } = filter;
+  if (!boxMm && !kinds) return topology;
+  const inside = (p: Vec3) =>
+    !boxMm ||
+    p.every((v, i) => v >= boxMm.min[i] - BOX_TOLERANCE_MM && v <= boxMm.max[i] + BOX_TOLERANCE_MM);
+  const stretch = (e: Pick<EdgeInfo, "kind" | "startMm" | "midMm" | "endMm">) =>
+    (!kinds || kinds.includes(e.kind)) && inside(e.startMm) && inside(e.midMm) && inside(e.endMm);
+  const result: BodyTopology = { ...topology, matched: {} };
+  if (topology.faces) result.faces = topology.faces.filter((f) => inside(f.centerMm));
+  if (topology.edges) result.edges = topology.edges.filter(stretch);
+  if (topology.segments) result.segments = topology.segments.filter(stretch);
+  if (topology.vertices) result.vertices = topology.vertices.filter((v) => inside(v.positionMm));
+  if (topology.controlPoints) {
+    result.controlPoints = topology.controlPoints.filter((c) => inside(c.positionMm));
+  }
+  for (const key of ["faces", "edges", "segments", "vertices", "controlPoints"] as const) {
+    const list = result[key];
+    if (list) result.matched![key] = list.length;
+  }
+  return result;
+}
+
 export class SolidTools extends CurveEditTools {
   /**
    * Faces and edges of a Solid / Sheet. Their ids are valid only until the body changes:
-   * re-read after every operation on it.
+   * re-read after every operation on it. `filter` limits the listing to a box and to edge
+   * kinds — on a detailed body the full listing is too long to be useful.
    */
-  topology(id: number, include: "faces" | "edges" | "all" = "all"): Promise<BodyTopology> {
-    return this.enqueue(() => this.call<BodyTopology>(READ_TOPOLOGY, [], [{ id, include }]));
+  topology(
+    id: number,
+    include: "faces" | "edges" | "all" = "all",
+    filter: TopologyFilter = {},
+  ): Promise<BodyTopology> {
+    return this.enqueue(async () =>
+      filterTopology(await this.call<BodyTopology>(READ_TOPOLOGY, [], [{ id, include }]), filter),
+    );
   }
 
   /** Boolean of `toolIds` against `targetIds`. Tools are consumed unless `keepTools`. */

@@ -130,11 +130,24 @@ export interface CurvePointInfo {
   positionMm: Vec3;
 }
 
+/**
+ * Limits what a topology read lists. `boxMm`: only what lies inside the box — edges and
+ * segments with start, middle and end inside, faces by their centre, points by position.
+ * `kinds`: only edges and segments of these kinds.
+ */
+export interface TopologyFilter {
+  boxMm?: { min: Vec3; max: Vec3 };
+  kinds?: Array<EdgeInfo["kind"]>;
+}
+
 export interface BodyTopology {
   id: number;
   type: string;
+  /** Totals of the body, whatever the filter. */
   faceCount: number;
   edgeCount: number;
+  /** With a filter: how many of each list passed it. */
+  matched?: Partial<Record<"faces" | "edges" | "segments" | "vertices" | "controlPoints", number>>;
   /** Solids and Sheets. */
   faces?: FaceInfo[];
   edges?: EdgeInfo[];

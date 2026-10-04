@@ -17,7 +17,9 @@ history. What each Plasticity command maps to, and what is not available:
 
 ### Order of work
 
-The user's words: first blocking, then refining; the merge pass is the last step.
+The user's words: first blocking, then refining; the merge pass is the last step of the
+forms; the smallest details — knurling, decals, inscriptions, screws, threads — are the last
+step of detailing.
 
 1. **Blocking.** The main volumes in the right proportions and places, as simple bodies.
    Check them against the drawing (front, top, side screenshots) before going further.
@@ -38,8 +40,23 @@ The user's words: first blocking, then refining; the merge pass is the last step
      that will end up buried in the junction (a rounded rim lying on a flat face gives a
      cusp that cannot be chamfered).
 
+4. **Fine detail — the very last.** Only when the forms, the edges and the merge pass are
+   done:
+   - **Knurling / ribs on knobs, dials and rings.** Real knobs have small ribs; a smooth
+     cylinder is not a finished knob. Two ways, both named by the user: with booleans (one
+     small cutter on the rim, `array_radial` around the axis, `boolean` difference), or
+     through unwrap (flatten the face with `unwrap_faces`, make the pattern flat, wrap it
+     back with `deform`) — the second for patterns that do not simply run along the axis.
+   - **Inscriptions and decals** (the maker's name, scales, numbers, "MADE IN …").
+   - **Screws** and other small hardware.
+   - **Threads** (sockets, bushings, screw-in rings): a helix from `create_spiral`, a small
+     thread profile swept along it with `sweep_profile`, then `boolean` into the part.
+   After these a body has hundreds of edges, so nothing that needs edge picking may be left
+   for later.
+
 (My reading, not the user's words: during blocking plain edges are fine; a model shown as
-refined or finished has none.)
+refined or finished has none. That the fine detail comes after the merge pass is also my
+ordering of two things the user each called "the last step".)
 
 ### No bare edges
 
@@ -60,9 +77,15 @@ How to keep to it:
   that looks at the camera. The edges that run back from that face (the top and side edges
   of a block standing on another body) are just as visible. Before reporting, look at the
   body from at least two opposite isometric directions.
-- Order on one body: first the long loops (where walls meet a roof or a floor), then the
-  corner edges that cross them. The other way round the kernel refuses the loop
-  (`PK_BODY_fix_blends`).
+- Edges that meet in one vertex go into **one call with one radius** (walls, roof loop,
+  hips and top of a block together). A loop whose corners are left sharp, or corners first
+  and the loop after, is refused by the kernel (`PK_BODY_fix_blends`).
+- A **closed** junction loop takes a chamfer. An **open** junction chain often refuses the
+  chamfer at its ends but takes a `fillet` of the same size — try that before giving up.
+- A junction can only be blended where the joined part ends **on** the body it joins. A
+  part that runs past it (a front block taller than the shell it is united with) leaves
+  a junction edge with nothing to cap it, and neither chamfer nor fillet works. Decide the
+  split into bodies with that in mind, or say so in the brief.
 - Round parts (dials, knobs, buttons, rings, bosses): draw the half section as one closed
   polyline with the chamfers already in it and `revolve_profile` it about its axis — three
   small calls and no topology read. A profile edge may lie on the axis.

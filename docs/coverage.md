@@ -20,6 +20,7 @@ State on 2026-10-04: **143 tools**, Plasticity **26.1.3**, Indie licence, Window
 - **Millimetres and degrees**, whatever units the window displays.
 - **Ids of faces, edges, curve segments, vertices, control points and regions are valid only until the body changes.** Re-read `get_body_topology` / `list_regions` after every operation; stale ids are refused.
 - **Face and edge tools take one body per call.**
+- **A full `get_body_topology` of a detailed body is very long** (337 edges are about 130 thousand characters). It takes a `box` and edge `kinds` to list only a part; there is no filter by convexity.
 - **Instances and reference meshes are not bodies.** They have ids of their own; `list_bodies`, the transform tools and the modelling tools do not see them.
 - **A refused or failed operation shows a red toast** in the Plasticity window.
 - **Long automated sessions:** the renderer's memory grows with every operation and is not given back. After several thousand operations in one session the renderer process was lost once; restart Plasticity before a long run.

@@ -763,6 +763,116 @@ Other ideas (not agreed yet): transforming and hiding reference meshes; opening 
 
 **Documented for readers of the repository (2026-10-04, on the Designer's request):** `docs/coverage.md` — Plasticity command → tool with the limits of each, the commands that are not available and what to use instead, where a tool differs from the command, general limits. The root `README.md` has a short "Coverage and limits" section pointing to it; `mcp-server/README.md` got a current introduction and one table per tool family (the single long table was broken by blank lines in three places). No code changed.
 
+## Tests on real parts
+
+### Nikon F2 from a three-view drawing — stages 1–3 ✅ (2026-10-04, ~0.5 h)
+
+Source: a 640 px blueprint with dimensions (top, front, bottom views), given by the Designer. Plan agreed: seven stages (1 body, 2 finder, 3 mirror box and mount, 4 top controls, 5 front details, 6 bottom, 7 fillets, checks, export); first stages 1–3, separate bodies in groups, files in `tests/nikon-f2/` (not committed).
+
+Coordinates: X along the width, front of the camera towards −Y, Z up; origin on the lens axis, Y = 0 on the reference line of the top view.
+
+Built through the MCP client only (about 45 tool calls): six Solids, all valid by `check_bodies`, in two groups.
+
+| Body | How | From the drawing | Estimated |
+|------|-----|------------------|-----------|
+| Top cover, Body shell, Bottom cover | closed polyline → `fillet` of all corners → `extrude_profile` 71 → `cut` with two lines (one call, three pieces) → `fillet` 1.5 on the outer rims | width 86.1 + 61.5, height −33.2 … +37.8, depth −16.8 … +17.3 | corner chamfers 10 and R10; seams at z = +24 and −27 |
+| Mirror box | polyline in the front plane → `fillet` of two vertices R8 → `extrude_profile` | width 59, bottom −30.5, flange face at 43.5 | front face at y = −40 |
+| Mount ring | `create_cylinder` × 3, `boolean` difference twice (throat through ring and box, then a counterbore) | throat Ø44 | ring Ø56, counterbore Ø47.5 |
+| Finder | `create_box` + `loft_profiles` between two rectangles (roof) + eyepiece box, `boolean` union; "Nikon" engraved 0.4: `create_text` → `scale_bodies` [1.64, 1, 1] → `move_bodies` → `list_regions` → `extrude_profile` of ten regions → `boolean` difference | base 52 wide, top 66.7, eyepiece 37 wide and 22.4 back, letters 5.5 high and 32 wide | front at y = −29, roof top 28 × 26, eyepiece height, font |
+
+Findings:
+- No tool failed. The one undo was my own mistake (an eyepiece box taller than the block it joins).
+- `cut` with two cutter lines in one call gives all three pieces at once.
+- `create_text`: the letter "k" of the built-in font comes as three overlapping outlines, which makes five regions; extruded together they become one Solid, so it works. The font is much narrower than the Nikon logo (19.5 mm at 5.5 mm height against 32 mm) — stretched with a per-axis `scale_bodies` on the curves.
+- `extrude_profile` with regions of separate letters returns one Solid per connected group (six here), not one body.
+- The Finder after the engraving has 102 faces and is valid.
+- Reading the drawing: the figure that looks like "13.5" at the right of the top view is 43.5 (reference line to the mount flange) — it matches the pixels and the 46.5 mm flange distance.
+- When the work began the document was empty with 37 undo steps that are not from this session (the default cube was gone). Nothing of it was undone.
+
+Files: `tests/nikon-f2/nikon-f2-stage3.plasticity`, `.step`, `stage3-isometric.png`, `stage3-front.png`, `stage3-top.png`, `stage3-filleted-isometric.png`.
+
+**Designer's rules for modelling, given after seeing stages 1–3 (2026-10-04)** — written into a new skill `~/.claude/skills/plasticity-mcp/SKILL.md`:
+1. No bare edges: every visible edge gets a fillet or a chamfer, also at intermediate stages.
+2. When information is missing — research on the internet; before building, a brief to the Designer (what, in which order, which dimensions are from his material / from research / estimated, edge treatment, what is left out), then wait for the go-ahead.
+
+Edge pass on stages 1–3, done on that word: the engraving was undone, then Finder — roof and vertical edges R2, eyepiece R1; Mirror box — front rim R1; Mount ring — four rims chamfered 0.4; engraving redone. All six bodies valid.
+- **Not treated:** the edge where the Finder's walls meet the roof slopes (z = 53.3). `fillet` R1 on it together with the eyepiece edges failed in the kernel (`PK_BODY_fix_blends` 16065); it crosses the R2 corner fillets made just before. The right order would have been that loop first, the corners after. Also left: the edges inside the engraved letters (0.4 mm deep) and the flush seams between the covers and the shell.
+- **Missed and fixed after the Designer pointed at it:** on the Mirror box only the rim of the front face was rounded; the two top edges running back to the body (x = ±29.5, z = 37.8) stayed sharp. Filleted R1 afterwards — this time crossing the corner fillets worked. The skill now says to go through all outer edges of a body, not one face's rim.
+- **Finding about the tools:** `get_body_topology` has no filter. Edges of a body with 73 edges cost about 20 thousand tokens, and after the engraving the Finder has 337 edges — picking edges on a detailed body is not practical. Hence the rule "treat edges before fine detail". A filter (by box, by face, by kind) would remove the problem — an idea for the server, not agreed.
+
+Research (2026-10-04): the F2 with the DE-1 finder is 152.5 × 98 × 65 mm (Wikipedia, "Nikon F2"); the F mount has a 44 mm throat and a 46.5 mm flange distance (Wikipedia, "Nikon F-mount"). The model is 152.5 wide with the lugs to come, 99.9 high and 65.9 deep — the height follows the drawing (33.2 + 66.7).
+
+Open: on the drawing a column about 19 mm across stands at the place of the shutter speed dial (x = −35.2), as tall as the prism (67.8), with "B 1 2 4" on its side and an ASA scale on top. A plain F2 has a low shutter speed dial there; what the column is was not identified — asked the Designer.
+
+### Nikon F2 — stages 4–6 ✅ (2026-10-04, ~0.5 h)
+
+Built on the Designer's "go" to the brief; the tall column at the shutter speed dial is made as drawn (he did not say otherwise). 22 Solids in five groups (Body, Finder, Top controls, Front, Bottom), all valid by `check_bodies`.
+
+| Group | Bodies |
+|-------|--------|
+| Top controls | Advance lever (hub + arm), Shutter release (collar + button), Shutter speed dial (the column, Ø18 × 30), Rewind knob |
+| Front | Self-timer (hub + lever), DOF preview (ring + button), Sync terminal, Lens release button, Strap lug left / right |
+| Bottom | Tripod socket (ring boss; the 6.35 hole is cut into the Bottom cover), Battery cover with a coin slot, Back lock, Rewind button, Motor coupling, Rewind coupling |
+| joined into existing bodies | the lens release boss → Mirror box; the hinge strip (left, 2.9 out) and the latch strip (right, 2 out) → Body shell — the overall width is now 152.5 as on the drawing |
+
+How: every round part is one closed polyline (half section with the chamfers already in it) → `revolve_profile` about its axis, also about a diagonal axis for the strap lugs. 19 revolves, none failed, an edge of the profile lying on the axis is accepted. The two levers are polylines → `fillet` of the curve corners → `extrude_profile` → `fillet` of both rims → `boolean` union with their hubs.
+
+Findings:
+- This way a part costs three small calls and no topology read, against about 20 thousand tokens for reading the edges of one finished body. Chamfers put into the profile are the cheap way to keep the "no bare edges" rule on round parts.
+- `extrude_profile` of a closed polyline went **down** (−Z) for the advance lever arm: the direction follows the winding of the points, as the tool description warns. Corrected with `move_bodies`.
+- `boolean` union of two bodies that only touch by a face (lever on its hub) works.
+- Profiles in one plane can be created in a batch and revolved one after another as long as they do not overlap.
+
+Left out, as said in the brief: knurling, scales and numbers, screws, leatherette texture; also the fold-out crank on the rewind knob and the mirror lock-up tab at the DOF button. Estimated: heights and protrusions without a dimension on the drawing, the shape of the lever arms, the position of the strap lugs on the corner faces. Bare edges that remain: inside the coin slot and the engraved letters, the wall-to-roof edge of the Finder (see above), and the inner corners where joined parts meet.
+
+Files: `tests/nikon-f2/nikon-f2-stage6.plasticity`, `.step`, `stage6-isometric.png`, `stage6-front.png`, `stage6-bottom.png`.
+
+### Filter in `get_body_topology` — ✅ built (2026-10-04, ~0.5 h), found by the test
+
+The Designer chose the filter over a helper script. `get_body_topology` takes two more optional arguments: `box` ({min, max}, mm) — only what lies inside: edges and curve segments with start, middle and end inside, faces by their centre, vertices and control points by position; `kinds` — only edges / segments of the kinds line / circle / curve. With a filter the result has `matched` counts; `faceCount` / `edgeCount` stay the totals. The filtering is done in Node after the read (`filterTopology` in `src/native/solids.ts`); the renderer side is untouched. 143 tools as before.
+
+Verified over stdio on the open Nikon model, read-only (18 checks): the Finder's full edge list is 337 edges and 129 thousand characters; a thin box around the plane z = 53.3 returns exactly the 11 edges in that plane (4 thousand characters), the same ids as in the full list; `kinds` alone and together with `box`; faces by centre; an empty box; refusals (min above max, empty or unknown kinds, box without max); the document is untouched. Build and protocol tests pass.
+
+**Not verified:** the filter on a curve (segments, vertices, control points — no curve in the document); no check was added to `smoke:native`, because it runs only in an empty document and the window holds the model — to add when the document is free. Not built: a filter by convexity (concave / convex) — the kernel binding gives no normal at a point of a face, so it cannot be computed reliably.
+
+The MCP client must be restarted to see the new arguments. Not committed.
+
+### Nikon F2 — merge pass, in progress (2026-10-04)
+
+Designer's rule for it: merge what is one piece in reality, keep what is a separate part (a cover stays a cover). Done before the client restart, without the filter:
+- Mirror box (with the lens release boss) → **Body shell** (id 246, 60 faces); Tripod socket → **Bottom cover** (id 247). Both valid.
+- **Self-timer** rebuilt (id 335, in group Front): the lever now starts 0.5 inside the hub (y = −19.3) with both rims rounded R0.5, so its walls meet the hub face (y = −19.8) at a right angle — a junction that can be chamfered.
+- Kept separate: Top cover 243, Bottom cover 247, Mount ring 250, Finder 253, strap lugs 313 / 314, Sync terminal 309, and the moving parts (290, 294, 295, 296, 308, 322, 324–328).
+- Copy of this state: `tests/nikon-f2/nikon-f2-merge-wip.plasticity`.
+
+To do after the restart, picking edges with `box` (thin boxes; ids must be re-read):
+1. Body shell 246 — chamfer 0.6 on the concave junctions: mirror box sides with the front face (lines at x = ±29.5, y = −16.8, z −27…24; the right one is interrupted by the boss), the boss with the mirror box side (two lines on x = 29.5 at z ≈ ±4.96) and with the front face (arc on y = −16.8, r 6.5 about x = 33.7, z = 0), the hinge strip (x ≈ −86.1, y −4.9…0.9, z −26.5…23.5) and the latch strip (x ≈ 61.5, y ±2, z −26.5…23).
+2. Bottom cover 247 — chamfer 0.4 on the circle r 5 at z = −33.2 about (−3, −2.5).
+3. Advance lever 290 — chamfer 0.4 where the arm meets the hub (on the cylinder r 9 about (−70.5, 0), z 39.3…41.8).
+4. Self-timer 335 — chamfer 0.4 on the edges in the plane y = −19.8.
+5. Finder 253 — rebuild: box + roof loft + eyepiece → union → fillet the wall-to-roof loop R1 and chamfer the eyepiece junction first, then corners and roof R2, eyepiece rims R1, engraving last.
+6. `check_bodies`, screenshots from several sides, save, STEP, report.
+
+**Done after the restart (2026-10-05), with the filter through the MCP client** — 20 Solids, the changed ones valid:
+
+| Junction | Result |
+|----------|--------|
+| Tripod boss ↔ Bottom cover (circle, closed) | chamfer 0.4 ✅ |
+| Advance lever arm ↔ hub (closed loop of 10 edges on the hub cylinder) | chamfer 0.3 ✅ |
+| Self-timer lever ↔ hub (open chain of 5 edges) | chamfer refused twice (`PK_BODY_fix_blends` 16065), **fillet 0.4 ✅** |
+| Lens release boss ↔ mirror box side and body front (closed loop of 7) | chamfer 0.5 ✅ |
+| Hinge strip ↔ body side (closed loop of 10), latch strip (closed loop of 10) | chamfer 0.4 ✅ |
+| Eyepiece ↔ Finder back wall (closed loop of 8) | chamfer 0.4 ✅ |
+| **Mirror box sides ↔ body front** (the main junction, lines at x = ±29.5) | **refused**, chamfer and fillet, also one straight edge alone (`PK_BODY_fix_blends` 16053) |
+
+Why the main junction fails: the mirror box is taller than the Body shell it is united with (it runs on in front of the Top cover and the Bottom cover, which are separate bodies), so the concave edge ends at the seams with nothing to cap the blend. It needs a decision about the split into bodies — open with the Designer.
+
+**Finder rebuilt** (id 337): box + roof loft → all 16 edges (four walls' corners, wall-to-roof loop, hips, roof top) filleted R1.5 **in one call** — the loop that was refused before; the same loop without the vertical edges was refused again, so the rule is "edges meeting in a vertex go into one call with one radius". The eyepiece is now lower than the roof base (z 39…51), runs 0.5 into the back wall, is rounded R1 before the union and chamfered 0.4 on the junction after it. Engraving last (154 faces, valid).
+
+Findings about the filter in use: a thin box around a plane returns the junction loop directly (8–13 edges, 3–4 thousand tokens); a box that is only roughly right returns too much (29 edges for the lever hub). A filter "edges of this face" / "edges between these two faces" would be more exact than a box — an idea, not agreed.
+
+Files: `tests/nikon-f2/nikon-f2-merged.plasticity`, `.step`, `merge-isometric.png`.
+
 ## Risks
 
 - **Binary protocol details**: WS payloads are likely binary (efficient mesh transfer). Recon must decode framing exactly. Mitigation: addon source is Python and readable.
@@ -808,4 +918,4 @@ PlasticityMCP/
 ## Next action
 
 1. Designer: close Plasticity and call `native_launch` (or `npm run smoke:native`) once to verify the cold-start path; restart the MCP client so it picks up the new tools.
-2. Full command coverage: blocks 0, 0b (split of `index.ts`) and 11 (solids) are in `main` and published — 69 tools. Blocks 0, 0b, 11 and 12 are in `main` and published — 84 tools. Blocks 0, 0b, 11, 12 and 13 are in `main` and published — 105 tools. Blocks 0, 0b and 11–14 are in `main` and published — 108 tools. Blocks 0, 0b and 11–15 are in `main` and published — 111 tools. Blocks 0, 0b and 11–16 are in `main` and published — 116 tools. Blocks 0, 0b and 11–17 are in `main` and published — 131 tools. Blocks 0, 0b and 11–18 are in `main` and published — 139 tools. Full command coverage is complete and in `main`: blocks 0, 0b and 11–19, 143 tools. Checked through the MCP client after its restart on 2026-10-04: `native_connect`, `get_environment`, `list_bodies`, `set_construction_plane` (yz, back to xy), `create_outline` (flat on the active YZ plane, and with `planeNormal` [0, 1, 0]) and `undo` all work; the document was left as it was (one default cube, plane XY). The coverage and the limits are documented in `docs/coverage.md` and both READMEs. Next: the tests on real parts the Designer asked for earlier (he names the part).
+2. Full command coverage: blocks 0, 0b (split of `index.ts`) and 11 (solids) are in `main` and published — 69 tools. Blocks 0, 0b, 11 and 12 are in `main` and published — 84 tools. Blocks 0, 0b, 11, 12 and 13 are in `main` and published — 105 tools. Blocks 0, 0b and 11–14 are in `main` and published — 108 tools. Blocks 0, 0b and 11–15 are in `main` and published — 111 tools. Blocks 0, 0b and 11–16 are in `main` and published — 116 tools. Blocks 0, 0b and 11–17 are in `main` and published — 131 tools. Blocks 0, 0b and 11–18 are in `main` and published — 139 tools. Full command coverage is complete and in `main`: blocks 0, 0b and 11–19, 143 tools. Checked through the MCP client after its restart on 2026-10-04: `native_connect`, `get_environment`, `list_bodies`, `set_construction_plane` (yz, back to xy), `create_outline` (flat on the active YZ plane, and with `planeNormal` [0, 1, 0]) and `undo` all work; the document was left as it was (one default cube, plane XY). The coverage and the limits are documented in `docs/coverage.md` and both READMEs. The server is also registered in the Designer's LM Studio (`mcp/plasticity`, seen in its list; not yet tried with a local model — the tool list is about 24 thousand tokens, so the model needs a context of 32 thousand or more). Tests on real parts have started with a Nikon F2 from a drawing: stages 1–3 (body, finder, mirror box and mount) are built — see "Tests on real parts". The Designer's two modelling rules (no bare edges; research and a brief before building) are in the skill `plasticity-mcp`, and the edges of stages 1–3 are treated. Stages 4–6 (top controls, front details, bottom) are built on his "go": 22 valid Solids in five groups. **Latest (2026-10-05):** the Designer pointed at the knobs: real ones have small ribs (knurling), to be made with booleans or through unwrap; and the smallest details — knurling, decals, the Nikon inscription, screws — are the last step of detailing. Written into the skill as step 4 "Fine detail — the very last". A brief for the fine detail of the Nikon (knurling on the shutter speed dial, the advance hub, the shutter collar and the rewind knob; screws on the mount ring and the bottom; "MADE IN JAPAN"; numbers on the dial through unwrap / deform) waits for his go-ahead, together with the decision on the main junction and on committing. **Before that (2026-10-05):** the merge pass on the Nikon is done except the main junction (mirror box sides ↔ body front), which the kernel refuses because the mirror box runs past the shell — the Designer decides how to split the body (see "merge pass"). Not committed: the filter (`src/native/solids.ts`, `types.ts`, `src/tools/solids.ts`), README / coverage lines about it, the updated skill copy, `task.md`; the skill itself is in `main` (`5be5b34`). Earlier state of this item: the filter in `get_body_topology` is built and verified; the Designer restarts the MCP client, then the merge pass on the Nikon follows with his answers: merge what is one piece in reality (Mirror box into Body shell, tripod boss into Bottom cover), keep what is a separate part (covers, strap lugs, sync terminal, mount ring, Finder, moving parts), chamfer the junctions, rebuild Self-timer and Finder for clean junctions. History of the request — the Designer (2026-10-04): go through the finished model, union the parts that should be one piece and chamfer the edges where they meet. A brief was given with three questions: (1) whether the covers, the shell and the mirror box become one Body (the seams disappear), (2) whether the strap lugs, the sync terminal and the tripod boss join it, (3) how to pick the junction edges — they exist only after the union, on bodies whose topology is too big to read: either a filter in `get_body_topology` (server change, ~1.5 h, client restart) or a temporary read-only helper script. Self-timer and Finder have to be rebuilt for clean junctions. Nothing is changed in the model yet. The Designer then had the order of work written into the skill: first blocking, then refining, the merge pass (union + chamfer on the junctions) as the last step — the three questions are still open. Before that: the Designer looks at the result; open are the wall-to-roof edge of the Finder (needs the Finder rebuilt in the right order, about 20 min) and stage 7 (final check against the drawing).
