@@ -316,7 +316,7 @@ Limits: a **minimized** window still does not draw (camera and screenshot keep f
 
 **Not verified:** `twist` / `scale` on curved paths; guides on Sheet lofts; lofts of profiles in non-parallel planes beyond the 90° arc; a minimized window after the switches (expected: still refused).
 
-Block 6 and the keep-alive switches are committed on branch `native-block-6` (not merged into `main` yet). The MCP client must be restarted to see the new tools.
+Block 6 and the keep-alive switches are committed and merged into `main` (fast-forward) and pushed. The MCP client must be restarted to see the new tools.
 
 Ideas beyond the agreed list (not agreed yet): arcs and ellipse; selecting individual Regions for extrusion (plate-with-hole profiles); copy / mirror; other exchange formats (IGES, Parasolid, STL, OBJ); opening `.plasticity` files.
 
@@ -365,4 +365,4 @@ PlasticityMCP/
 ## Next action
 
 1. Designer: close Plasticity and call `native_launch` (or `npm run smoke:native`) once to verify the cold-start path; restart the MCP client so it picks up the new tools.
-2. Merge `native-block-6` into `main` and push (on Designer's word).
+2. Blocks 1–6 are in `main` and published. Designer decides what comes next (see the ideas list).
