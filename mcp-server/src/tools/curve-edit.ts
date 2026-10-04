@@ -13,7 +13,7 @@ import {
   Vec3Mm,
 } from "./shared.js";
 
-/** Editing curves: trim, bridge, rebuild, vertices and control points, curves from edges, deform. */
+/** Editing curves — and the surface side of the same commands: control points, degree, rebuild, deform. */
 
 const PositiveFactor = z.number().positive();
 
@@ -34,20 +34,37 @@ const CurveIdsArgs = z.object({
   ids: BodyIds,
 });
 
+const RaiseDegreeArgs = z
+  .object({
+    ids: BodyIds.optional(),
+    id: BodyId.optional(),
+    faceIds: TopologyIds.optional(),
+    u: z.number().int().min(0).max(5).optional().default(1),
+    v: z.number().int().min(0).max(5).optional().default(1),
+  })
+  .refine((a) => (a.ids === undefined) !== (a.id === undefined), "pass either ids (curves), or id with faceIds")
+  .refine((a) => (a.id === undefined) === (a.faceIds === undefined), "id and faceIds go together")
+  .refine((a) => a.id === undefined || a.u + a.v > 0, "u or v must be positive");
+
 const RebuildArgs = z
   .object({
-    ids: BodyIds,
+    ids: BodyIds.optional(),
+    id: BodyId.optional(),
+    faceId: z.string().min(1).optional(),
     tolerance: z.number().positive().optional(),
     pointCount: z.number().int().min(2).max(10000).optional(),
     degree: z.number().int().min(1).max(15).optional(),
     spans: z.number().int().min(1).max(10000).optional(),
     keepCorners: z.boolean().optional().default(true),
   })
+  .refine((a) => (a.ids === undefined) !== (a.id === undefined), "pass either ids (curves), or id with faceId")
+  .refine((a) => (a.id === undefined) === (a.faceId === undefined), "id and faceId go together")
   .refine(
     (a) => [a.tolerance, a.pointCount, a.degree].filter((v) => v !== undefined).length === 1,
     "pass exactly one of tolerance, pointCount, or degree with spans",
   )
-  .refine((a) => (a.degree === undefined) === (a.spans === undefined), "degree and spans go together");
+  .refine((a) => (a.degree === undefined) === (a.spans === undefined), "degree and spans go together")
+  .refine((a) => a.id === undefined || a.tolerance !== undefined, "a face is rebuilt by tolerance");
 
 const ConvertVerticesArgs = z.object({
   id: BodyId,
@@ -98,7 +115,7 @@ const SlideArgs = z
   .object({
     ...points,
     distance: z.number().positive(),
-    direction: z.enum(["forward", "backward", "normal"]).optional().default("forward"),
+    direction: z.enum(["forward", "backward", "forward_v", "backward_v", "normal"]).optional().default("forward"),
   })
   .refine(somePoints, SOME_POINTS_MESSAGE);
 
@@ -111,20 +128,28 @@ const CurvesFromEdgesArgs = z.object({
 
 const FaceRef = z.object({ id: BodyId, faceId: z.string().min(1) });
 
-const DeformArgs = z.object({
-  curveIds: BodyIds,
-  source: FaceRef,
-  target: FaceRef,
-  keepOriginals: z.boolean().optional().default(false),
-});
+const DeformArgs = z
+  .object({
+    curveIds: BodyIds.optional(),
+    ids: BodyIds.optional(),
+    source: FaceRef,
+    target: FaceRef,
+    keepOriginals: z.boolean().optional().default(false),
+  })
+  .refine((a) => (a.curveIds === undefined) !== (a.ids === undefined), "pass either curveIds or ids (bodies)");
 
 const CURVE_IDS_NOTE =
   "Vertex and control point ids come from get_body_topology of the curve, read after its last change.";
 
+const POINTS_NOTE =
+  "`id` is a curve (its `vertexIds` and `controlPointIds`) or a Solid / Sheet with spline faces " +
+  "(the `controlPointIds` of its surfaces); the ids come from get_body_topology, read after " +
+  "the last change.";
+
 const POINT_PROPERTIES = {
-  id: { type: "number", description: "Curve id" },
+  id: { type: "number", description: "Curve id, or the id of a body with spline faces" },
   vertexIds: { ...TOPOLOGY_IDS_SCHEMA, description: "Vertex ids from get_body_topology of the curve" },
-  controlPointIds: { ...TOPOLOGY_IDS_SCHEMA, description: "Control point ids from get_body_topology of the curve" },
+  controlPointIds: { ...TOPOLOGY_IDS_SCHEMA, description: "Control point ids from get_body_topology" },
 };
 
 const FACE_REF_SCHEMA = {
@@ -171,22 +196,35 @@ const tools: Tool[] = [
   {
     name: "raise_degree",
     description:
-      "Raise the degree of curves by one: each segment gets more control points and keeps its " +
-      "shape — finer control for the control point tools. Undoable.",
-    inputSchema: { type: "object", required: ["ids"], properties: { ids: BODY_IDS_SCHEMA } },
+      "Raise the degree: more control points, same shape — finer control for the control " +
+      "point tools. With `ids`: curves, each segment by one degree. With `id` + `faceIds`: the " +
+      "surfaces of those faces, by `u` and `v` degrees (default 1 each); a flat or round face " +
+      "becomes a spline face whose control points then appear in get_body_topology. Undoable.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ids: { ...BODY_IDS_SCHEMA, description: "Curves" },
+        id: { type: "number", description: "Body whose faces are raised" },
+        faceIds: TOPOLOGY_IDS_SCHEMA,
+        u: { type: "number", default: 1 },
+        v: { type: "number", default: 1 },
+      },
+    },
   },
   {
     name: "rebuild",
     description:
-      "Refit curves as clean splines. Pass one of: `tolerance` (millimetres — stay that close " +
-      "to the original), `pointCount` (one spline with that many points; the shape is " +
-      "approximated), or `degree` with `spans`. `keepCorners` (default true) keeps sharp " +
-      "corners sharp. Undoable.",
+      "Refit as clean splines. Curves (`ids`): pass one of `tolerance` (millimetres — stay " +
+      "that close to the original), `pointCount` (one spline with that many points; the " +
+      "shape is approximated), or `degree` with `spans`; `keepCorners` (default true) keeps " +
+      "sharp corners sharp. One face (`id` + `faceId`): its surface is refitted within " +
+      "`tolerance` — the only method for faces in this edition of Plasticity. Undoable.",
     inputSchema: {
       type: "object",
-      required: ["ids"],
       properties: {
-        ids: BODY_IDS_SCHEMA,
+        ids: { ...BODY_IDS_SCHEMA, description: "Curves" },
+        id: { type: "number", description: "Body whose face is rebuilt" },
+        faceId: { type: "string" },
         tolerance: { type: "number" },
         pointCount: { type: "number" },
         degree: { type: "number" },
@@ -252,9 +290,9 @@ const tools: Tool[] = [
   {
     name: "move_control_points",
     description:
-      "Move vertices and control points of one curve by `delta` millimetres; the segments " +
-      "around them follow. " +
-      CURVE_IDS_NOTE +
+      "Move vertices and control points by `delta` millimetres; the curve segments or the " +
+      "surface around them follow. " +
+      POINTS_NOTE +
       " Undoable.",
     inputSchema: {
       type: "object",
@@ -265,9 +303,9 @@ const tools: Tool[] = [
   {
     name: "rotate_control_points",
     description:
-      "Rotate vertices and control points of one curve by `angle` degrees (right-hand rule) " +
-      "around `axis` through `pivot` (default: the centre of the points). " +
-      CURVE_IDS_NOTE +
+      "Rotate vertices and control points by `angle` degrees (right-hand rule) around `axis` " +
+      "through `pivot` (default: the centre of the points). " +
+      POINTS_NOTE +
       " Undoable.",
     inputSchema: {
       type: "object",
@@ -283,9 +321,9 @@ const tools: Tool[] = [
   {
     name: "scale_control_points",
     description:
-      "Scale vertices and control points of one curve relative to `pivot` (default: the " +
-      "centre of the points): `factor` is one number or [x, y, z]. " +
-      CURVE_IDS_NOTE +
+      "Scale vertices and control points relative to `pivot` (default: the centre of the " +
+      "points): `factor` is one number or [x, y, z]. " +
+      POINTS_NOTE +
       " Undoable.",
     inputSchema: {
       type: "object",
@@ -296,10 +334,11 @@ const tools: Tool[] = [
   {
     name: "slide",
     description:
-      "Slide control points of a spline by `distance` millimetres along its control polygon " +
-      "(`forward` or `backward`) or across it (`normal`) — adjusts the flow of the curve " +
-      "without kinking it. Splines only: a polyline has nothing to slide. " +
-      CURVE_IDS_NOTE +
+      "Slide control points by `distance` millimetres along the control polygon, keeping the " +
+      "flow of the shape: `forward` / `backward` along a curve or along the U direction of a " +
+      "surface, `forward_v` / `backward_v` along the V direction of a surface, `normal` " +
+      "across. Splines only: a polyline has nothing to slide. " +
+      POINTS_NOTE +
       " Undoable.",
     inputSchema: {
       type: "object",
@@ -307,7 +346,11 @@ const tools: Tool[] = [
       properties: {
         ...POINT_PROPERTIES,
         distance: { type: "number" },
-        direction: { type: "string", enum: ["forward", "backward", "normal"], default: "forward" },
+        direction: {
+          type: "string",
+          enum: ["forward", "backward", "forward_v", "backward_v", "normal"],
+          default: "forward",
+        },
       },
     },
   },
@@ -334,16 +377,18 @@ const tools: Tool[] = [
   {
     name: "deform",
     description:
-      "Wrap curves from one face onto another: curves drawn on (or near) the `source` face — " +
-      "typically a flat one — are mapped onto the `target` face, keeping their place in the " +
-      "face's own coordinates. Text or a pattern drawn flat goes onto a cylinder wall this " +
-      "way. The curves are replaced by the wrapped ones (in `changed`); with `keepOriginals` " +
-      "the flat ones stay. Undoable.",
+      "Wrap from one face onto another: curves (`curveIds`) or whole Solids / Sheets (`ids`) " +
+      "that sit on or near the `source` face — typically a flat one — are carried over to " +
+      "the `target` face and bent to follow it, keeping their place in the face's own " +
+      "coordinates. Text, a pattern or an embossed detail made flat goes onto a cylinder wall " +
+      "this way. What is wrapped is replaced by the result (in `changed`); with " +
+      "`keepOriginals` the flat originals stay and the result is in `created`. Undoable.",
     inputSchema: {
       type: "object",
-      required: ["curveIds", "source", "target"],
+      required: ["source", "target"],
       properties: {
-        curveIds: BODY_IDS_SCHEMA,
+        curveIds: { ...BODY_IDS_SCHEMA, description: "Curves to wrap" },
+        ids: { ...BODY_IDS_SCHEMA, description: "Solids / Sheets to wrap" },
         source: FACE_REF_SCHEMA,
         target: FACE_REF_SCHEMA,
         keepOriginals: { type: "boolean", default: false },
@@ -372,19 +417,21 @@ const handlers: ToolFamily["handlers"] = {
   },
 
   raise_degree: async (rawArgs) => {
-    const args = CurveIdsArgs.parse(rawArgs ?? {});
-    return ok(await native.raiseDegree(args.ids));
+    const args = RaiseDegreeArgs.parse(rawArgs ?? {});
+    if (args.ids) return ok(await native.raiseDegree(args.ids));
+    return ok(await native.raiseDegreeFaces(args.id!, args.faceIds!, args.u, args.v));
   },
 
   rebuild: async (rawArgs) => {
     const args = RebuildArgs.parse(rawArgs ?? {});
+    if (args.id !== undefined) return ok(await native.rebuildFace(args.id, args.faceId!, args.tolerance!));
     const how =
       args.tolerance !== undefined
         ? { toleranceMm: args.tolerance }
         : args.pointCount !== undefined
           ? { pointCount: args.pointCount }
           : { degree: args.degree!, spans: args.spans! };
-    return ok(await native.rebuildCurves(args.ids, how, args.keepCorners));
+    return ok(await native.rebuildCurves(args.ids!, how, args.keepCorners));
   },
 
   convert_vertices: async (rawArgs) => {
@@ -440,7 +487,8 @@ const handlers: ToolFamily["handlers"] = {
 
   deform: async (rawArgs) => {
     const args = DeformArgs.parse(rawArgs ?? {});
-    return ok(await native.deformCurves(args.curveIds, args.source, args.target, args.keepOriginals));
+    if (args.ids) return ok(await native.deformBodies(args.ids, args.source, args.target, args.keepOriginals));
+    return ok(await native.deformCurves(args.curveIds!, args.source, args.target, args.keepOriginals));
   },
 };
 

@@ -139,7 +139,10 @@ export interface CurvePoints {
 
 export type Continuity = "G0" | "G1" | "G2" | "G3";
 
-export type SlideDirection = "forward" | "backward" | "normal";
+/** Along the control polygon (U), across a surface's other direction (V), or along the normal. */
+export type SlideDirection = "forward" | "backward" | "forward_v" | "backward_v" | "normal";
+
+export type BlendShape = "g2" | "chamfer";
 
 /** How `rebuild` refits a curve. */
 export type CurveRebuild =

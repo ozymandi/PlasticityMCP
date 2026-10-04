@@ -160,7 +160,9 @@ const tools: Tool[] = [
       "edges (id, kind line / circle / curve, length, start / mid / end points, radius for " +
       "circles, adjacent face ids). For a curve: whether it is closed, its segments (id, kind, " +
       "length, start / mid / end), its vertices (id, position — where segments meet or the " +
-      "curve ends) and its control points (id, position). Millimetres. IMPORTANT: these ids " +
+      "curve ends) and its control points (id, position). A Solid / Sheet with spline faces " +
+      "also lists `controlPoints` — the control points of its surfaces (none on planes, " +
+      "cylinders and the like; raise_degree on a face creates them). Millimetres. IMPORTANT: these ids " +
       "are valid only until the body changes — re-read after every operation on it. `include` " +
       "limits the output for Solids and Sheets with many faces.",
     inputSchema: {

@@ -43,7 +43,7 @@ A second channel, independent of the WebSocket bridge: real B-Rep operations thr
 | `mirror_bodies` | Mirrored copies across a plane (`planeOrigin`, `planeNormal`); `keepOriginal: false` deletes the originals (two undo steps). |
 | `array_rectangular` | Row or grid of copies: `direction1` / `count1` / `spacing1`, optional second direction. Counts include the original. |
 | `array_radial` | `count` items around an axis (`center`, `axis`) over `angle` degrees. |
-| `get_body_topology` | What a body is made of, with ids: faces and edges of a Solid / Sheet (`include`: faces / edges / all), or segments, vertices and control points of a curve. |
+| `get_body_topology` | What a body is made of, with ids: faces and edges of a Solid / Sheet (`include`: faces / edges / all) plus the control points of its spline faces, or segments, vertices and control points of a curve. |
 | `boolean` | `union` / `difference` / `intersection` of `toolIds` against `targetIds`; `keepTools` optional. |
 | `fillet` | Round with `radius`: edges of a body (`edgeIds`), corner vertices of a curve (`vertexIds`), or every corner of a curve. |
 | `chamfer` | Bevel by `distance`: edges of a body, or corners of a curve, the same way. |
@@ -90,16 +90,19 @@ A second channel, independent of the WebSocket bridge: real B-Rep operations thr
 | `create_tangent_circle` | Circle of `radius` touching two curve segments, the one nearest to `near`. |
 | `trim_curves` | Remove the piece of a curve nearest to `near` (pieces end at corners and crossings). |
 | `bridge` | Smooth connecting curve between two curve vertices or two body edges; `continuity` G0–G3. |
-| `rebuild` | Refit curves as splines: by `tolerance`, `pointCount`, or `degree` + `spans`. |
-| `raise_degree` | Raise the degree of curves by one. |
+| `rebuild` | Refit as splines: curves by `tolerance`, `pointCount`, or `degree` + `spans`; one face (`id` + `faceId`) by `tolerance`. |
+| `raise_degree` | Raise the degree of curves (`ids`) or of the surfaces of faces (`id` + `faceIds`, `u` / `v`). |
 | `subdivide_curves` | Add a control point in the middle of every segment. |
 | `convert_vertices` | Turn corner vertices of a curve into smooth ones. |
 | `align_vertices` | Bring a curve end onto a vertex of another curve with G0 / G1 / G2 continuity. |
-| `move_control_points` / `rotate_control_points` / `scale_control_points` | Transform vertices and control points of one curve. |
-| `slide` | Slide control points of a spline along or across its control polygon. |
+| `move_control_points` / `rotate_control_points` / `scale_control_points` | Transform vertices and control points of one curve, or the surface control points of one body. |
+| `slide` | Slide control points of a spline curve or surface along (`forward` / `backward`, `forward_v` / `backward_v`) or across (`normal`) the control polygon. |
 | `delete_control_points` | Delete control points of a spline. |
 | `curves_from_edges` | Copy edges of a body as curves. |
-| `deform` | Wrap curves from a `source` face onto a `target` face. |
+| `deform` | Wrap curves (`curveIds`) or whole bodies (`ids`) from a `source` face onto a `target` face. |
+| `bridge_surface` | Blend two Sheets into one with a transition `width` wide between a face of each; `shape` g2 / chamfer. |
+| `constrained_surface` | A Sheet through at least four `points`, optional `normals`, `tolerance`, `optimize`. |
+| `remove_nominal_surface` | Reveal the hidden spans of control points of spline faces. |
 | `project` | New curves by projection: curves onto a body (`curveIds` + `targetId`, optional `direction`), crossing lines of bodies (`bodyIds`), or two planar curves into one curve in space (two `curveIds`). |
 | `create_outline` | Outline of bodies seen along the normal of the window's active construction plane; `flat` projects it onto that plane. |
 | `duplicate_and_project` | Copy curves or body edges and flatten the copies onto a plane (`planeOrigin`, `planeNormal`). |

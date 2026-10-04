@@ -32,6 +32,17 @@ export const READ_TOPOLOGY = `function (args) {
   const item = findItem(args.id);
   const view = item.view;
   const type = view?.constructor?.name ?? 'Unknown';
+  const micron = (v) => [v.x, v.y, v.z].map((n) => Math.round(n * 1e6) / 1e3 + 0);
+  const points = (collection) => {
+    const out = [];
+    const ids = collection?.versionIds ?? collection?.ids ?? [];
+    for (let i = 0; i < ids.length; i += 1) {
+      const point = collection.get(i);
+      // View positions are single precision; a micron is as fine as they are reliable.
+      if (point?.position) out.push({ id: String(ids[i]), positionMm: micron(point.position) });
+    }
+    return out;
+  };
   if (type === 'Wire') {
     // A curve: segments between vertices, plus the control points of its splines.
     const byEntity = new Map();
@@ -51,17 +62,6 @@ export const READ_TOPOLOGY = `function (args) {
         endMm: mm(edge.GetPointAndTangent(1).position),
       });
     }
-    const micron = (v) => [v.x, v.y, v.z].map((n) => Math.round(n * 1e6) / 1e3 + 0);
-    const points = (collection) => {
-      const out = [];
-      const ids = collection?.versionIds ?? collection?.ids ?? [];
-      for (let i = 0; i < ids.length; i += 1) {
-        const point = collection.get(i);
-        // View positions are single precision; a micron is as fine as they are reliable.
-        if (point?.position) out.push({ id: String(ids[i]), positionMm: micron(point.position) });
-      }
-      return out;
-    };
     return {
       id: args.id,
       type,
@@ -96,6 +96,9 @@ export const READ_TOPOLOGY = `function (args) {
     return out;
   };
   const result = { id: args.id, type, faceCount: faceIds.size, edgeCount: edgeIds.size };
+  // Spline surfaces carry control points (none on planes, cylinders and the like).
+  const surfacePoints = points(view.high.cvs);
+  if (surfacePoints.length > 0) result.controlPoints = surfacePoints;
 
   if (args.include !== 'edges') {
     const faces = [];

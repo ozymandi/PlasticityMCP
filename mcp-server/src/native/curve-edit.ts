@@ -29,6 +29,8 @@ export const EXTENSION_SHAPE_CODES: Record<ExtensionShape, number> = {
 const SLIDE_DIRECTIONS: Record<SlideDirection, string> = {
   forward: "posU",
   backward: "negU",
+  forward_v: "posV",
+  backward_v: "negV",
   normal: "normal",
 };
 
@@ -38,10 +40,12 @@ const CURVES = `factory.curves = args.ids.map((id) => typed(id, 'Wire'));`;
 const PICK_VERTICES = `const view = typed(args.id, 'Wire');
         factory.vertices = pick(view.vertices, args.vertexIds, 'vertex');`;
 
-// Vertices and control points of one curve, as the point factories take them; `points` holds
-// them all, for a default pivot.
-const PICK_POINTS = `const view = typed(args.id, 'Wire');
-        const cvs = args.controlPointIds ? pick(view.cvs, args.controlPointIds, 'control point') : [];
+// Vertices and control points of one curve, or the surface control points of one body, as the
+// point factories take them; `points` holds them all, for a default pivot.
+const PICK_POINTS = `const view = find(args.id);
+        const onCurve = view.constructor.name === 'Wire';
+        if (!onCurve && args.vertexIds) throw new Error('Body ' + args.id + ' is not a curve: it has control points, not vertices');
+        const cvs = args.controlPointIds ? pick(onCurve ? view.cvs : view.high?.cvs, args.controlPointIds, 'control point') : [];
         const vertices = args.vertexIds ? pick(view.vertices, args.vertexIds, 'vertex') : [];
         if (cvs.length > 0) factory.cvs = cvs;
         if (vertices.length > 0) factory.vertices = vertices;
@@ -208,7 +212,7 @@ export class CurveEditTools extends ProfileTools {
     return Promise.reject(new Error("Bridge takes two curve vertices or two body edges, not one of each"));
   }
 
-  /** Move vertices and control points of one curve by `deltaMm`. */
+  /** Move vertices and control points of one curve, or surface control points of one body, by `deltaMm`. */
   moveControlPoints(id: number, points: CurvePoints, deltaMm: Vec3): Promise<MutationResult> {
     const setup = `
         ${PICK_POINTS}
@@ -282,7 +286,7 @@ export class CurveEditTools extends ProfileTools {
   deleteControlPoints(id: number, points: CurvePoints): Promise<MutationResult> {
     const setup = `
         ${PICK_POINTS}
-        factory.curve = view;`;
+        factory.curve = typed(args.id, 'Wire');`;
     return this.mutate(
       commandFunction("DeleteControlPointCommand", [], setup, true),
       ["DeleteControlPointFactory", "DeleteControlPointCommand"],

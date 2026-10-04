@@ -13,6 +13,7 @@ import { projection } from "./tools/projection.js";
 import { scene } from "./tools/scene.js";
 import { session } from "./tools/session.js";
 import { solids } from "./tools/solids.js";
+import { surfaces } from "./tools/surfaces.js";
 import { transforms } from "./tools/transforms.js";
 import { view } from "./tools/view.js";
 import { error, type ToolFamily } from "./tools/shared.js";
@@ -29,6 +30,7 @@ const families: ToolFamily[] = [
   curves,
   curveEdit,
   projection,
+  surfaces,
   profiles,
   exchange,
   view,

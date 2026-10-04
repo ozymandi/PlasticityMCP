@@ -446,8 +446,8 @@ Excluded: Studio-only commands (Align, PolySplines, xNURBS, Square, Rebuild Face
 | 12 | Faces and edges: Move / Rotate / Scale Face, Offset Edge, Offset Face Loop, Match Face, Extend Sheet, Untrim, Reverse, Unwrap, Isoparam, Complete Edge, Imprint; added on the Designer's word: Dissolve edges / Delete Redundant Topology, Join Faces, Move Edge, Refillet, Duplicate Faces | 19 | 7 | ✅ done |
 | 13 | Curves: Offset, Fillet Curve / Vertex, Trim, Cut, Split, Extend, Bridge, Rebuild, Raise Degree, Slot, Text, Spiral, Polygon, rectangles, tangent arcs and circles, control points | ~30 | 10 | ✅ done (Split Segment and Insert Knot deferred) |
 | 14 | Projection: Project (three kinds), Project Outline, Create Outline, Duplicate and Project | 7 | 3 | ✅ done |
-| 15 | Surfaces: Bridge Surface, Constrained Surface, Raise Surface Degree, Slide CV, Deform, Loft Guide | 6 | 3 | next |
-| 16 | Copies and placement: Curve Array, Place, Copy / Paste with Placement, instances | 6 | 2.5 | |
+| 15 | Surfaces: Bridge Surface, Constrained Surface, Raise Surface Degree, Slide CV, Deform, Rebuild Face, Remove Nominal Surface (Loft Guide is part of Loft) | 7 | 3 | ✅ done |
+| 16 | Copies and placement: Curve Array, Place, Copy / Paste with Placement, instances | 6 | 2.5 | next |
 | 17 | Scene: groups, hide / show / isolate, lock, materials, extended selection | 12 | 4 | |
 | 18 | Measuring: distance, radius, continuity, Dimension, Section Analysis, Check | 7 | 3 | |
 | 19 | Environment: construction planes, new / open / save document, units and grid | 5 | 2.5 | |
@@ -613,6 +613,30 @@ Verified live in Untitled: `smoke:native` passes with **295 checks** (10 new); t
 
 Designer's decision (2026-10-04): leave `create_outline` following the active construction plane; its direction will be controlled by the construction plane tool of block 19.
 
+Committed (`ffaab89`), merged into `main` and published.
+
+### Block 15 — surfaces — ✅ Done (2026-10-04, ~2 h)
+
+Three new tools and five extended ones, **111 in total** (`src/native/surfaces.ts`, `src/tools/surfaces.ts`):
+
+| Tool | Native factory | Notes |
+|------|----------------|-------|
+| `bridge_surface` | `BridgeSurfaceFactory` | `push(face, false, point)` once per Sheet. The two Sheets become one (three faces for a floor and a wall); the first keeps its id. **Works only when the surfaces meet at an angle when extended** — parallel and coplanar Sheets fail in the kernel (`PK_FACE_make_blend` 17453), refused with a hint. `shape` g2 22202 / chamfer 22203. |
+| `constrained_surface` | `ConstrainedSurfaceFactory` | `points`, optional `normals` — works without them. The Sheet is an untrimmed patch that reaches beyond the points. `optimize` 24870 / 24871. |
+| `remove_nominal_surface` | `RemoveNominalSurfaceFactory` | |
+| `raise_degree` (extended) | `RaiseDegreeFaceFactory` | `id` + `faceIds`, `deltaUDegree` / `deltaVDegree`. |
+| `rebuild` (extended) | `RebuildFaceFactory` | One face, method Refit (0) by tolerance. Explicit Control (1) is Studio-only. |
+| `deform` (extended) | `DeformFaceFactory` | `ids`: all faces of the bodies are passed, with the source and the target face. |
+| `slide`, `move_` / `rotate_` / `scale_control_points` (extended) | the control point factories of block 13 | Take the control points of a body's surfaces (`view.high.cvs`); `slide` gained `forward_v` / `backward_v` (`posV` / `negV`). |
+
+`get_body_topology` lists `controlPoints` for a Solid / Sheet that has spline faces. Their ids are plain indices within the body (`"0"`, `"1"`, …), not tied to a face: the positions tell which face they belong to. A body of planes and cylinders has none; `raise_degree` on a face creates them (a flat rectangular face gets four, at its corners).
+
+From the plan, **Loft Guide** needs nothing: it is not a command of its own — guides are part of Loft, and `loft_profiles` already takes `guideIds`.
+
+Verified live in Untitled: `smoke:native` passes with **309 checks** (14 new); the end-to-end script over stdio passes (111 tools, argument validation, document restored); build and protocol tests pass.
+
+**Not verified / not exposed:** the Bridge Surface options `trimWalls`, `trimBlend`, `propagate` and the senses (native defaults; the senses made no difference in the test); constrained surface `angularTolerance`; Deform options Scale / Offset / Flip / Reblend; `rotate_control_points` on a surface (same factory family as move and scale, which were run); surface control points of imported or lofted spline surfaces with many control points; `rebuild` of several faces in one call (one face per call). Found but not in the manual, left out: `SweepToolCommand`, `PushFaceCommand`.
+
 Committed, merged into `main` and published. The MCP client must be restarted to see the new tools.
 
 Other ideas (not agreed yet): transforming and hiding reference meshes; opening `.plasticity` files is in block 19.
@@ -662,4 +686,4 @@ PlasticityMCP/
 ## Next action
 
 1. Designer: close Plasticity and call `native_launch` (or `npm run smoke:native`) once to verify the cold-start path; restart the MCP client so it picks up the new tools.
-2. Full command coverage: blocks 0, 0b (split of `index.ts`) and 11 (solids) are in `main` and published — 69 tools. Blocks 0, 0b, 11 and 12 are in `main` and published — 84 tools. Blocks 0, 0b, 11, 12 and 13 are in `main` and published — 105 tools. Blocks 0, 0b and 11–14 are in `main` and published — 108 tools. Next: the proposal for block 15 (surfaces); the Designer asked for it on 2026-10-04. Work continues on branch `native-full-spectrum`.
+2. Full command coverage: blocks 0, 0b (split of `index.ts`) and 11 (solids) are in `main` and published — 69 tools. Blocks 0, 0b, 11 and 12 are in `main` and published — 84 tools. Blocks 0, 0b, 11, 12 and 13 are in `main` and published — 105 tools. Blocks 0, 0b and 11–14 are in `main` and published — 108 tools. Blocks 0, 0b and 11–15 are in `main` and published — 111 tools. Next: the proposal for block 16 (copies and placement); the Designer asked for it on 2026-10-04. Work continues on branch `native-full-spectrum`.

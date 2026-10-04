@@ -69,6 +69,7 @@ async function main() {
     await curveChecks(native);
     await curveEditChecks(native);
     await projectionChecks(native);
+    await surfaceChecks(native);
   } catch (err) {
     console.error("SMOKE ERROR:", (err as Error).message);
     process.exitCode = 1;
@@ -1489,6 +1490,86 @@ async function projectionChecks(native: NativeSession): Promise<void> {
   check("duplicate_and_project takes edges of a body", wires(floor).length === 1 &&
     boundsMatch(wires(floor)[0], [X, 0, -5], [X + 40, 30, -5]) && floor.changed.length === 0, brief(floor));
   await native.undo();
+}
+
+// Surfaces: control points, degree, rebuild, deform, bridge, constrained surface — drawn around x = 7000.
+async function surfaceChecks(native: NativeSession): Promise<void> {
+  const X = 7000;
+  const box = (await native.createBox([X, 0, 0], [40, 30, 20])).created[0]!;
+  let t = await native.topology(box.id);
+  const top = () => faceBy(t, [0, 0, 1]);
+  check("a body of planes has no surface control points", t.controlPoints === undefined);
+
+  const raised = await native.raiseDegreeFaces(box.id, [top()]);
+  t = await native.topology(box.id);
+  check("raise_degree on a face gives it control points", changed(raised, box.id) !== undefined &&
+    t.controlPoints?.length === 4, JSON.stringify(t.controlPoints));
+  const corner = t.controlPoints!.find((c) => Math.abs(c.positionMm[0]! - (X + 40)) < 0.01 && Math.abs(c.positionMm[1]!) < 0.01)!;
+  const lifted = await native.moveControlPoints(box.id, { controlPointIds: [corner.id] }, [0, 0, 5]);
+  check("move a surface control point", Math.abs(changed(lifted, box.id)!.boundsMm!.max[2]! - 25) < 0.01,
+    fmt(changed(lifted, box.id)));
+  await native.undo();
+  const pushed = await native.slideControlPoints(box.id, { controlPointIds: [corner.id] }, 3, "normal");
+  check("slide a surface control point along the normal", Math.abs(changed(pushed, box.id)!.boundsMm!.max[2]! - 23) < 0.01,
+    fmt(changed(pushed, box.id)));
+  await native.undo();
+  const noVertices = await failure(native.moveControlPoints(box.id, { vertexIds: ["1"] }, [0, 0, 1]));
+  check("vertices are refused on a body", /not a curve/.test(noVertices?.message ?? ""), noVertices?.message);
+  const refit = await native.rebuildFace(box.id, top(), 0.01);
+  check("rebuild a face within a tolerance", changed(refit, box.id)?.type === "Solid", brief(refit));
+  await native.undo();
+  const revealed = await native.removeNominalSurface(box.id, [top()]);
+  check("remove_nominal_surface runs on a spline face", revealed.removedIds.length === 0 &&
+    (await native.state()).bodies.some((b) => b.id === box.id), brief(revealed));
+  await native.undo();
+  await native.undo(); // raise degree
+  t = await native.topology(box.id);
+
+  // --- deform a body from a flat face onto a cylinder wall ---
+  const boss = (await native.createBox([X + 10, 10, 20], [10, 5, 3])).created[0]!;
+  const can = (await native.createCylinder([X + 100, 0, 0], 10, 30)).created[0]!;
+  const wall = (await native.topology(can.id, "faces")).faces!.find((f) => !f.planar)!.id;
+  const wrapped = await native.deformBodies([boss.id], { id: box.id, faceId: top() }, { id: can.id, faceId: wall });
+  const bent = changed(wrapped, boss.id);
+  check("deform wraps a body onto another face", bent !== undefined && bent.boundsMm!.min[0]! > X + 80 &&
+    bent.boundsMm!.max[0]! < X + 105, fmt(bent));
+  await native.undo();
+  const copyWrapped = await native.deformBodies([boss.id], { id: box.id, faceId: top() }, { id: can.id, faceId: wall }, true);
+  check("deform with keepOriginals leaves the body and adds the wrapped one", copyWrapped.created.length === 1 &&
+    changed(copyWrapped, boss.id) === undefined, brief(copyWrapped));
+  await native.undo();
+
+  // --- bridge surface between a floor and a wall ---
+  const sheetOf = async (points: Vec3[]) => {
+    const outline = (await native.createPolyline(points, true)).created[0]!;
+    const sheet = (await native.patch({ curveIds: [outline.id] })).created[0]!;
+    return { id: sheet.id, faceId: (await native.topology(sheet.id, "faces")).faces![0]!.id };
+  };
+  const floor = await sheetOf([[X + 200, 0, 0], [X + 240, 0, 0], [X + 240, 30, 0], [X + 200, 30, 0]]);
+  const upright = await sheetOf([[X + 250, 0, 10], [X + 250, 30, 10], [X + 250, 30, 40], [X + 250, 0, 40]]);
+  const blended = await native.bridgeSurface(
+    { ...floor, nearMm: [X + 230, 15, 0] }, { ...upright, nearMm: [X + 250, 15, 20] }, 15);
+  check("bridge_surface blends two Sheets into one", changed(blended, floor.id)?.type === "Sheet" &&
+    changed(blended, floor.id)?.faceCount === 3 && blended.removedIds.includes(upright.id), brief(blended));
+  await native.undo();
+  const level = await sheetOf([[X + 300, 0, 0], [X + 340, 0, 0], [X + 340, 30, 0], [X + 300, 30, 0]]);
+  const coplanar = await failure(native.bridgeSurface(
+    { ...floor, nearMm: [X + 240, 15, 0] }, { ...level, nearMm: [X + 300, 15, 0] }, 5));
+  check("bridge_surface refuses coplanar Sheets with a hint", /meet at an angle/.test(coplanar?.message ?? ""),
+    coplanar?.message);
+  const same = await failure(native.bridgeSurface({ ...floor, nearMm: [0, 0, 0] }, { ...floor, nearMm: [0, 0, 0] }, 5));
+  check("bridge_surface needs two Sheets", /two different Sheets/.test(same?.message ?? ""), same?.message);
+
+  // --- a surface through points ---
+  const cloud: Vec3[] = [[X + 400, 0, 0], [X + 440, 0, 5], [X + 440, 30, 0], [X + 400, 30, 5], [X + 420, 15, 8]];
+  const skin = await native.constrainedSurface(cloud);
+  const skinBody = skin.created[0];
+  check("constrained_surface makes a Sheet over the points", skinBody?.type === "Sheet" &&
+    skinBody.boundsMm!.min[0]! <= X + 400 && skinBody.boundsMm!.max[0]! >= X + 440 && skinBody.boundsMm!.max[2]! >= 8,
+    fmt(skinBody));
+  await native.undo();
+  const uneven = await failure(native.constrainedSurface(cloud, [[0, 0, 1]]));
+  check("constrained_surface wants one normal per point", /one normal per point/.test(uneven?.message ?? ""), uneven?.message);
 }
 
 main().catch((err) => {

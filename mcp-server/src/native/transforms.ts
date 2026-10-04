@@ -2,11 +2,11 @@
 
 import { boundsCentre } from "./core.js";
 import { MM, cross, norm, toMeters, unit } from "./math.js";
-import { ProjectionTools } from "./projection.js";
 import { BUSY_GUARD, FIND_VIEW, STUCK_CHECK, commandFunction } from "./snippets.js";
+import { SurfaceTools } from "./surfaces.js";
 import { MutationResult, Vec3 } from "./types.js";
 
-export class TransformTools extends ProjectionTools {
+export class TransformTools extends SurfaceTools {
   moveBodies(ids: number[], deltaMm: Vec3): Promise<MutationResult> {
     const setup = `
         factory.items = args.ids.map(find);
