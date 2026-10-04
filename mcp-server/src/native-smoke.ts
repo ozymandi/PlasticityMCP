@@ -73,6 +73,7 @@ async function main() {
     await instanceChecks(native);
     await sceneChecks(native);
     await measureChecks(native);
+    await environmentChecks(native);
   } catch (err) {
     console.error("SMOKE ERROR:", (err as Error).message);
     process.exitCode = 1;
@@ -1814,6 +1815,58 @@ async function measureChecks(native: NativeSession): Promise<void> {
   const plain = await native.clearSectionView();
   check("section view switches on and off without touching the history", cutaway.active === true &&
     plain.active === false && (await native.state()).undoDepth === depthBefore - 1);
+}
+
+// Document, units, grid, construction plane — drawn around x = 11000.
+async function environmentChecks(native: NativeSession): Promise<void> {
+  const X = 11000;
+  const wires = (result: MutationResult) => result.created.filter((b) => b.type === "Wire");
+  const environment = await native.getEnvironment();
+  check("get_environment reads the document, units, grid and plane", environment.document.title.startsWith("Untitled") &&
+    environment.document.path === null && typeof environment.units.length === "string" && environment.grid.size > 0 &&
+    environment.constructionPlane !== null, JSON.stringify(environment));
+  const original = environment.constructionPlane!;
+  const depth = (await native.state()).undoDepth;
+  try {
+    const side = await native.setConstructionPlane({ preset: "yz" });
+    check("set_construction_plane yz, outside the history", side.constructionPlane?.normal.join() === "1,0,0" &&
+      (await native.state()).undoDepth === depth, JSON.stringify(side.constructionPlane));
+
+    const post = (await native.createCylinder([X, 0, 0], 8, 40)).created[0]!;
+    const profile = await native.createOutline([post.id], true);
+    check("create_outline follows the construction plane: a side view",
+      boundsMatch(wires(profile)[0], [0, -8, 0], [0, 8, 40], 0.01), fmt(wires(profile)[0]));
+    await native.undo();
+    const raised = await native.setConstructionPlane({ originMm: [X, 0, 10], normal: [0, 0, 2] });
+    check("set_construction_plane through a point", raised.constructionPlane?.originMm.join() === [X, 0, 10].join() &&
+      raised.constructionPlane.normal.join() === "0,0,1", JSON.stringify(raised.constructionPlane));
+    const footprint = await native.createOutline([post.id], true);
+    check("create_outline flat lands on that plane", boundsMatch(wires(footprint)[0], [X - 8, -8, 10], [X + 8, 8, 10], 0.01),
+      fmt(wires(footprint)[0]));
+    await native.undo();
+
+    const explicit = await native.createOutline([post.id], true, { originMm: [X, 0, 5], normal: [0, 1, 0] });
+    check("create_outline with its own plane leaves the window's plane alone",
+      boundsMatch(wires(explicit)[0], [X - 8, 0, 0], [X + 8, 0, 40], 0.01) &&
+        (await native.getEnvironment()).constructionPlane?.originMm.join() === [X, 0, 10].join(), fmt(wires(explicit)[0]));
+    await native.undo();
+
+    const block = (await native.createBox([X + 100, 0, 0], [40, 30, 20])).created[0]!;
+    const sideFace = faceBy(await native.topology(block.id, "faces"), [1, 0, 0]);
+    const onFace = await native.setConstructionPlane({ id: block.id, faceId: sideFace });
+    check("set_construction_plane on a planar face", onFace.constructionPlane?.normal.join() === "1,0,0" &&
+      onFace.constructionPlane.originMm.join() === [X + 140, 15, 10].join(), JSON.stringify(onFace.constructionPlane));
+    const wall = (await native.topology(post.id, "faces")).faces!.find((f) => !f.planar)!.id;
+    const curved = await failure(native.setConstructionPlane({ id: post.id, faceId: wall }));
+    check("a curved face cannot carry a construction plane", /not planar/.test(curved?.message ?? ""), curved?.message);
+    const flat = await native.setConstructionPlane({ preset: "xy" });
+    check("set_construction_plane xy resets it", flat.constructionPlane?.name === "XY" &&
+      flat.constructionPlane.normal.join() === "0,0,1", JSON.stringify(flat.constructionPlane));
+  } finally {
+    // Put back the plane the window had.
+    if (original.name === "XY") await native.setConstructionPlane({ preset: "xy" });
+    else await native.setConstructionPlane({ originMm: original.originMm, normal: original.normal, xDirection: original.xDirection });
+  }
 }
 
 main().catch((err) => {

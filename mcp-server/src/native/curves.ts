@@ -10,7 +10,7 @@ import { MutationResult, RectangleSpec, SegmentRef, Vec3 } from "./types.js";
  * Unit axes of a plane: `z` along `normal`, `x` along `xDirection` projected into the plane —
  * by default the world X axis, or Y when the normal is X.
  */
-function planeAxes(normal: Vec3, xDirection?: Vec3): { x: Vec3; y: Vec3; z: Vec3 } {
+export function planeAxes(normal: Vec3, xDirection?: Vec3): { x: Vec3; y: Vec3; z: Vec3 } {
   const z = unit(normal);
   const inPlane = (v: Vec3): Vec3 => sub(v, scaled(z, dot(v, z)));
   let x = inPlane(xDirection ?? [1, 0, 0]);

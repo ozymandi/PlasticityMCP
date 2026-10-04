@@ -66,17 +66,37 @@ export class ProjectionTools extends FaceTools {
   }
 
   /**
-   * The outline of bodies as seen along the normal of the active construction plane of the
-   * Plasticity window: as curves in space on the bodies, or with `flat` projected onto that
-   * plane. The factories take the plane from the window; it is the world XY plane unless the
-   * user has set another.
+   * The outline of bodies as seen along the normal of a plane: as curves in space on the
+   * bodies, or with `flat` projected onto that plane. The plane is the given one, or the
+   * active construction plane of the Plasticity window.
    */
-  createOutline(ids: number[], flat = false): Promise<MutationResult> {
-    const setup = `factory.shells = args.ids.map((id) => typed(id, 'Solid', 'Sheet'));`;
+  createOutline(
+    ids: number[],
+    flat = false,
+    plane?: { originMm: Vec3; normal: Vec3 },
+  ): Promise<MutationResult> {
+    // The native command hands the active plane of the window to the factory; a factory made
+    // without one would always look along Z.
+    const setup = `
+        factory.shells = args.ids.map((id) => typed(id, 'Solid', 'Sheet'));
+        if (args.plane) {
+          const normal = new Vector3(...args.plane.normal).normalize();
+          const reference = Math.abs(normal.z) < 0.9 ? new Vector3(0, 0, 1) : new Vector3(1, 0, 0);
+          factory.constructionPlane = new ConstructionPlaneSnap(
+            normal, new Vector3(...args.plane.origin), reference.cross(normal).normalize(),
+          );
+        } else {
+          const viewport = editor.activeViewport ?? Array.from(editor.viewports ?? [])[0];
+          if (viewport?.constructionPlane) factory.constructionPlane = viewport.constructionPlane;
+        }`;
     return this.mutate(
-      commandFunction(flat ? "ProjectOutlineCommand" : "CreateOutlineCommand", [], setup),
-      [flat ? "ProjectOutlineFromShellsFactory" : "CreateOutlineFromShellsFactory"],
-      [{ ids }],
+      commandFunction(
+        flat ? "ProjectOutlineCommand" : "CreateOutlineCommand",
+        ["Vector3", "ConstructionPlaneSnap"],
+        setup,
+      ),
+      [flat ? "ProjectOutlineFromShellsFactory" : "CreateOutlineFromShellsFactory", "Vector3", "ConstructionPlaneSnap"],
+      [{ ids, plane: plane ? { origin: toMeters(plane.originMm), normal: plane.normal } : null }],
     );
   }
 

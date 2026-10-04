@@ -246,6 +246,25 @@ export type ImprintSource =
   | { curveIds: number[]; direction?: Vec3 }
   | { toolIds: number[]; imprintTools?: boolean };
 
+/** The state of the window that is not geometry. */
+export interface Environment {
+  document: {
+    title: string;
+    /** File the document is saved in; null for an unsaved one. */
+    path: string | null;
+    unsavedChanges: boolean;
+  };
+  /** Units the window displays. This server always works in millimetres and degrees. */
+  units: { length: string; angle: string };
+  grid: { size: number; every: number };
+  constructionPlane: { name: string | null; originMm: Vec3; normal: Vec3; xDirection: Vec3 } | null;
+}
+
+export type ConstructionPlaneSpec =
+  | { preset: "xy" | "yz" | "xz" }
+  | { originMm: Vec3; normal: Vec3; xDirection?: Vec3 }
+  | { id: number; faceId: string };
+
 export interface BodyCheck {
   id: number;
   type: string;

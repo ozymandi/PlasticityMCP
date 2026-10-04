@@ -450,7 +450,7 @@ Excluded: Studio-only commands (Align, PolySplines, xNURBS, Square, Rebuild Face
 | 16 | Copies and placement: Curve Array, Place, Copy / Paste with Placement, instances | 6 | 2.5 | ✅ done (Place and Copy / Paste with Placement deferred) |
 | 17 | Scene: groups, hide / show / isolate, lock, materials, extended selection | 15 | 4.5 | ✅ done |
 | 18 | Measuring: distance, radius, continuity, Dimension, Section Analysis, Check | 7 | 3 | ✅ done (Dimension deferred) |
-| 19 | Environment: construction planes, new / open / save document, units and grid | 5 | 2.5 | next |
+| 19 | Environment: construction planes, new / open / save document, units and grid | 5 | 2.5 | ✅ done (setting units and grid, and saving under the document's own name, are not possible) |
 
 Each block: its own proposal, live verification, `smoke:native` checks, commit on Designer's word. Work is on branch `native-full-spectrum`.
 
@@ -605,7 +605,7 @@ Three tools for seven commands, **108 in total** (`src/native/projection.ts`, `s
 | `create_outline` | `CreateOutlineFromShellsFactory` / `ProjectOutlineFromShellsFactory` | Outline in space on the bodies, or with `flat` projected onto the plane. |
 | `duplicate_and_project` | `CurveDuplicateFactory` or `CreateCurveFromEdgesFactory`, then `PlanarizeCurveFactory` | Copy and flatten inside one command — one undo step. The plane is given explicitly (`planeOrigin`, `planeNormal`). |
 
-**The risk named in the proposal is real:** the two outline factories have no direction or plane of their own; they read the **active construction plane of the viewport** (`editor.activeViewport.constructionPlane`, a `ConstructionPlaneSnap` with normal `n` and point `p`). I did not switch that plane behind the Designer's back: `create_outline` works along whatever plane is active in the window — the world XY plane by default, i.e. a top view — and has no direction parameter. Choosing another direction needs the construction plane to be set, which is block 19 (construction planes); once that tool exists the direction of `create_outline` follows it, the same way as in Plasticity.
+*(Corrected in block 19: the factories do not read the plane themselves, the native command passes it — see there.)* **The risk named in the proposal is real:** the two outline factories have no direction or plane of their own; they read the **active construction plane of the viewport** (`editor.activeViewport.constructionPlane`, a `ConstructionPlaneSnap` with normal `n` and point `p`). I did not switch that plane behind the Designer's back: `create_outline` works along whatever plane is active in the window — the world XY plane by default, i.e. a top view — and has no direction parameter. Choosing another direction needs the construction plane to be set, which is block 19 (construction planes); once that tool exists the direction of `create_outline` follows it, the same way as in Plasticity.
 
 Verified live in Untitled: `smoke:native` passes with **295 checks** (10 new); the end-to-end script over stdio passes (108 tools, argument validation, document restored); build and protocol tests pass.
 
@@ -716,7 +716,48 @@ Verified live in Untitled: `smoke:native` passes with **361 checks** (15 new); t
 
 **Not verified / not exposed:** measurements attached to curves (their snaps are in the same cache and resolve the same way, but only bodies were run); measurements when the Plasticity window is minimized (the snap cache may not be filled); renaming or moving the label of a measurement; continuity tolerances as parameters; the section view's `distance`, flip and the "previous plane" options; what a section view does to `export_drawing` and `screenshot` of other views.
 
+Committed (`7fecfb3`), merged into `main` and published.
+
+### Block 19 — environment — ✅ Done (2026-10-04, ~2.5 h)
+
+Four new tools, **143 in total** (`src/native/environment.ts`, `src/tools/environment.ts`):
+
+| Tool | How it works | Notes |
+|------|--------------|-------|
+| `get_environment` | `editor.document`, `document.settings.Unit` / `Grid`, `viewport.constructionPlane` | Document title, path (`document._filename`), `hasUnsavedChanges`; display units; grid; plane. Read-only. |
+| `set_construction_plane` | `new ConstructionPlaneSnap(normal, origin, x)` assigned to `viewport.constructionPlane`; `viewport.resetCplane()` for xy | A state of the window, outside the history. Preset, free plane, or the plane of a planar face. |
+| `open_document` | `editor.open(path)` | No dialog when a path is given. Took about 12 s for a one-body file. The session keeps working on the opened document. |
+| `new_document` | `editor.loadStartup()` | Returns the window to a fresh "Untitled" (the startup document, by default one 1 m cube) without a dialog. Not in the proposal — found while looking for a way back from an opened file. |
+
+Both `open_document` and `new_document` refuse while `editor.hasUnsavedChanges` is true, unless `discardChanges: true`. A fresh Untitled document and a just-opened file report no unsaved changes; any edit, even an undone one, makes it true.
+
+**`create_outline` corrected and extended.** The note of block 14 was wrong: the outline factories do not read the window's plane themselves — the native command hands it to them as `factory.constructionPlane`, and a factory created without it always looks along Z. So in block 14 the tool always gave a top view, whatever plane was active. Now it passes the active plane, as the native command does, and also takes an explicit `planeNormal` / `planeOrigin`, which does not touch the window.
+
+**Not possible, as warned in the proposal:**
+- **`set_units`, `set_grid`.** There is no command for either (the registry has only `viewport:grid:incr` / `decr`, and nothing for units); the values live in settings objects that the UI writes directly. Writing them from outside would bypass whatever Plasticity does to store and announce the change. They are reported by `get_environment`.
+- **Saving under the document's own name.** `editor.save()` and `saveAs()` take no path and open the system file dialog. `save_document` stays a copy. The way to continue in a named file is `save_document` followed by `open_document` of that file — history and body ids start anew.
+
+Verified live: `smoke:native` passes with **370 checks** (9 new); the end-to-end script over stdio passes (argument validation, document restored); new / open / new run in sequence on the live window, ending on a fresh Untitled document; build and protocol tests pass.
+
+**Not verified / not exposed:** saved construction planes of the document (`db.planes`, `SaveConstructionPlaneCommand`) — only the active plane is set; several viewports (one was open); opening a file written by another version of Plasticity or a large one; `open_document` while the window is minimized.
+
 Committed, merged into `main` and published. The MCP client must be restarted to see the new tools.
+
+## Full command coverage — where it stands (2026-10-04)
+
+All ten blocks of the plan are done: **143 tools** (59 before the plan). Left out, each for a stated reason:
+
+| Command | Why |
+|---------|-----|
+| Split Segment, Insert Knot | Position comes only from the pointer; needs a proxy on a private field. Covered by `cut` on curves and `subdivide_curves`. |
+| Place, Copy / Paste with Placement | Placement comes only from clicks on snap points. Covered by `copy_bodies` / `create_instances` + the transform tools. |
+| Dimension | Its data is built inside the UI command. Covered by `refillet`, `scale_faces`, `offset`, `move_faces`. |
+| Set units, set grid | No command; direct writes into settings. |
+| Save under the document's own name | Native save opens the system dialog. |
+| Align, PolySplines, xNURBS, Square, Rebuild Face (explicit); IGES, SAT | Studio edition only. |
+| Publish to Plasticity Share | Uploads the document to the web. |
+| Display toggles (curvature, points), freestyle transforms | Excluded by the plan. |
+| Volume, area | Not a Plasticity command, and the kernel binding does not expose them. |
 
 Other ideas (not agreed yet): transforming and hiding reference meshes; opening `.plasticity` files is in block 19.
 
@@ -765,4 +806,4 @@ PlasticityMCP/
 ## Next action
 
 1. Designer: close Plasticity and call `native_launch` (or `npm run smoke:native`) once to verify the cold-start path; restart the MCP client so it picks up the new tools.
-2. Full command coverage: blocks 0, 0b (split of `index.ts`) and 11 (solids) are in `main` and published — 69 tools. Blocks 0, 0b, 11 and 12 are in `main` and published — 84 tools. Blocks 0, 0b, 11, 12 and 13 are in `main` and published — 105 tools. Blocks 0, 0b and 11–14 are in `main` and published — 108 tools. Blocks 0, 0b and 11–15 are in `main` and published — 111 tools. Blocks 0, 0b and 11–16 are in `main` and published — 116 tools. Blocks 0, 0b and 11–17 are in `main` and published — 131 tools. Blocks 0, 0b and 11–18 are in `main` and published — 139 tools. Next: the proposal for block 19 (environment), the last of the plan; the Designer asked for it on 2026-10-04. Work continues on branch `native-full-spectrum`.
+2. Full command coverage: blocks 0, 0b (split of `index.ts`) and 11 (solids) are in `main` and published — 69 tools. Blocks 0, 0b, 11 and 12 are in `main` and published — 84 tools. Blocks 0, 0b, 11, 12 and 13 are in `main` and published — 105 tools. Blocks 0, 0b and 11–14 are in `main` and published — 108 tools. Blocks 0, 0b and 11–15 are in `main` and published — 111 tools. Blocks 0, 0b and 11–16 are in `main` and published — 116 tools. Blocks 0, 0b and 11–17 are in `main` and published — 131 tools. Blocks 0, 0b and 11–18 are in `main` and published — 139 tools. Full command coverage is complete and in `main`: blocks 0, 0b and 11–19, 143 tools. Next: after the MCP client restart, check the newest tools through it; then the tests on real parts the Designer asked for earlier (he names the part).

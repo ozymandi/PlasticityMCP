@@ -5,6 +5,7 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprot
 import { bridge } from "./tools/bridge.js";
 import { curveEdit } from "./tools/curve-edit.js";
 import { curves } from "./tools/curves.js";
+import { environment } from "./tools/environment.js";
 import { exchange } from "./tools/exchange.js";
 import { faces } from "./tools/faces.js";
 import { instances } from "./tools/instances.js";
@@ -29,6 +30,7 @@ const families: ToolFamily[] = [
   transforms,
   instances,
   measure,
+  environment,
   solids,
   faces,
   curves,

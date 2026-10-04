@@ -127,7 +127,7 @@ A second channel, independent of the WebSocket bridge: real B-Rep operations thr
 | `constrained_surface` | A Sheet through at least four `points`, optional `normals`, `tolerance`, `optimize`. |
 | `remove_nominal_surface` | Reveal the hidden spans of control points of spline faces. |
 | `project` | New curves by projection: curves onto a body (`curveIds` + `targetId`, optional `direction`), crossing lines of bodies (`bodyIds`), or two planar curves into one curve in space (two `curveIds`). |
-| `create_outline` | Outline of bodies seen along the normal of the window's active construction plane; `flat` projects it onto that plane. |
+| `create_outline` | Outline of bodies seen along the normal of a plane (`planeNormal`, `planeOrigin`), by default the window's active construction plane; `flat` projects it onto the plane. |
 | `duplicate_and_project` | Copy curves or body edges and flatten the copies onto a plane (`planeOrigin`, `planeNormal`). |
 | `list_regions` | Regions Plasticity built from closed loops of curves: id, bounds, normal, boundary length, holes. |
 | `extrude_profile` | Closed planar curve → Solid, open curve → Sheet, by `distance` along the plane normal. Takes a curve `id` or `regionIds`. |
@@ -146,6 +146,10 @@ A second channel, independent of the WebSocket bridge: real B-Rep operations thr
 | `list_reference_meshes` | Reference meshes: id, name, source file, bounds, triangles. |
 | `delete_reference_meshes` | Delete reference meshes by id. Undoable. |
 | `save_document` | Save a **copy** as `.plasticity`; the open document stays as it is. |
+| `get_environment` | Document (title, path, unsaved changes), display units, grid, active construction plane. |
+| `set_construction_plane` | Active construction plane: `preset` xy / yz / xz, `normal` (+ `origin`, `xDirection`), or a planar face. Not an undo step. |
+| `new_document` | A new Untitled document in this window (the startup document). Needs `discardChanges` when there is unsaved work. |
+| `open_document` | Open a `.plasticity` file in this window. Needs `discardChanges` when there is unsaved work. |
 | `set_view` | Camera to front / back / left / right / top / bottom / isometric; `fit` frames all bodies. |
 | `screenshot` | PNG of the 3D viewport (longest side ≤ 1568 px), returned as an image; optional `path`. |
 

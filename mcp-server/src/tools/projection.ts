@@ -34,10 +34,14 @@ const ProjectArgs = z
   )
   .refine((a) => a.direction === undefined || a.targetId !== undefined, "direction needs targetId");
 
-const CreateOutlineArgs = z.object({
-  ids: BodyIds,
-  flat: z.boolean().optional().default(false),
-});
+const CreateOutlineArgs = z
+  .object({
+    ids: BodyIds,
+    flat: z.boolean().optional().default(false),
+    planeOrigin: Vec3Mm.optional(),
+    planeNormal: Direction.optional(),
+  })
+  .refine((a) => a.planeOrigin === undefined || a.planeNormal !== undefined, "planeOrigin goes with planeNormal");
 
 const DuplicateAndProjectArgs = z
   .object({
@@ -76,15 +80,21 @@ const tools: Tool[] = [
     name: "create_outline",
     description:
       "Create the outline (silhouette) of Solids / Sheets as curves, seen along the normal of " +
-      "the active construction plane of the Plasticity window — the world XY plane, i.e. a " +
-      "top view, unless the user has set another one there. By default the curves lie in " +
-      "space on the bodies themselves; with `flat: true` they are projected onto the " +
-      "construction plane — a flat profile of the part's footprint for extrude_profile. The " +
-      "curves are in `created`; the bodies stay. Undoable.",
+      "a plane. The plane is `planeNormal` with an optional `planeOrigin` (default the world " +
+      "origin) — [0, 0, 1] gives a top view, [1, 0, 0] a side view; without them it is the " +
+      "active construction plane of the Plasticity window (see set_construction_plane). By " +
+      "default the curves lie in space on the bodies themselves; with `flat: true` they are " +
+      "projected onto the plane — a flat profile of the part's footprint for " +
+      "extrude_profile. The curves are in `created`; the bodies stay. Undoable.",
     inputSchema: {
       type: "object",
       required: ["ids"],
-      properties: { ids: BODY_IDS_SCHEMA, flat: { type: "boolean", default: false } },
+      properties: {
+        ids: BODY_IDS_SCHEMA,
+        flat: { type: "boolean", default: false },
+        planeOrigin: VEC3_SCHEMA,
+        planeNormal: { ...VEC3_SCHEMA, description: "Viewing direction: the plane normal [x, y, z]" },
+      },
     },
   },
   {
@@ -119,7 +129,10 @@ const handlers: ToolFamily["handlers"] = {
 
   create_outline: async (rawArgs) => {
     const args = CreateOutlineArgs.parse(rawArgs ?? {});
-    return ok(await native.createOutline(args.ids, args.flat));
+    const plane = args.planeNormal
+      ? { originMm: args.planeOrigin ?? ([0, 0, 0] as [number, number, number]), normal: args.planeNormal }
+      : undefined;
+    return ok(await native.createOutline(args.ids, args.flat, plane));
   },
 
   duplicate_and_project: async (rawArgs) => {
