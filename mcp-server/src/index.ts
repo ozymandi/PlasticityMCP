@@ -192,6 +192,31 @@ const ExtrudeProfileArgs = z.object({
   distance: z.number().refine((d) => d !== 0, "distance must be non-zero"),
 });
 
+const ExportStepArgs = z.object({
+  path: z.string().min(1),
+  ids: BodyIds.optional(),
+  overwrite: z.boolean().optional().default(false),
+});
+
+const ImportStepArgs = z.object({
+  path: z.string().min(1),
+});
+
+const SaveDocumentArgs = z.object({
+  path: z.string().min(1),
+  overwrite: z.boolean().optional().default(false),
+});
+
+const ScreenshotArgs = z.object({
+  path: z.string().min(1).optional(),
+  overwrite: z.boolean().optional().default(false),
+});
+
+const SetViewArgs = z.object({
+  view: z.enum(["front", "back", "left", "right", "top", "bottom", "isometric"]),
+  fit: z.boolean().optional().default(true),
+});
+
 // ---------- Tool definitions ----------
 
 const VEC3_SCHEMA = {
@@ -662,6 +687,82 @@ const tools: Tool[] = [
       },
     },
   },
+  {
+    name: "export_step",
+    description:
+      "Export bodies as exact B-Rep geometry to a STEP file (.step / .stp). `path` must be " +
+      "absolute. Without `ids`, every Solid and Sheet of the document is exported. An existing " +
+      "file is replaced only with overwrite: true. Does not change the document.",
+    inputSchema: {
+      type: "object",
+      required: ["path"],
+      properties: {
+        path: { type: "string", description: "Absolute output path ending in .step or .stp" },
+        ids: BODY_IDS_SCHEMA,
+        overwrite: { type: "boolean", default: false },
+      },
+    },
+  },
+  {
+    name: "import_step",
+    description:
+      "Add the geometry of a STEP file (.step / .stp, absolute path) to the current document. " +
+      "The imported bodies are returned in `created`; their bounds can be up to a fraction of " +
+      "a millimetre larger than the source because of import tolerances. Undoable.",
+    inputSchema: {
+      type: "object",
+      required: ["path"],
+      properties: { path: { type: "string", description: "Absolute path of the STEP file" } },
+    },
+  },
+  {
+    name: "save_document",
+    description:
+      "Save a copy of the current document as a .plasticity file (`path` must be absolute). " +
+      "The open document keeps its own file association — an Untitled document stays " +
+      "Untitled. An existing file is replaced only with overwrite: true.",
+    inputSchema: {
+      type: "object",
+      required: ["path"],
+      properties: {
+        path: { type: "string", description: "Absolute output path ending in .plasticity" },
+        overwrite: { type: "boolean", default: false },
+      },
+    },
+  },
+  {
+    name: "set_view",
+    description:
+      "Point the camera of the first viewport at a standard view: front, back, left, right, " +
+      "top, bottom or isometric (Z is up; front looks along +Y). `fit` (default true) also " +
+      "frames all bodies. The six axis views are shown by Plasticity in X-ray. Not an undo " +
+      "step. Use before screenshot to look at the model from a chosen side.",
+    inputSchema: {
+      type: "object",
+      required: ["view"],
+      properties: {
+        view: {
+          type: "string",
+          enum: ["front", "back", "left", "right", "top", "bottom", "isometric"],
+        },
+        fit: { type: "boolean", default: true },
+      },
+    },
+  },
+  {
+    name: "screenshot",
+    description:
+      "Capture the first 3D viewport of the Plasticity window as a PNG (longest side at most " +
+      "1568 px) and return it as an image. With `path` (absolute, .png) the image is also " +
+      "written to disk. The window must be visible, not minimized.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "Optional absolute output path ending in .png" },
+        overwrite: { type: "boolean", default: false },
+      },
+    },
+  },
 ];
 
 // ---------- Helpers ----------
@@ -1067,6 +1168,38 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "extrude_profile": {
         const args = ExtrudeProfileArgs.parse(rawArgs ?? {});
         return ok(await native.extrudeProfile(args.id, args.distance));
+      }
+
+      case "export_step": {
+        const args = ExportStepArgs.parse(rawArgs ?? {});
+        return ok(await native.exportStep(args.path, args.ids, args.overwrite));
+      }
+
+      case "import_step": {
+        const args = ImportStepArgs.parse(rawArgs ?? {});
+        return ok(await native.importStep(args.path));
+      }
+
+      case "save_document": {
+        const args = SaveDocumentArgs.parse(rawArgs ?? {});
+        return ok(await native.saveCopy(args.path, args.overwrite));
+      }
+
+      case "set_view": {
+        const args = SetViewArgs.parse(rawArgs ?? {});
+        return ok(await native.setView(args.view, args.fit));
+      }
+
+      case "screenshot": {
+        const args = ScreenshotArgs.parse(rawArgs ?? {});
+        const shot = await native.screenshot(args.path, args.overwrite);
+        const info = { width: shot.width, height: shot.height, bytes: shot.png.length, path: shot.path };
+        return {
+          content: [
+            { type: "image" as const, data: shot.png.toString("base64"), mimeType: "image/png" },
+            { type: "text" as const, text: JSON.stringify(info, null, 2) },
+          ],
+        };
       }
 
       default:

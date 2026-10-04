@@ -5,8 +5,11 @@
  *
  *   npm run smoke:native
  */
+import { copyFileSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { launchPlasticity } from "./launcher.js";
-import { BodyInfo, NativeSession, Vec3 } from "./native.js";
+import { BodyInfo, NativeSession, Vec3, ViewName } from "./native.js";
 
 const TOLERANCE_MM = 1e-3;
 
@@ -295,6 +298,59 @@ async function main() {
   check("extrude_profile refuses a Solid", /not a curve/.test(notACurve?.message ?? ""));
   const noCurve = await native.deleteBodies([bent!.id]);
   check("delete a curve", noCurve.removedIds[0] === bent!.id);
+
+  // --- files, camera, screenshot (temporary folder, removed afterwards) ---
+  const folder = mkdtempSync(join(tmpdir(), "plasticity-mcp-smoke-"));
+  try {
+    const stepPath = join(folder, "plate.step");
+    const exported = await native.exportStep(stepPath, [plateId]);
+    check("export STEP", exported.bytes > 0 &&
+      readFileSync(stepPath, "utf8").startsWith("ISO-10303-21;"), `${exported.bytes} bytes`);
+    const again = await failure(native.exportStep(stepPath, [plateId]));
+    check("export refuses to overwrite", /already exists/.test(again?.message ?? ""));
+    check("export overwrites on request", (await native.exportStep(stepPath, [plateId], true)).bytes > 0);
+    const relative = await failure(native.exportStep("plate.step"));
+    check("relative path is refused", /absolute/.test(relative?.message ?? ""));
+    const wrongType = await failure(native.exportStep(join(folder, "plate.txt")));
+    check("wrong extension is refused", /must end in/.test(wrongType?.message ?? ""));
+
+    const imported = await native.importStep(stepPath);
+    check("import STEP brings the plate back", imported.created.length === 1 &&
+      imported.created[0]?.faceCount === 6 &&
+      boundsMatch(imported.created[0], [200, 0, 0], [240, 30, 10]), fmt(imported.created[0]));
+    await native.undo();
+    const missing = await failure(native.importStep(join(folder, "nothing.step")));
+    check("import of a missing file is refused", /not found/.test(missing?.message ?? ""));
+
+    const before = await native.state();
+    const saved = await native.saveCopy(join(folder, "copy.plasticity"));
+    check("save a copy", saved.bytes > 0 &&
+      readFileSync(saved.path).subarray(0, 10).toString() === "plasticity", `${saved.bytes} bytes`);
+    check("saving leaves the document untouched",
+      (await native.state()).undoDepth === before.undoDepth && native.getTarget()?.title === target.title);
+
+    const expected: Array<[ViewName, Vec3]> = [
+      ["front", [0, -1, 0]], ["back", [0, 1, 0]], ["left", [-1, 0, 0]], ["right", [1, 0, 0]],
+      ["top", [0, 0, 1]], ["bottom", [0, 0, -1]],
+    ];
+    for (const [view, direction] of expected) {
+      const camera = await native.setView(view);
+      check(`view ${view}`, camera.aligned &&
+        camera.direction.every((v, i) => Math.abs(v - direction[i]!) < 1e-6), JSON.stringify(camera.direction));
+    }
+    const iso = await native.setView("isometric");
+    check("view isometric", !iso.aligned &&
+      iso.direction.every((v, i) => Math.abs(v - [1, -1, 1][i]! / Math.sqrt(3)) < 1e-6),
+      JSON.stringify(iso.direction));
+
+    const pngPath = join(folder, "view.png");
+    const shot = await native.screenshot(pngPath);
+    check("screenshot", Math.max(shot.width, shot.height) <= 1568 && shot.width > 100 &&
+      readFileSync(pngPath).length === shot.png.length, `${shot.width} x ${shot.height}`);
+    if (process.env.SMOKE_KEEP_SCREENSHOT) copyFileSync(pngPath, process.env.SMOKE_KEEP_SCREENSHOT);
+  } finally {
+    rmSync(folder, { recursive: true, force: true });
+  }
 
   // Clean up: undo everything this test did and put the selection back.
   for (let i = 0; i < 150 && (await native.state()).undoDepth > baseline.undoDepth; i++) {

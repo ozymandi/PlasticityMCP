@@ -50,6 +50,14 @@ A second channel, independent of the WebSocket bridge: real B-Rep operations thr
 | `create_circle` | Circle from `center`, `radius`, optional plane `normal`. |
 | `extrude_profile` | Closed planar curve → Solid, open curve → Sheet, by `distance` along the plane normal. Refuses ambiguous (nested / overlapping) profiles. |
 
+| `export_step` | Exact B-Rep export to `.step` / `.stp`; all Solids and Sheets unless `ids` given. |
+| `import_step` | Add a STEP file's geometry to the document. Undoable. |
+| `save_document` | Save a **copy** as `.plasticity`; the open document stays as it is. |
+| `set_view` | Camera to front / back / left / right / top / bottom / isometric; `fit` frames all bodies. |
+| `screenshot` | PNG of the 3D viewport (longest side ≤ 1568 px), returned as an image; optional `path`. |
+
+File tools take absolute paths, check the extension and never replace an existing file without `overwrite: true`.
+
 Face and edge ids are valid only until the body changes — re-read `get_body_topology` after every operation on it. Stale ids are rejected.
 
 `pivot` is optional for rotate and scale; it defaults to the centre of the bodies' combined bounding box.

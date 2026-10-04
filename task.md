@@ -254,11 +254,30 @@ Findings:
 
 Block 4 is committed on branch `native-stage-1`. The MCP client must be restarted to see the new tools.
 
-### Next blocks (each proposed separately before implementation)
+## Native block 5 — STEP, save, camera, screenshot — ✅ Done (2026-10-04, ~2.5 h)
 
-5. STEP import/export, save document, screenshot.
+New tools: `export_step`, `import_step`, `save_document`, `set_view` (added on Designer's request), `screenshot` (39 tools total). New module `files.ts` holds the file-safety rules.
 
-Ideas beyond the agreed list (not agreed yet): arcs and ellipse; selecting individual Regions for extrusion (plate-with-hole profiles); revolve, sweep, loft; copy / mirror.
+Designer's decisions: `save_document` saves a **copy** (the open document keeps its file association); `set_view` included.
+
+Verified live on 26.1.3 (Untitled): `smoke:native` extended and passing — STEP export (valid header, overwrite refused / allowed, relative path and wrong extension refused), STEP import round trip (same face count and bounds), save copy (valid file, document and title untouched), all seven views by camera direction, screenshot (PNG within the size cap, file matches). Built stdio server exercised end to end; screenshot arrives as MCP image content. Screenshots were inspected visually.
+
+Findings:
+- File tools: absolute paths only, extension check, no overwrite without `overwrite: true`; Plasticity writes to a staging folder in `%TEMP%`, the result is validated and only then copied to the target.
+- Export: `ExportCadFactory` (`items`, `filePath`), no history entry. Import: `ExchangeImportFactory` inside `ImportCommand` (a closure binding, not in `editor.commands`), one undo step, 5 min timeout. **Imported bounds are slightly inflated** by import tolerance (box +0.00005 mm, cylinder ≈ +0.19 mm).
+- Save: `editor.saver.save(path)` writes the file and leaves `document.filename` / window title alone.
+- Views: `viewport.navigateToOrientation(n)` with right 0, back 1, top 2, left 3, front 4, bottom 5 (Z up, front looks along +Y). **Navigation is animated and its promise resolves early** — the tool waits until the camera pose stops changing. The six axis views put the viewport in an "aligned" state (view label, X-ray, construction plane); isometric via `orbitControls.setQuaternion` does not end it, so the tool calls `viewport.transitionFromAlignedView()`.
+- Screenshot: `Page.captureScreenshot` clipped to the `plasticity-viewport` element (includes the viewport's overlay panels), scaled so the longest side is ≤ 1568 px (below the 2000 px limit that breaks many-image sessions). No focus stealing; a hidden / minimized window is reported as an error.
+- **Errors thrown inside a native command show up as a red toast in the Plasticity window** (e.g. "Extrude — Body 74 is a Solid, not a curve"). Harmless, but the user sees every refused operation.
+- `set_view` / `screenshot` act on the **first viewport** only; the camera is left where the last `set_view` put it (not part of the undo history).
+
+**Not verified:** screenshot with a minimized or fully covered window; split (multi-viewport) layouts; importing STEP files from other CAD systems (only Plasticity's own export was round-tripped); the refusal path of `native_launch` when Plasticity runs without native access.
+
+Block 5 is committed; branch `native-stage-1` is merged into `main` (fast-forward) and the root `README.md` is rewritten for the current state. The MCP client must be restarted to see the new tools.
+
+### Agreed roadmap (blocks 1–5) is complete
+
+Ideas beyond it (not agreed yet): arcs and ellipse; selecting individual Regions for extrusion (plate-with-hole profiles); revolve, sweep, loft; copy / mirror; other exchange formats (IGES, Parasolid, STL, OBJ); opening `.plasticity` files.
 
 ## Risks
 
@@ -305,4 +324,4 @@ PlasticityMCP/
 ## Next action
 
 1. Designer: close Plasticity and call `native_launch` (or `npm run smoke:native`) once to verify the cold-start path; restart the MCP client so it picks up the new tools.
-2. Propose block 5 (STEP import/export, save, screenshot).
+2. The agreed roadmap is complete and merged into `main`. Designer decides what comes next (see the ideas list under "Agreed roadmap (blocks 1–5) is complete").
