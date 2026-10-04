@@ -63,6 +63,9 @@ A second channel, independent of the WebSocket bridge: real B-Rep operations thr
 | `sweep_profile` | Sweep a profile curve along a path curve; optional `twist` and end `scale`. |
 | `loft_profiles` | Loft through ordered profiles; optional `guideIds`, `closed`. Closed profiles → Solid, open → Sheet. |
 | `export_step` | Exact B-Rep export to `.step` / `.stp`; all Solids and Sheets unless `ids` given. |
+| `export_parasolid` | Exact B-Rep export to `.x_t` (text) or `.x_b` (binary). |
+| `export_mesh` | Triangle mesh to `.stl`, `.obj` or `.3mf` (millimetres, Z up); `tolerance` and `angle` control the density. |
+| `export_drawing` | Technical drawing as SVG in millimetres: hidden-line projections of the chosen `views`, laid out left to right. |
 | `import_step` | Add a STEP file's geometry to the document. Undoable. |
 | `save_document` | Save a **copy** as `.plasticity`; the open document stays as it is. |
 | `set_view` | Camera to front / back / left / right / top / bottom / isometric; `fit` frames all bodies. |

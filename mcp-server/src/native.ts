@@ -12,6 +12,7 @@
  */
 import { readFile, writeFile } from "node:fs/promises";
 import { CdpClient, CdpTarget, EvaluateResult, GetPropertiesResult } from "./cdp.js";
+import { Drawing, ProjectedView, buildDrawing } from "./drawing.js";
 import { checkInput, checkOutput, writeStaged } from "./files.js";
 import { CDP_PORT, SUPPORTED_VERSION, findRendererTargets, getAppVersion } from "./launcher.js";
 
@@ -118,6 +119,27 @@ const SCREENSHOT_TIMEOUT_MS = 15_000;
 const SCREENSHOT_MAX_SIDE = 1568;
 
 const STEP_EXTENSIONS = [".step", ".stp"];
+const PARASOLID_EXTENSIONS = [".x_t", ".x_b"];
+// Mesh formats and the native exporter behind each.
+const MESH_EXPORTERS: Record<string, string> = {
+  ".stl": "STLExportFactory",
+  ".obj": "OBJExportFactory",
+  ".3mf": "ThreeMfExportFactory",
+};
+/** Side of the square render target the hidden-line generator works on. */
+const DRAWING_RESOLUTION = 2048;
+const DRAWING_MAX_COORDINATES = 2_000_000;
+
+// Camera position relative to the model and its up vector, per standard view (Z is up).
+const VIEW_CAMERAS: Record<ViewName, { direction: Vec3; up: Vec3 }> = {
+  front: { direction: [0, -1, 0], up: [0, 0, 1] },
+  back: { direction: [0, 1, 0], up: [0, 0, 1] },
+  left: { direction: [-1, 0, 0], up: [0, 0, 1] },
+  right: { direction: [1, 0, 0], up: [0, 0, 1] },
+  top: { direction: [0, 0, 1], up: [0, 1, 0] },
+  bottom: { direction: [0, 0, -1], up: [0, 1, 0] },
+  isometric: { direction: [1, -1, 1], up: [0, 0, 1] },
+};
 
 export type ViewName = "front" | "back" | "left" | "right" | "top" | "bottom" | "isometric";
 
@@ -134,6 +156,17 @@ const VIEW_ORIENTATIONS: Record<Exclude<ViewName, "isometric">, number> = {
 export interface FileResult {
   path: string;
   bytes: number;
+}
+
+export interface MeshResult extends FileResult {
+  format: "stl" | "obj" | "3mf";
+  ids: number[];
+  /** Triangle count; not available for 3MF (a zip archive). */
+  triangles?: number;
+}
+
+export interface DrawingResult extends FileResult, Omit<Drawing, "svg"> {
+  ids: number[];
 }
 
 export interface Screenshot {
@@ -1311,17 +1344,25 @@ export class NativeSession {
     );
   }
 
-  /**
-   * Export bodies as exact B-Rep to a STEP file. Without `ids`, every Solid and Sheet of the
-   * document is exported. Does not touch the undo history.
-   */
-  exportStep(path: string, ids?: number[], overwrite = false): Promise<FileResult & { ids: number[] }> {
+  /** Ids to export when the caller gave none: every Solid and Sheet of the document. */
+  private exportable(state: NativeState, ids?: number[]): number[] {
+    const chosen =
+      ids ?? state.bodies.filter((b) => b.type === "Solid" || b.type === "Sheet").map((b) => b.id);
+    if (chosen.length === 0) throw new Error("Nothing to export: the document has no Solid or Sheet");
+    return chosen;
+  }
+
+  /** Exact B-Rep export through ExportCadFactory; the file extension selects the format. */
+  private exportCad(
+    path: string,
+    extensions: string[],
+    ids: number[] | undefined,
+    overwrite: boolean,
+    isValid: (content: Buffer) => boolean,
+  ): Promise<FileResult & { ids: number[] }> {
     return this.enqueue(async () => {
-      const output = await checkOutput(path, STEP_EXTENSIONS, overwrite);
-      const state = await this.call<NativeState>(READ_STATE);
-      const exported =
-        ids ?? state.bodies.filter((b) => b.type === "Solid" || b.type === "Sheet").map((b) => b.id);
-      if (exported.length === 0) throw new Error("Nothing to export: the document has no Solid or Sheet");
+      const output = await checkOutput(path, extensions, overwrite);
+      const exported = this.exportable(await this.call<NativeState>(READ_STATE), ids);
       const bytes = await writeStaged(
         output,
         overwrite,
@@ -1339,13 +1380,202 @@ export class NativeSession {
             [{ ids: exported, path: staged }],
           ),
         async (staged) => {
-          const text = await readFile(staged, "utf8").catch(() => "");
-          if (!text.startsWith("ISO-10303-21;") || !text.includes("END-ISO-10303-21;")) {
-            throw new Error("Plasticity did not produce a valid STEP file");
-          }
+          const content = await readFile(staged).catch(() => Buffer.alloc(0));
+          if (!isValid(content)) throw new Error("Plasticity did not produce a valid file");
         },
       );
       return { path: output, bytes, ids: exported };
+    });
+  }
+
+  /**
+   * Export bodies as exact B-Rep to a STEP file. Without `ids`, every Solid and Sheet of the
+   * document is exported. Does not touch the undo history.
+   */
+  exportStep(path: string, ids?: number[], overwrite = false): Promise<FileResult & { ids: number[] }> {
+    return this.exportCad(path, STEP_EXTENSIONS, ids, overwrite, (content) => {
+      const text = content.toString("utf8");
+      return text.startsWith("ISO-10303-21;") && text.includes("END-ISO-10303-21;");
+    });
+  }
+
+  /** Export bodies as exact B-Rep to Parasolid: `.x_t` (text) or `.x_b` (binary). */
+  exportParasolid(path: string, ids?: number[], overwrite = false): Promise<FileResult & { ids: number[] }> {
+    return this.exportCad(path, PARASOLID_EXTENSIONS, ids, overwrite, (content) =>
+      content.subarray(0, 28).toString("latin1") === "**ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    );
+  }
+
+  /**
+   * Export bodies as a triangle mesh; the extension picks STL, OBJ or 3MF. The file is in
+   * millimetres with Z up. `toleranceMm` is the largest allowed gap between mesh and surface,
+   * `angleDeg` the largest angle between neighbouring facets.
+   */
+  exportMesh(
+    path: string,
+    ids?: number[],
+    toleranceMm = 0.05,
+    angleDeg = 15,
+    overwrite = false,
+  ): Promise<MeshResult> {
+    return this.enqueue(async () => {
+      const output = await checkOutput(path, Object.keys(MESH_EXPORTERS), overwrite);
+      const extension = output.slice(output.lastIndexOf(".")).toLowerCase();
+      const format = extension.slice(1) as MeshResult["format"];
+      const exported = this.exportable(await this.call<NativeState>(READ_STATE), ids);
+      let triangles: number | undefined;
+      const bytes = await writeStaged(
+        output,
+        overwrite,
+        (staged) =>
+          // Plasticity's mesh exporters default to metres; slicers expect millimetres.
+          this.call(
+            `async function (Factory, args) {
+              ${BUSY_GUARD}
+              ${FIND_VIEW}
+              const factory = new Factory(this);
+              factory.shells = args.ids.map((id) => {
+                const view = find(id);
+                if (view.constructor.name === 'Wire') throw new Error('Body ' + id + ' is a curve and has no surface to mesh');
+                return view;
+              });
+              factory.filePath = args.path;
+              factory.unit = 'millimeter';
+              factory.upAxis = 'z';
+              factory.scale = 1;
+              factory.showWireframe = false;
+              factory.simplify = false;
+              factory.curveChordTolerance = args.tolerance;
+              factory.surfacePlaneTolerance = args.tolerance;
+              factory.curveChordAngleDegrees = args.angle;
+              factory.surfacePlaneAngleDegrees = args.angle;
+              await factory.commit();
+            }`,
+            [MESH_EXPORTERS[extension]!],
+            [{ ids: exported, path: staged, tolerance: toleranceMm * MM, angle: angleDeg }],
+          ),
+        async (staged) => {
+          const content = await readFile(staged).catch(() => Buffer.alloc(0));
+          if (format === "stl") {
+            // Binary STL: 80-byte header, triangle count, 50 bytes per triangle.
+            const count = content.length >= 84 ? content.readUInt32LE(80) : -1;
+            if (count <= 0 || content.length !== 84 + count * 50) {
+              throw new Error("Plasticity did not produce a valid binary STL file");
+            }
+            triangles = count;
+          } else if (format === "obj") {
+            const lines = content.toString("utf8").split(/\r?\n/);
+            triangles = lines.filter((line) => line.startsWith("f ")).length;
+            if (triangles === 0) throw new Error("Plasticity did not produce a valid OBJ file");
+          } else if (content.subarray(0, 2).toString("latin1") !== "PK" || !content.includes("3dmodel.model")) {
+            throw new Error("Plasticity did not produce a valid 3MF archive");
+          }
+        },
+      );
+      return { path: output, bytes, format, ids: exported, ...(triangles === undefined ? {} : { triangles }) };
+    });
+  }
+
+  /**
+   * Technical drawing as SVG in millimetres: one orthographic hidden-line projection per
+   * requested view, laid out left to right. Uses its own cameras, so the viewport is untouched.
+   */
+  exportDrawing(
+    path: string,
+    ids?: number[],
+    views: ViewName[] = ["front"],
+    hiddenLines = true,
+    overwrite = false,
+  ): Promise<DrawingResult> {
+    return this.enqueue(async () => {
+      const output = await checkOutput(path, [".svg"], overwrite);
+      const state = await this.call<NativeState>(READ_STATE);
+      const exported = ids ?? state.bodies.filter((b) => b.type === "Solid").map((b) => b.id);
+      if (exported.length === 0) throw new Error("Nothing to draw: the document has no Solid");
+      const projections = await this.call<ProjectedView[]>(
+        `async function (Factory, Vector2, Vector3, OrthographicCamera, args) {
+          ${BUSY_GUARD}
+          ${FIND_VIEW}
+          const items = args.ids.map((id) => {
+            const item = findItem(id);
+            if (item.view.constructor.name !== 'Solid') {
+              throw new Error('Body ' + id + ' is a ' + item.view.constructor.name + '; only Solids can be drawn');
+            }
+            return item;
+          });
+          const min = [Infinity, Infinity, Infinity];
+          const max = [-Infinity, -Infinity, -Infinity];
+          for (const item of items) {
+            const box = item.model.FindBox();
+            ['x', 'y', 'z'].forEach((k, i) => {
+              min[i] = Math.min(min[i], box.min[k]);
+              max[i] = Math.max(max[i], box.max[k]);
+            });
+          }
+          const center = new Vector3(...min.map((v, i) => (v + max[i]) / 2));
+          // Half-width of the square view volume: the bounding sphere plus a little air.
+          const reach = Math.max(1e-6, Math.hypot(...max.map((v, i) => v - min[i])) / 2) * 1.05;
+          const out = [];
+          for (const view of args.views) {
+            // A fresh factory per view: reusing one made every view after the first come out
+            // with the wrong outline.
+            const factory = new Factory(this);
+            try {
+              factory.items = items.map((item) => item.view);
+              factory.includeBackgroundImage = false;
+              factory.useMaterialColors = false;
+              const bodyData = factory.collectBodyData();
+              const camera = new OrthographicCamera(-reach, reach, reach, -reach, reach * 0.01, reach * 4);
+              camera.up.set(...view.up);
+              camera.position.copy(center).add(new Vector3(...view.direction).normalize().multiplyScalar(reach * 2));
+              camera.lookAt(center);
+              camera.updateMatrixWorld(true);
+              camera.updateProjectionMatrix();
+              const projected = await factory.generator.generate(
+                camera,
+                new Vector2(args.resolution, args.resolution),
+                bodyData.bodyIds,
+                factory,
+                bodyData.transforms,
+              );
+              if (projected.geo.length > args.maxCoordinates) {
+                throw new Error('The drawing is too large to transfer; draw fewer bodies at a time');
+              }
+              out.push({
+                view: view.name,
+                positions: Array.from(projected.geo),
+                segments: projected.segments.map((s) => ({
+                  category: String(s.category),
+                  type: Number(s.projectedGeomType),
+                  offset: Number(s.offset),
+                  count: Number(s.count),
+                })),
+                mmPerPixel: (2 * reach * 1000) / args.resolution,
+              });
+            } finally {
+              factory.dispose?.();
+            }
+          }
+          return out;
+        }`,
+        ["ExportHiddenLineFactory", "Vector2", "Vector3", "OrthographicCamera"],
+        [
+          {
+            ids: exported,
+            views: views.map((name) => ({ name, ...VIEW_CAMERAS[name] })),
+            resolution: DRAWING_RESOLUTION,
+            maxCoordinates: DRAWING_MAX_COORDINATES,
+          },
+        ],
+      );
+      const { svg, ...drawing } = buildDrawing(projections, hiddenLines);
+      const bytes = await writeStaged(
+        output,
+        overwrite,
+        (staged) => writeFile(staged, svg, "utf8"),
+        async () => {},
+      );
+      return { path: output, bytes, ids: exported, ...drawing };
     });
   }
 

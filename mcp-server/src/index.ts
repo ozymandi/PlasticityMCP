@@ -314,6 +314,30 @@ const ExportStepArgs = z.object({
   overwrite: z.boolean().optional().default(false),
 });
 
+const ExportParasolidArgs = z.object({
+  path: z.string().min(1),
+  ids: BodyIds.optional(),
+  overwrite: z.boolean().optional().default(false),
+});
+
+const ExportMeshArgs = z.object({
+  path: z.string().min(1),
+  ids: BodyIds.optional(),
+  tolerance: z.number().positive().max(10).optional().default(0.05),
+  angle: z.number().positive().max(90).optional().default(15),
+  overwrite: z.boolean().optional().default(false),
+});
+
+const ViewNameSchema = z.enum(["front", "back", "left", "right", "top", "bottom", "isometric"]);
+
+const ExportDrawingArgs = z.object({
+  path: z.string().min(1),
+  ids: BodyIds.optional(),
+  views: z.array(ViewNameSchema).min(1).max(7).optional().default(["front", "top", "right"]),
+  hiddenLines: z.boolean().optional().default(true),
+  overwrite: z.boolean().optional().default(false),
+});
+
 const ImportStepArgs = z.object({
   path: z.string().min(1),
 });
@@ -1056,6 +1080,74 @@ const tools: Tool[] = [
     },
   },
   {
+    name: "export_parasolid",
+    description:
+      "Export bodies as exact B-Rep geometry to a Parasolid file: `.x_t` (text) or `.x_b` " +
+      "(binary), chosen by the extension. `path` must be absolute. Without `ids`, every Solid " +
+      "and Sheet of the document is exported. An existing file is replaced only with " +
+      "overwrite: true. Does not change the document.",
+    inputSchema: {
+      type: "object",
+      required: ["path"],
+      properties: {
+        path: { type: "string", description: "Absolute output path ending in .x_t or .x_b" },
+        ids: BODY_IDS_SCHEMA,
+        overwrite: { type: "boolean", default: false },
+      },
+    },
+  },
+  {
+    name: "export_mesh",
+    description:
+      "Export bodies as a triangle mesh for 3D printing or rendering. The extension of `path` " +
+      "(absolute) picks the format: `.stl` (binary), `.obj` or `.3mf`. The file is in " +
+      "millimetres with Z up. `tolerance` is the largest allowed gap between the mesh and the " +
+      "true surface in millimetres (default 0.05; smaller = more triangles), `angle` the " +
+      "largest angle between neighbouring facets in degrees (default 15). Without `ids`, every " +
+      "Solid and Sheet is exported. Returns the triangle count for STL and OBJ. An existing " +
+      "file is replaced only with overwrite: true. Does not change the document.",
+    inputSchema: {
+      type: "object",
+      required: ["path"],
+      properties: {
+        path: { type: "string", description: "Absolute output path ending in .stl, .obj or .3mf" },
+        ids: BODY_IDS_SCHEMA,
+        tolerance: { type: "number", default: 0.05 },
+        angle: { type: "number", default: 15 },
+        overwrite: { type: "boolean", default: false },
+      },
+    },
+  },
+  {
+    name: "export_drawing",
+    description:
+      "Export a technical drawing as SVG in millimetres (1 unit = 1 mm): one orthographic " +
+      "hidden-line projection per entry of `views` (front, back, left, right, top, bottom, " +
+      "isometric; default front, top, right), laid out left to right. Visible edges are solid " +
+      "lines, hidden edges dashed; hiddenLines: false leaves the hidden ones out. Only Solids " +
+      "can be drawn; without `ids` every Solid of the document is. Returns the size of each " +
+      "view in millimetres. The viewport camera is not touched. An existing file is replaced " +
+      "only with overwrite: true. Does not change the document.",
+    inputSchema: {
+      type: "object",
+      required: ["path"],
+      properties: {
+        path: { type: "string", description: "Absolute output path ending in .svg" },
+        ids: BODY_IDS_SCHEMA,
+        views: {
+          type: "array",
+          items: {
+            type: "string",
+            enum: ["front", "back", "left", "right", "top", "bottom", "isometric"],
+          },
+          minItems: 1,
+        },
+        hiddenLines: { type: "boolean", default: true },
+        overwrite: { type: "boolean", default: false },
+      },
+    },
+  },
+  {
     name: "import_step",
     description:
       "Add the geometry of a STEP file (.step / .stp, absolute path) to the current document. " +
@@ -1628,6 +1720,25 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "export_step": {
         const args = ExportStepArgs.parse(rawArgs ?? {});
         return ok(await native.exportStep(args.path, args.ids, args.overwrite));
+      }
+
+      case "export_parasolid": {
+        const args = ExportParasolidArgs.parse(rawArgs ?? {});
+        return ok(await native.exportParasolid(args.path, args.ids, args.overwrite));
+      }
+
+      case "export_mesh": {
+        const args = ExportMeshArgs.parse(rawArgs ?? {});
+        return ok(
+          await native.exportMesh(args.path, args.ids, args.tolerance, args.angle, args.overwrite),
+        );
+      }
+
+      case "export_drawing": {
+        const args = ExportDrawingArgs.parse(rawArgs ?? {});
+        return ok(
+          await native.exportDrawing(args.path, args.ids, args.views, args.hiddenLines, args.overwrite),
+        );
       }
 
       case "import_step": {

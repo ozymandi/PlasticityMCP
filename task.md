@@ -371,7 +371,31 @@ Consequences in the code:
 
 Block 8 is committed, merged into `main` (fast-forward) and pushed. The MCP client must be restarted to see the new tools.
 
-Ideas beyond the agreed list (not agreed yet): other exchange formats (IGES, Parasolid, STL, OBJ); opening `.plasticity` files.
+## Native block 9 — more export formats — ✅ Done (2026-10-04, ~3.5 h)
+
+Work is on branch `native-block-9`. Designer asked for `export_drawing` to be included.
+
+New tools: `export_mesh` (STL / OBJ / 3MF by extension), `export_parasolid` (`.x_t` / `.x_b`), `export_drawing` (SVG) — 54 tools total. New module `drawing.ts` builds the SVG.
+
+**IGES and SAT are not available:** `ExportCadFactory` refuses `.igs` / `.iges` (empty error) and fails on `.sat` / `.sab` (`PK_ERROR_wrong_entity`) on this installation, although `ExportIgesCommand` / `ExportSatCommand` exist in the code. No tools were added for them.
+
+Verified live on 26.1.3 (Untitled), `smoke:native` extended and passing (156 checks, 19 s):
+- STL of a box: 12 triangles, exact binary size, coordinates in millimetres; a finer tolerance gives more triangles on a sphere; OBJ with 8 vertices in millimetres; 3MF archive; a curve, an existing file and an unknown extension are refused.
+- Parasolid `.x_t` and `.x_b` with the Parasolid preamble.
+- Drawing of the L-shaped body: front 40 × 25, top 40 × 20, right 20 × 25 mm; hidden lines can be left out; a curve is refused.
+- Built stdio server exercised end to end incl. validation errors. The SVG was also rendered (headless Edge) and inspected visually: correct orientation of all views, arcs and ellipses drawn as curves, hidden edges dashed.
+
+Findings:
+- Mesh exporters `STLExportFactory` / `OBJExportFactory` / `ThreeMfExportFactory` share one interface (`shells`, `filePath`, `unit`, `upAxis`, `curveChordTolerance`, `surfacePlaneTolerance`, `curveChordAngleDegrees`, `surfacePlaneAngleDegrees`). **Their default unit is metres** — the tool sets `unit = 'millimeter'`. Plasticity keeps a minimum mesh density of its own: a 15 mm sphere never drops below ≈ 5600 triangles.
+- `ExportCadFactory` picks the format from the file extension (STEP, `.x_t`, `.x_b`). The binary Parasolid file starts with the same text preamble as the text one.
+- Drawing: the native `ExportHiddenLineFactory.commit()` needs the export dialog (throws without it), so only its `generator.generate(camera, resolution, bodyIds, factory, transforms)` is used, with our own `OrthographicCamera` per view (the viewport is untouched). **One factory per view** — reusing a factory gave wrong outlines for every view after the first.
+- The generator returns three encodings (pixels, y down): `3006` polyline (`count` points), `3005` ellipse (cx, cy, rx, ry, rotation), `3004` elliptical arc (cx, cy, rx, ry, rotation, start, end, sweep flag, large-arc flag — the last two exactly as in an SVG `A` command). Categories containing "Hidden" are hidden lines.
+
+**Not verified:** mesh and Parasolid export of Sheets; drawings of free-form (spline) edges beyond a loft seen in isometric; very large drawings (limit: 2 million coordinates per view); how other CAD systems and slicers read the files (only the file structure was checked).
+
+Block 9 is committed, merged into `main` (fast-forward) and pushed. The MCP client must be restarted to see the new tools.
+
+Ideas beyond the agreed list (not agreed yet): importing other formats (Parasolid, meshes, SVG); opening `.plasticity` files.
 
 ## Risks
 
@@ -418,4 +442,4 @@ PlasticityMCP/
 ## Next action
 
 1. Designer: close Plasticity and call `native_launch` (or `npm run smoke:native`) once to verify the cold-start path; restart the MCP client so it picks up the new tools.
-2. Blocks 1–8 are in `main` and published. Designer decides what comes next (see the ideas list).
+2. Blocks 1–9 are in `main` and published. Designer decides what comes next (see the ideas list).

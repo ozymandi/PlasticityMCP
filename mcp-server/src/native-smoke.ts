@@ -598,6 +598,60 @@ async function runChecks(native: NativeSession, title: string): Promise<void> {
     const wrongType = await failure(native.exportStep(join(folder, "plate.txt")));
     check("wrong extension is refused", /must end in/.test(wrongType?.message ?? ""));
 
+    // Mesh and Parasolid export of the plate (40 x 30 x 10 at x = 200) and the sphere.
+    const stlPath = join(folder, "plate.stl");
+    const stl = await native.exportMesh(stlPath, [plateId]);
+    const stlData = readFileSync(stlPath);
+    let stlMax = -Infinity;
+    for (let t = 0; t < 12; t++) {
+      for (let v = 0; v < 3; v++) stlMax = Math.max(stlMax, stlData.readFloatLE(84 + t * 50 + 12 + v * 12));
+    }
+    check("STL of a box has 12 triangles", stl.triangles === 12 && stl.bytes === 84 + 12 * 50, `${stl.triangles}`);
+    check("STL is written in millimetres", Math.abs(stlMax - 240) < 1e-3, `max x ${stlMax}`);
+    const coarse = await native.exportMesh(join(folder, "ball-coarse.stl"), [sphereId], 0.5, 30);
+    const fine = await native.exportMesh(join(folder, "ball-fine.stl"), [sphereId], 0.01, 5);
+    check("a finer tolerance gives more triangles", (fine.triangles ?? 0) > (coarse.triangles ?? Infinity),
+      `${coarse.triangles} -> ${fine.triangles}`);
+    const objPath = join(folder, "plate.obj");
+    const obj = await native.exportMesh(objPath, [plateId]);
+    const objVertices = readFileSync(objPath, "utf8").split(/\r?\n/).filter((line) => line.startsWith("v "));
+    check("OBJ of a box", obj.triangles === 12 && objVertices.length === 8 &&
+      objVertices.some((line) => line === "v 240 30 10"), `${objVertices.length} vertices`);
+    const threeMf = await native.exportMesh(join(folder, "plate.3mf"), [plateId]);
+    check("3MF archive", threeMf.format === "3mf" && threeMf.bytes > 500 && threeMf.triangles === undefined,
+      `${threeMf.bytes} bytes`);
+    const meshOfCurve = await failure(native.exportMesh(join(folder, "curve.stl"), [rect!.id]));
+    check("a curve cannot be meshed", /has no surface to mesh/.test(meshOfCurve?.message ?? ""));
+    const meshAgain = await failure(native.exportMesh(stlPath, [plateId]));
+    check("mesh export refuses to overwrite", /already exists/.test(meshAgain?.message ?? ""));
+    const unknownMesh = await failure(native.exportMesh(join(folder, "plate.ply"), [plateId]));
+    check("unknown mesh format is refused", /must end in/.test(unknownMesh?.message ?? ""));
+
+    for (const name of ["plate.x_t", "plate.x_b"]) {
+      const parasolid = await native.exportParasolid(join(folder, name), [plateId]);
+      check(`Parasolid ${name}`, parasolid.bytes > 1000 &&
+        readFileSync(parasolid.path).subarray(0, 12).toString("latin1") === "**ABCDEFGHIJ", `${parasolid.bytes} bytes`);
+    }
+
+    // Drawing of the L-shaped body: front 40 x 25, top 40 x 20, right 20 x 25.
+    const svgPath = join(folder, "elbow.svg");
+    const drawing = await native.exportDrawing(svgPath, [elbowBody], ["front", "top", "right", "isometric"]);
+    const sizeOf = (view: string) => drawing.views.find((v) => v.view === view)?.sizeMm.join(" x ");
+    check("drawing views have the true sizes", sizeOf("front") === "40 x 25" &&
+      sizeOf("top") === "40 x 20" && sizeOf("right") === "20 x 25",
+      drawing.views.map((v) => `${v.view} ${v.sizeMm.join(" x ")}`).join(", "));
+    const svgText = readFileSync(svgPath, "utf8");
+    check("drawing is an SVG in millimetres", svgText.includes(`width="${drawing.widthMm}mm"`) &&
+      svgText.includes('id="view-isometric"') && drawing.views.every((v) => v.visibleLines > 0));
+    const frontHidden = drawing.views.find((v) => v.view === "front")!.hiddenLines;
+    const visibleOnly = await native.exportDrawing(join(folder, "visible.svg"), [elbowBody], ["front"], false);
+    check("hidden lines can be left out", frontHidden > 0 && visibleOnly.views[0]?.hiddenLines === 0,
+      `${frontHidden} -> ${visibleOnly.views[0]?.hiddenLines}`);
+    const holedDrawing = await native.exportDrawing(join(folder, "plate.svg"), [plateId], ["top"]);
+    check("drawing of the plain plate, top view", holedDrawing.views[0]?.sizeMm.join(" x ") === "40 x 30");
+    const drawCurve = await failure(native.exportDrawing(join(folder, "curve.svg"), [rect!.id]));
+    check("only Solids can be drawn", /only Solids can be drawn/.test(drawCurve?.message ?? ""));
+
     const imported = await native.importStep(stepPath);
     check("import STEP brings the plate back", imported.created.length === 1 &&
       imported.created[0]?.faceCount === 6 &&
