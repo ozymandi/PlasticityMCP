@@ -2,7 +2,7 @@
 
 MCP server for [Plasticity](https://www.plasticity.xyz/) — lets an LLM read, create and modify real CAD geometry inside a running Plasticity window.
 
-**Status:** working, for internal use. 59 tools, verified live on **Plasticity 26.1.3 / Windows**. Unofficial: it relies on Plasticity's internal APIs and is pinned to that exact version.
+**Status:** working, for internal use. 69 tools, verified live on **Plasticity 26.1.3 / Windows**. Unofficial: it relies on Plasticity's internal APIs and is pinned to that exact version.
 
 ## What it can do
 
@@ -10,12 +10,13 @@ MCP server for [Plasticity](https://www.plasticity.xyz/) — lets an LLM read, c
 |------|-------|
 | Session | `native_launch`, `native_connect`, `native_status` |
 | Primitives | `create_box`, `create_sphere`, `create_cylinder` |
-| Curves | `create_polyline`, `create_spline`, `create_circle`, `create_arc`, `create_arc_center`, `create_ellipse`, `join_curves` |
+| Curves | `create_polyline`, `create_spline`, `create_circle`, `create_arc`, `create_arc_center`, `create_ellipse` |
 | Profiles | `list_regions`, `extrude_profile`, `revolve_profile`, `sweep_profile`, `loft_profiles` |
 | Scene | `list_bodies`, `get_selection`, `select_bodies`, `delete_bodies`, `rename_body` |
 | Transforms | `move_bodies`, `rotate_bodies`, `scale_bodies` |
 | Copies | `copy_bodies`, `mirror_bodies`, `array_rectangular`, `array_radial` |
 | Modelling | `get_body_topology`, `boolean`, `fillet_edges`, `chamfer_edges`, `extrude_faces` |
+| Solids and faces | `cut`, `hollow`, `thicken`, `offset_faces`, `draft_faces`, `delete_faces`, `remove_fillets`, `patch`, `pipe`, `join`, `unjoin` |
 | Export | `export_step`, `export_parasolid`, `export_mesh`, `export_drawing`, `save_document` |
 | Import | `import_step`, `import_parasolid`, `import_svg`, `import_mesh`, `list_reference_meshes`, `delete_reference_meshes` |
 | View | `set_view`, `screenshot` |
@@ -70,7 +71,7 @@ npm run smoke:native
 
 ## Repository
 
-- [mcp-server/](mcp-server/) — the server (`src/native/` is the CAD layer, one module per tool family; `src/launcher.ts` the launch trick, `src/native-smoke.ts` the live test)
+- [mcp-server/](mcp-server/) — the server (`src/native/` is the CAD layer and `src/tools/` the MCP tool definitions, one module per tool family in each; `src/launcher.ts` the launch trick, `src/native-smoke.ts` the live test)
 - [task.md](task.md) — scope, decisions, per-block status and findings
 - [docs/ws-protocol.md](docs/ws-protocol.md) — reverse-engineered bridge protocol
 - [docs/architecture.md](docs/architecture.md), [docs/feature-request.md](docs/feature-request.md) — April 2026 recon, kept for history; the "every path is closed" conclusion there is superseded by the native channel

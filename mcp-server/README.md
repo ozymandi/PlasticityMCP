@@ -48,6 +48,17 @@ A second channel, independent of the WebSocket bridge: real B-Rep operations thr
 | `fillet_edges` | Round edges with `radius`. |
 | `chamfer_edges` | Bevel edges by `distance`. |
 | `extrude_faces` | Push / pull faces of a Solid by `distance`: positive adds outward, negative cuts in. On a Sheet the extrusion becomes a new Solid. |
+| `cut` | Cut Solids / Sheets into pieces with curves (`curveIds`, optional `extend` and sweep `direction`) or with faces of another body (`cutterId` + `faceIds`). |
+| `hollow` | Shell a Solid with walls of `thickness`; `faceIds` become the opening, without them the cavity is closed. Inward by default, `outward` optional. |
+| `thicken` | `front` / `back` thickness: a Sheet becomes a Solid; with `faceIds` those faces become a new Solid. |
+| `offset_faces` | Move faces along their normals by `distance`; neighbours follow. |
+| `draft_faces` | Tilt faces by `angle` degrees about the plane of `referenceFaceId`. |
+| `delete_faces` | Remove faces and heal the gap (removes a fillet, hole or boss); `heal: false` leaves an open Sheet. |
+| `remove_fillets` | Remove the fillets of bodies; optional `maxRadius` and `convexity` (any / convex / concave). |
+| `patch` | Close with a surface: closed curves (`curveIds`), regions (`regionIds`), all holes of a Sheet (`id`) or one opening by its edges (`id` + `edgeIds`). |
+| `pipe` | Round tubes along curves: `diameter`, optional `wallThickness` (added outside the bore). |
+| `join` | Curves that touch end to end → one curve; Sheets that share edges → one Sheet, or a Solid when closed. Keeps the first id. |
+| `unjoin` | A curve → its segments, a body → one Sheet per face (`ids`); or detach chosen faces (`id` + `faceIds`). |
 
 | `create_polyline` | Curve of straight segments through `points`; `closed` makes a profile. |
 | `create_spline` | Smooth curve through `points`. |
@@ -55,7 +66,6 @@ A second channel, independent of the WebSocket bridge: real B-Rep operations thr
 | `create_arc` | Arc through three points (`start`, `through`, `end`). |
 | `create_arc_center` | Arc around `center` from `start` through `angle` degrees about `normal`. |
 | `create_ellipse` | Ellipse from `center`, `majorRadius`, `minorRadius`, optional `normal` and `majorDirection`. |
-| `join_curves` | Merge curves that touch end to end into one (keeps the first id). |
 | `list_regions` | Regions Plasticity built from closed loops of curves: id, bounds, normal, boundary length, holes. |
 | `extrude_profile` | Closed planar curve → Solid, open curve → Sheet, by `distance` along the plane normal. Takes a curve `id` or `regionIds`. |
 

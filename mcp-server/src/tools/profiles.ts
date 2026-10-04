@@ -1,10 +1,16 @@
 import { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
-import { BodyId, native, ok, type ToolFamily, VEC3_SCHEMA, Vec3Mm } from "./shared.js";
+import {
+  BodyId,
+  native,
+  ok,
+  RegionIds,
+  type ToolFamily,
+  VEC3_SCHEMA,
+  Vec3Mm,
+} from "./shared.js";
 
 /** Regions, and solids or sheets made from profiles. */
-
-const RegionIds = z.array(z.string().min(1)).min(1);
 
 const oneProfile = (a: { id?: number; profileId?: number; regionIds?: string[] }) =>
   ((a.id ?? a.profileId) === undefined) !== (a.regionIds === undefined);

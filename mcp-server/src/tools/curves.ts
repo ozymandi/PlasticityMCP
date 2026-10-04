@@ -1,16 +1,8 @@
 import { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
-import {
-  BODY_IDS_SCHEMA,
-  BodyId,
-  native,
-  ok,
-  type ToolFamily,
-  VEC3_SCHEMA,
-  Vec3Mm,
-} from "./shared.js";
+import { native, ok, type ToolFamily, VEC3_SCHEMA, Vec3Mm } from "./shared.js";
 
-/** Curve creation and joining. */
+/** Curve creation. */
 
 const CreatePolylineArgs = z.object({
   points: z.array(Vec3Mm).min(2),
@@ -58,10 +50,6 @@ const CreateEllipseArgs = z.object({
     "majorDirection must be non-zero",
   ),
   name: z.string().optional(),
-});
-
-const JoinCurvesArgs = z.object({
-  ids: z.array(BodyId).min(2),
 });
 
 const POINTS_SCHEMA = {
@@ -173,18 +161,6 @@ const tools: Tool[] = [
       },
     },
   },
-  {
-    name: "join_curves",
-    description:
-      "Join curves that touch end to end into one curve — needed to use several pieces (lines " +
-      "and arcs) as one sweep path. The joined curve keeps the id of the first curve and is " +
-      "returned in `changed`; the other curves are in `removedIds`. Undoable.",
-    inputSchema: {
-      type: "object",
-      required: ["ids"],
-      properties: { ids: { ...BODY_IDS_SCHEMA, minItems: 2 } },
-    },
-  },
 ];
 
 const handlers: ToolFamily["handlers"] = {
@@ -227,11 +203,6 @@ const handlers: ToolFamily["handlers"] = {
         args.name,
       ),
     );
-  },
-
-  join_curves: async (rawArgs) => {
-    const args = JoinCurvesArgs.parse(rawArgs ?? {});
-    return ok(await native.joinCurves(args.ids));
   },
 };
 

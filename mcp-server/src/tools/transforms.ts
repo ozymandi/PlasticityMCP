@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   BODY_IDS_SCHEMA,
   BodyIds,
+  Direction,
   native,
   ok,
   type ToolFamily,
@@ -43,8 +44,6 @@ const MirrorBodiesArgs = z.object({
   planeNormal: Vec3Mm.refine((a) => Math.hypot(...a) > 0, "planeNormal must be non-zero"),
   keepOriginal: z.boolean().optional().default(true),
 });
-
-const Direction = Vec3Mm.refine((a) => Math.hypot(...a) > 0, "direction must be non-zero");
 
 const ArrayCount = z.number().int().min(1).max(200);
 

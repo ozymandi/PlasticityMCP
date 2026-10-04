@@ -9,7 +9,15 @@ import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchPlasticity } from "./launcher.js";
-import { BodyInfo, NativeSession, RegionInfo, Vec3, ViewName } from "./native.js";
+import {
+  BodyInfo,
+  BodyTopology,
+  MutationResult,
+  NativeSession,
+  RegionInfo,
+  Vec3,
+  ViewName,
+} from "./native.js";
 
 const TOLERANCE_MM = 1e-3;
 
@@ -56,6 +64,7 @@ async function main() {
 
   try {
     await runChecks(native, target.title);
+    await solidChecks(native);
   } catch (err) {
     console.error("SMOKE ERROR:", (err as Error).message);
     process.exitCode = 1;
@@ -476,7 +485,7 @@ async function runChecks(native: NativeSession, title: string): Promise<void> {
   check("extrude a region", slotSolid?.faceCount === 6 &&
     boundsMatch(slotSolid, [-10, 1190, 0], [50, 1210, 5]), fmt(slotSolid));
   await native.undo();
-  const joinedSlot = await native.joinCurves([slotTop.id, slotRight.id, slotBottom.id, slotLeft.id]);
+  const joinedSlot = await native.join([slotTop.id, slotRight.id, slotBottom.id, slotLeft.id]);
   check("join keeps the first curve and removes the rest",
     joinedSlot.changed[0]?.id === slotTop.id && joinedSlot.removedIds.length === 3 &&
       boundsMatch(joinedSlot.changed[0], [-10, 1190, 0], [50, 1210, 0]), fmt(joinedSlot.changed[0]));
@@ -517,7 +526,7 @@ async function runChecks(native: NativeSession, title: string): Promise<void> {
   // A sweep path of a line and an arc has to be joined into one curve first.
   const leg = wire(await native.createPolyline([[300, 1000, 0], [300, 1000, 40]]))!;
   const bend = wire(await native.createArcCenter([320, 1000, 40], [300, 1000, 40], 90, [0, 1, 0]))!;
-  const hook = (await native.joinCurves([leg.id, bend.id])).changed[0];
+  const hook = (await native.join([leg.id, bend.id])).changed[0];
   check("join a line and an arc", hook?.id === leg.id &&
     boundsMatch(hook, [300, 1000, 0], [320, 1000, 60]), fmt(hook));
   const hookProfile = wire(await native.createCircle([300, 1000, 0], 4))!;
@@ -525,10 +534,10 @@ async function runChecks(native: NativeSession, title: string): Promise<void> {
   check("sweep along the joined path", bentPipe?.faceCount === 4 &&
     boundsMatch(bentPipe, [296, 996, 0], [320, 1004, 64]), fmt(bentPipe));
   await native.undo();
-  const apart = await failure(native.joinCurves([hookProfile.id, slotTop.id]));
+  const apart = await failure(native.join([hookProfile.id, slotTop.id]));
   check("joining curves that do not touch is refused with a hint",
     /must touch end to end/.test(apart?.message ?? ""), apart?.message ?? "no error");
-  const lonely = await failure(native.joinCurves([leg.id]));
+  const lonely = await failure(native.join([leg.id]));
   check("joining needs two curves", /at least two/.test(lonely?.message ?? ""));
 
   // --- copy, mirror, arrays (an L-shaped body at x >= 2000, so reflections are visible) ---
@@ -776,6 +785,206 @@ async function runChecks(native: NativeSession, title: string): Promise<void> {
   } finally {
     rmSync(folder, { recursive: true, force: true });
   }
+}
+
+// Cut, hollow, thicken, face tools, patch, pipe, join / unjoin — drawn around x = 2000.
+async function solidChecks(native: NativeSession): Promise<void> {
+  const X = 2000;
+  const failure = (p: Promise<unknown>) => p.then(() => null, (e: Error) => e);
+  const changed = (result: MutationResult, id: number) => result.changed.find((b) => b.id === id);
+  const faceBy = (t: BodyTopology, normal: Vec3) =>
+    t.faces!.find((f) => f.normal.every((n, i) => Math.abs(n - normal[i]!) < 1e-6))!.id;
+  const brief = (result: MutationResult) => JSON.stringify({
+    created: result.created.map((b) => `${b.type}/${b.faceCount}`),
+    changed: result.changed.map((b) => `${b.type}/${b.faceCount}`),
+    removed: result.removedIds.length,
+  });
+
+  const box = (await native.createBox([X, 0, 0], [40, 30, 20])).created[0]!;
+  let t = await native.topology(box.id);
+  const top = () => faceBy(t, [0, 0, 1]);
+  const sides = () => [faceBy(t, [1, 0, 0]), faceBy(t, [-1, 0, 0]), faceBy(t, [0, 1, 0]), faceBy(t, [0, -1, 0])];
+
+  // --- faces ---
+  const raised = await native.offsetFaces(box.id, [top()], 5);
+  check("offset_faces +5 raises the top", boundsMatch(changed(raised, box.id), [X, 0, 0], [X + 40, 30, 25]),
+    fmt(changed(raised, box.id)));
+  await native.undo();
+
+  t = await native.topology(box.id);
+  const lean = 20 * Math.tan((10 * Math.PI) / 180);
+  const drafted = await native.draftFaces(box.id, sides(), faceBy(t, [0, 0, -1]), 10);
+  check("draft_faces 10° leans the sides out from the bottom",
+    boundsMatch(changed(drafted, box.id), [X - lean, -lean, 0], [X + 40 + lean, 30 + lean, 20]),
+    fmt(changed(drafted, box.id)));
+  await native.undo();
+  t = await native.topology(box.id);
+  const selfReference = await failure(native.draftFaces(box.id, [top()], top(), 5));
+  check("draft_faces rejects its own reference face", /reference face/.test(selfReference?.message ?? ""),
+    selfReference?.message);
+
+  const tray = await native.hollow(box.id, 2, [top()]);
+  check("hollow with an open face keeps the outer size", changed(tray, box.id)?.faceCount === 11 &&
+    boundsMatch(changed(tray, box.id), [X, 0, 0], [X + 40, 30, 20]), brief(tray));
+  await native.undo();
+  t = await native.topology(box.id);
+  const grown = await native.hollow(box.id, 2, [top()], true);
+  check("hollow outward grows the body",
+    boundsMatch(changed(grown, box.id), [X - 2, -2, -2], [X + 42, 32, 20]), fmt(changed(grown, box.id)));
+  await native.undo();
+  const cavity = await native.hollow(box.id, 2);
+  check("hollow without faces makes a closed cavity", changed(cavity, box.id)?.faceCount === 12 &&
+    changed(cavity, box.id)?.type === "Solid", brief(cavity));
+  await native.undo();
+
+  t = await native.topology(box.id);
+  const slab = await native.thicken(box.id, 3, 0, [top()]);
+  check("thicken a face makes a new Solid", slab.changed.length === 0 &&
+    boundsMatch(slab.created[0], [X, 0, 20], [X + 40, 30, 23]), fmt(slab.created[0]));
+  await native.undo();
+
+  // --- fillets: delete with and without healing, remove ---
+  t = await native.topology(box.id);
+  const uprights = t.edges!.filter((e) => e.kind === "line" && Math.abs(e.lengthMm - 20) < 1e-6).map((e) => e.id);
+  await native.filletEdges(box.id, uprights.slice(0, 2), 4);
+  t = await native.topology(box.id, "faces");
+  const round = t.faces!.filter((f) => !f.planar).map((f) => f.id);
+  const healed = await native.deleteFaces(box.id, [round[0]!]);
+  check("delete_faces heals: a fillet is gone, still a Solid",
+    changed(healed, box.id)?.type === "Solid" && changed(healed, box.id)?.faceCount === 7, brief(healed));
+  await native.undo();
+  const holed = await native.deleteFaces(box.id, [round[0]!], false);
+  check("delete_faces without healing leaves an open Sheet",
+    changed(holed, box.id)?.type === "Sheet" && changed(holed, box.id)?.faceCount === 7, brief(holed));
+  await native.undo();
+  const tooSmall = await failure(native.removeFillets([box.id], 2));
+  check("remove_fillets below maxRadius finds nothing", /No fillets matched/.test(tooSmall?.message ?? ""),
+    tooSmall?.message);
+  const wrongSide = await failure(native.removeFillets([box.id], undefined, "concave"));
+  check("remove_fillets concave finds nothing on outer edges", /No fillets matched/.test(wrongSide?.message ?? ""));
+  const sharp = await native.removeFillets([box.id], 5, "convex");
+  check("remove_fillets restores the box", changed(sharp, box.id)?.faceCount === 6 &&
+    changed(sharp, box.id)?.type === "Solid", brief(sharp));
+  await native.undo();
+  await native.undo(); // the fillet
+
+  // --- cut ---
+  const blade = (await native.createPolyline([[X + 10, 5, 20], [X + 10, 25, 20]])).created[0]!;
+  const short = await failure(native.cut([box.id], { curveIds: [blade.id] }));
+  check("cut with a curve that stops short fails with a hint", /extend: true/.test(short?.message ?? ""),
+    short?.message);
+  const halves = await native.cut([box.id], { curveIds: [blade.id] }, true);
+  const pieces = [...halves.created, ...halves.changed];
+  check("cut with an extended line makes two Solids", pieces.length === 2 && halves.removedIds.length === 0 &&
+    pieces.some((b) => boundsMatch(b, [X, 0, 0], [X + 10, 30, 20])) &&
+    pieces.some((b) => boundsMatch(b, [X + 10, 0, 0], [X + 40, 30, 20])), brief(halves));
+  await native.undo();
+  const wedge = await native.cut([box.id], { curveIds: [blade.id] }, true, [1, 0, 1]);
+  check("cut along a direction tilts the cut",
+    [...wedge.created, ...wedge.changed].some((b) => boundsMatch(b, [X, 0, 10], [X + 10, 30, 20])),
+    JSON.stringify([...wedge.created, ...wedge.changed].map((b) => b.boundsMm)));
+  await native.undo();
+  const knife = (await native.createBox([X + 25, 10, 5], [5, 5, 5])).created[0]!;
+  const knifeFace = faceBy(await native.topology(knife.id, "faces"), [-1, 0, 0]);
+  const sliced = await native.cut([box.id], { id: knife.id, faceIds: [knifeFace] });
+  check("cut with a face of another body uses its whole plane",
+    [...sliced.created, ...sliced.changed].some((b) => boundsMatch(b, [X, 0, 0], [X + 25, 30, 20])) &&
+      [...sliced.created, ...sliced.changed].some((b) => boundsMatch(b, [X + 25, 0, 0], [X + 40, 30, 20])) &&
+      !sliced.changed.some((b) => b.id === knife.id), brief(sliced));
+  await native.undo();
+  t = await native.topology(box.id);
+  const own = await failure(native.cut([box.id], { id: box.id, faceIds: [top()] }));
+  check("cut rejects the target's own faces", /own faces/.test(own?.message ?? ""), own?.message);
+
+  // --- unjoin / join ---
+  const lid = await native.unjoinFaces(box.id, [top()]);
+  check("unjoin a face: a Sheet of its own, the body opens", lid.created.length === 1 &&
+    lid.created[0]?.type === "Sheet" && changed(lid, box.id)?.type === "Sheet" &&
+    changed(lid, box.id)?.faceCount === 5, brief(lid));
+  const closed = await native.join([box.id, lid.created[0]!.id]);
+  check("join Sheets that close a volume gives a Solid", changed(closed, box.id)?.type === "Solid" &&
+    changed(closed, box.id)?.faceCount === 6 && closed.removedIds.length === 1, brief(closed));
+  await native.undo();
+  await native.undo();
+  const apart = await native.unjoin([box.id]);
+  check("unjoin a Solid: one Sheet per face", apart.created.length === 5 &&
+    apart.created.every((b) => b.type === "Sheet" && b.faceCount === 1) && changed(apart, box.id)?.faceCount === 1,
+    brief(apart));
+  await native.undo();
+  const mixed = await failure(native.join([box.id, blade.id]));
+  check("join rejects a mix of curves and bodies", /either curves or Sheets/.test(mixed?.message ?? ""),
+    mixed?.message);
+  const elbow = (await native.createPolyline([[X, 100, 0], [X + 40, 100, 0], [X + 40, 130, 0]])).created[0]!;
+  const segments = await native.unjoin([elbow.id]);
+  check("unjoin a curve: one curve per segment", segments.created.length === 1 &&
+    segments.created[0]?.type === "Wire" && changed(segments, elbow.id) !== undefined, brief(segments));
+  await native.undo();
+
+  // --- patch ---
+  t = await native.topology(box.id);
+  await native.deleteFaces(box.id, [top()], false);
+  const capped = await native.patch({ id: box.id });
+  check("patch caps every hole of a Sheet", changed(capped, box.id)?.type === "Solid" &&
+    changed(capped, box.id)?.faceCount === 6, brief(capped));
+  await native.undo();
+  t = await native.topology(box.id);
+  const rim = t.edges!.filter((e) => e.faceIds.length === 1).map((e) => e.id);
+  const filled = await native.patch({ id: box.id, edgeIds: rim });
+  check("patch fills one hole by its edges", rim.length === 4 && changed(filled, box.id)?.type === "Solid",
+    brief(filled));
+  await native.undo();
+  await native.undo(); // the deleted face
+  const ring = (await native.createCircle([X + 100, 0, 0], 10)).created[0]!;
+  const membrane = await native.patch({ curveIds: [ring.id] });
+  check("patch a closed curve makes a Sheet and keeps the curve", membrane.created.length === 1 &&
+    membrane.created[0]?.type === "Sheet" && membrane.removedIds.length === 0 &&
+    boundsMatch(membrane.created[0], [X + 90, -10, 0], [X + 110, 10, 0]), brief(membrane));
+  await native.undo();
+  const openCurve = await failure(native.patch({ curveIds: [elbow.id] }));
+  check("patch rejects an open curve", /not closed/.test(openCurve?.message ?? ""), openCurve?.message);
+  const ringRegion = (await native.listRegions()).find((r) =>
+    Math.abs(r.boundsMm.min[0]! - (X + 90)) < 0.01 && Math.abs(r.boundsMm.max[0]! - (X + 110)) < 0.01);
+  const fromRegion = await native.patch({ regionIds: [ringRegion!.id] });
+  check("patch a region makes a Sheet", fromRegion.created.length === 1 &&
+    fromRegion.created[0]?.type === "Sheet", brief(fromRegion));
+  await native.undo();
+
+  // A through hole in a Solid: patching its rim gives a separate Sheet.
+  const drill = (await native.createCylinder([X + 20, 15, -5], 5, 30)).created[0]!;
+  await native.boolean("difference", [box.id], [drill.id]);
+  t = await native.topology(box.id);
+  const mouth = t.edges!.filter((e) => e.kind === "circle" && Math.abs(e.midMm[2]! - 20) < 1e-6).map((e) => e.id);
+  const plug = await native.patch({ id: box.id, edgeIds: mouth });
+  check("patch edges of a Solid makes a separate Sheet", plug.created.length === 1 &&
+    plug.created[0]?.type === "Sheet" && boundsMatch(plug.created[0], [X + 15, 10, 20], [X + 25, 20, 20]),
+    brief(plug) + " " + fmt(plug.created[0]));
+  await native.undo();
+  await native.undo(); // the hole
+  await native.undo(); // the drill
+
+  // --- pipe ---
+  const spine = (await native.createPolyline([[X, 200, 0], [X + 40, 200, 0]])).created[0]!;
+  const rod = await native.pipe([spine.id], 6);
+  check("pipe makes a rod of the given diameter", rod.created[0]?.type === "Solid" &&
+    boundsMatch(rod.created[0], [X, 197, -3], [X + 40, 203, 3]) && rod.removedIds.length === 0, fmt(rod.created[0]));
+  await native.undo();
+  const tube = await native.pipe([spine.id], 6, 1);
+  const rims = (await native.topology(tube.created[0]!.id, "edges")).edges!.map((e) => e.lengthMm);
+  check("pipe with a wall: bore keeps the diameter, wall goes outside",
+    rims.filter((l) => Math.abs(l - 2 * Math.PI * 3) < 0.01).length === 2 &&
+      rims.filter((l) => Math.abs(l - 2 * Math.PI * 4) < 0.01).length === 2, JSON.stringify(rims));
+  await native.undo();
+  const notCurve = await failure(native.pipe([box.id], 6));
+  check("pipe rejects a body that is not a curve", /not a curve/.test(notCurve?.message ?? ""), notCurve?.message);
+
+  // --- thicken a Sheet ---
+  const fence = (await native.extrudeProfile(elbow.id, 20)).created[0]!;
+  const wall = await native.thicken(fence.id, 2, 1);
+  check("thicken turns a Sheet into a Solid with the same id", changed(wall, fence.id)?.type === "Solid" &&
+    wall.created.length === 0, brief(wall));
+  await native.undo();
+  const solidOnly = await failure(native.thicken(box.id, 2, 0));
+  check("thicken without faces needs a Sheet", /not a Sheet/.test(solidOnly?.message ?? ""), solidOnly?.message);
 }
 
 main().catch((err) => {

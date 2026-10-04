@@ -28,6 +28,12 @@ export const BodyId = z.number().int().nonnegative();
 
 export const BodyIds = z.array(BodyId).min(1);
 
+export const Direction = Vec3Mm.refine((a) => Math.hypot(...a) > 0, "direction must be non-zero");
+
+export const TopologyIds = z.array(z.string().min(1)).min(1);
+
+export const RegionIds = z.array(z.string().min(1)).min(1);
+
 export const VEC3_SCHEMA = {
   type: "array",
   items: { type: "number" },
@@ -41,6 +47,13 @@ export const BODY_IDS_SCHEMA = {
   items: { type: "number" },
   minItems: 1,
   description: "Stable body ids (from list_bodies)",
+};
+
+export const TOPOLOGY_IDS_SCHEMA = {
+  type: "array",
+  items: { type: "string" },
+  minItems: 1,
+  description: "Face / edge ids from get_body_topology",
 };
 
 export function ok(data: unknown) {

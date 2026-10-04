@@ -103,6 +103,17 @@ export interface RegionInfo {
   holes?: number;
 }
 
+/** What cuts in `cut`: curves, or faces of another body. */
+export type Cutter = { curveIds: number[] } | { id: number; faceIds: string[] };
+
+/** What `patch` closes: closed curves, regions, or holes of a body (all of them, or one by its edges). */
+export type PatchSource =
+  | { curveIds: number[] }
+  | { regionIds: string[] }
+  | { id: number; edgeIds?: string[] };
+
+export type FilletConvexity = "any" | "convex" | "concave";
+
 export interface MutationResult {
   created: BodyInfo[];
   /** Bodies that kept their id but changed (bounds, name, topology, visibility, lock). */

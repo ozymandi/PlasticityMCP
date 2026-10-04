@@ -1,9 +1,18 @@
-/** Topology, boolean, fillet / chamfer, face extrusion. */
+/** Topology and the operations on Solids and Sheets: boolean, cut, faces, edges, patch, join. */
 
+import { withHint } from "./core.js";
 import { MM } from "./math.js";
 import { ProfileTools } from "./profiles.js";
 import { FIND_VIEW, commandFunction } from "./snippets.js";
-import { BodyTopology, BooleanOperation, MutationResult } from "./types.js";
+import {
+  BodyTopology,
+  BooleanOperation,
+  Cutter,
+  FilletConvexity,
+  MutationResult,
+  PatchSource,
+  Vec3,
+} from "./types.js";
 
 // Native operation codes, read from the running 26.1.3 app.
 export const BOOLEAN_CODES: Record<BooleanOperation, number> = {
@@ -142,6 +151,16 @@ export const READ_TOPOLOGY = `function (args) {
   return result;
 }`;
 
+export const CONVEXITY_CODES: Record<FilletConvexity, number> = {
+  any: 8600,
+  convex: 8602,
+  concave: 8603,
+};
+
+// Setup line shared by the face tools: `args.id` is the body, `args.faceIds` its faces.
+const PICK_FACES = `const view = typed(args.id, 'Solid', 'Sheet');
+        factory.faces = pick(view.high.faces, args.faceIds, 'face');`;
+
 export class SolidTools extends ProfileTools {
   /**
    * Faces and edges of a Solid / Sheet. Their ids are valid only until the body changes:
@@ -216,4 +235,323 @@ export class SolidTools extends ProfileTools {
       [{ id, faceIds, distance: distanceMm * MM }],
     );
   }
+
+  /**
+   * Cut Solids / Sheets into pieces. A curve cuts with the surface it sweeps along `direction`
+   * (by default the normal of the curve's plane); `extend` lengthens a curve that stops short
+   * of the body. Faces of another body cut with their whole surface. One piece keeps the id of
+   * its target, the others are new; the cutters stay.
+   */
+  cut(targetIds: number[], cutter: Cutter, extend = false, direction?: Vec3): Promise<MutationResult> {
+    const cutterBody = "id" in cutter ? cutter.id : undefined;
+    if (cutterBody !== undefined && targetIds.includes(cutterBody)) {
+      return Promise.reject(new Error("A body cannot be cut with its own faces"));
+    }
+    const setup = `
+        factory.shells = args.targetIds.map((id) => typed(id, 'Solid', 'Sheet'));
+        if (args.curveIds) {
+          factory.curves = args.curveIds.map((id) => typed(id, 'Wire'));
+          factory.shouldExtend = args.extend;
+          if (args.direction) factory.direction = new Vector3(...args.direction).normalize();
+        } else {
+          factory.faces = pick(typed(args.id, 'Solid', 'Sheet').high.faces, args.faceIds, 'face');
+        }`;
+    return withHint(
+      this.mutate(
+        commandFunction("CutCommand", ["Vector3"], setup),
+        ["MultiCutFactory", "Vector3"],
+        [{ targetIds, ...cutter, extend, direction }],
+      ),
+      "Failed to cut body into sections",
+      "The cutter does not divide the body: a curve has to cross it completely (extend: true lengthens it).",
+    );
+  }
+
+  /**
+   * Turn a Solid into a shell with walls of `thicknessMm`. With `faceIds` those faces are
+   * removed and become the opening; without them the cavity is closed. The wall grows inward
+   * from the existing faces, or outward with `outward`.
+   */
+  hollow(id: number, thicknessMm: number, faceIds?: string[], outward = false): Promise<MutationResult> {
+    // The native sign convention: negative is inward.
+    const thickness = (outward ? thicknessMm : -thicknessMm) * MM;
+    if (faceIds) {
+      const setup = `
+        const view = typed(args.id, 'Solid');
+        factory.faces = pick(view.high.faces, args.faceIds, 'face');
+        factory.thickness = args.thickness;`;
+      return this.mutate(
+        commandFunction("HollowFacesCommand", [], setup),
+        ["HollowFacesFactory"],
+        [{ id, faceIds, thickness }],
+      );
+    }
+    const setup = `
+        factory.solids = [typed(args.id, 'Solid')];
+        factory.thickness = args.thickness;`;
+    return this.mutate(
+      commandFunction("HollowSolidsCommand", [], setup),
+      ["HollowSolidsFactory"],
+      [{ id, thickness }],
+    );
+  }
+
+  /**
+   * Give thickness. A Sheet becomes a Solid and keeps its id. With `faceIds`, those faces of a
+   * Solid or Sheet are thickened into a new Solid and the body stays as it is. `frontMm` goes
+   * along the face normals, `backMm` against them.
+   */
+  thicken(id: number, frontMm: number, backMm: number, faceIds?: string[]): Promise<MutationResult> {
+    const values = [{ id, faceIds, front: frontMm * MM, back: backMm * MM }];
+    if (faceIds) {
+      const setup = `
+        ${PICK_FACES}
+        factory.front = args.front;
+        factory.back = args.back;`;
+      return this.mutate(commandFunction("ThickenFaceCommand", [], setup), ["ThickenFaceFactory"], values);
+    }
+    const setup = `
+        factory.sheets = [typed(args.id, 'Sheet')];
+        factory.front = args.front;
+        factory.back = args.back;`;
+    return this.mutate(commandFunction("ThickenSheetCommand", [], setup), ["ThickenSheetFactory"], values);
+  }
+
+  /** Move faces of one body along their normals by `distanceMm`; neighbours follow. */
+  offsetFaces(id: number, faceIds: string[], distanceMm: number): Promise<MutationResult> {
+    const setup = `
+        ${PICK_FACES}
+        factory.distance = args.distance;`;
+    return this.mutate(
+      commandFunction("OffsetFaceCommand", [], setup),
+      ["OffsetFaceFactory"],
+      [{ id, faceIds, distance: distanceMm * MM }],
+    );
+  }
+
+  /**
+   * Tilt faces of one body by `angleDeg` (draft angle). The faces pivot where they meet the
+   * plane of `referenceFaceId`, a planar face of the same body that itself stays in place.
+   */
+  draftFaces(
+    id: number,
+    faceIds: string[],
+    referenceFaceId: string,
+    angleDeg: number,
+  ): Promise<MutationResult> {
+    if (faceIds.includes(referenceFaceId)) {
+      return Promise.reject(new Error("The reference face cannot be one of the drafted faces"));
+    }
+    const setup = `
+        ${PICK_FACES}
+        factory.reference = pick(view.high.faces, [args.referenceFaceId], 'face')[0];
+        factory.degrees = args.degrees;`;
+    return this.mutate(
+      commandFunction("DraftFaceCommand", [], setup),
+      ["DraftFaceFactory"],
+      [{ id, faceIds, referenceFaceId, degrees: angleDeg }],
+    );
+  }
+
+  /**
+   * Remove faces of one body. With `heal` the neighbouring faces are extended to close the gap
+   * (Plasticity's Dissolve) and a Solid stays a Solid; without it the faces are just taken out
+   * (Delete Face) and a Solid becomes an open Sheet.
+   */
+  deleteFaces(id: number, faceIds: string[], heal = true): Promise<MutationResult> {
+    if (!heal) {
+      return this.mutate(
+        commandFunction("DeleteFaceCommand", [], PICK_FACES, true),
+        ["DeleteFaceFactory", "DeleteFaceCommand"],
+        [{ id, faceIds }],
+      );
+    }
+    return withHint(
+      this.mutate(
+        commandFunction("DissolveFaceCommand", [], PICK_FACES, true),
+        ["DissolveFaceFactory", "DissolveFaceCommand"],
+        [{ id, faceIds }],
+      ),
+      "PK_ERROR",
+      "The neighbouring faces cannot close this gap; heal: false removes the faces and leaves a hole.",
+    );
+  }
+
+  /**
+   * Close with a surface. Closed curves and regions give new Sheets, one per loop. For a body,
+   * `edgeIds` (a closed loop of edges) picks one hole; without them every hole of a Sheet is
+   * capped. A Sheet that becomes watertight turns into a Solid.
+   */
+  patch(source: PatchSource): Promise<MutationResult> {
+    if ("curveIds" in source) {
+      const setup = `
+        factory.curves = args.curveIds.map((id) => {
+          const item = findItem(id);
+          typed(id, 'Wire');
+          if (!item.model?.IsClosed?.()) throw new Error('Curve ' + id + ' is not closed');
+          return item.view;
+        });`;
+      return this.mutate(
+        commandFunction("PatchHoleInCurveCommand", [], setup, true),
+        ["PatchHoleInWireFactory", "PatchHoleInCurveCommand"],
+        [source],
+      );
+    }
+    if ("regionIds" in source) {
+      return this.mutate(
+        commandFunction("PatchRegionCommand", [], `factory.regions = pickRegions(args.regionIds);`, true),
+        ["PatchRegionFactory", "PatchRegionCommand"],
+        [source],
+      );
+    }
+    if (!source.edgeIds) {
+      return withHint(
+        this.mutate(
+          commandFunction("PatchHolesInSheetCommand", [], `factory.sheets = [typed(args.id, 'Sheet')];`, true),
+          ["CapHolesInSheetFactory", "PatchHolesInSheetCommand"],
+          [source],
+        ),
+        "LocalCheck",
+        "The Sheet has no holes that can be capped.",
+      );
+    }
+    // The edges of a hole in a Sheet are filled in place; edges of a Solid give a separate Sheet.
+    return this.enqueue(() => this.call<string>(`function (args) {
+        ${FIND_VIEW}
+        return find(args.id).constructor.name;
+      }`, [], [source])).then((type) => {
+      if (type !== "Solid" && type !== "Sheet") {
+        throw new Error(`Body ${source.id} is a ${type === "Wire" ? "curve" : type}, not a Solid or Sheet`);
+      }
+      const onSheet = type === "Sheet";
+      const setup = onSheet
+        ? `const view = typed(args.id, 'Sheet');
+        factory.sheet = view;
+        factory.edges = pick(view.high.edges, args.edgeIds, 'edge');`
+        : `const view = typed(args.id, 'Solid');
+        factory.edges = pick(view.high.edges, args.edgeIds, 'edge');`;
+      return withHint(
+        this.mutate(
+          commandFunction(onSheet ? "PatchHoleInSheetCommand" : "PatchHoleInSolidCommand", [], setup, true),
+          onSheet
+            ? ["PatchHoleInSheetFactory", "PatchHoleInSheetCommand"]
+            : ["PatchHoleInSolidFactory", "PatchHoleInSolidCommand"],
+          [source],
+        ),
+        "fill_hole",
+        "The edges must form one closed loop around an opening.",
+      );
+    });
+  }
+
+  /**
+   * Round tubes along curves. `diameterMm` is the diameter of a solid rod; with
+   * `wallThicknessMm` the rod becomes a tube: the bore keeps `diameterMm` and the wall is
+   * added around it.
+   */
+  pipe(ids: number[], diameterMm: number, wallThicknessMm = 0): Promise<MutationResult> {
+    const setup = `
+        factory.spines = args.ids.map((id) => typed(id, 'Wire'));
+        factory.diameter = args.diameter;
+        factory.thickness = args.thickness;`;
+    return this.mutate(
+      commandFunction("PipeCommand", [], setup),
+      ["PipeFactory"],
+      [{ ids, diameter: diameterMm * MM, thickness: wallThicknessMm * MM }],
+    );
+  }
+
+  /** Remove the fillets of Solids / Sheets, optionally only those up to `maxRadiusMm` or of one convexity. */
+  removeFillets(
+    ids: number[],
+    maxRadiusMm?: number,
+    convexity: FilletConvexity = "any",
+  ): Promise<MutationResult> {
+    // A radius of 0 means no limit.
+    const setup = `
+        factory.shells = args.ids.map((id) => typed(id, 'Solid', 'Sheet'));
+        factory.radius = args.radius;
+        factory.convexity = args.convexity;`;
+    return withHint(
+      this.mutate(
+        commandFunction("RemoveFilletsFromShellCommand", [], setup),
+        ["RemoveFilletsFromShellFactory"],
+        [{ ids, radius: (maxRadiusMm ?? 0) * MM, convexity: CONVEXITY_CODES[convexity] }],
+      ),
+      "PK_FACE_delete_facesets",
+      "No fillets matched (check maxRadius and convexity), or they cannot be removed.",
+    );
+  }
+
+  /**
+   * Join curves that touch end to end into one curve, or Sheets that share edges into one
+   * Sheet — a Solid when they close a volume. The result keeps the first id.
+   */
+  async join(ids: number[]): Promise<MutationResult> {
+    const types = await this.typesOf(ids);
+    if (types.every((type) => type === "Wire")) return this.joinCurves(ids);
+    if (types.every((type) => type === "Sheet")) return this.joinSheets(ids);
+    throw new Error(`Join takes either curves or Sheets, got: ${describeTypes(ids, types)}`);
+  }
+
+  private joinSheets(ids: number[]): Promise<MutationResult> {
+    return withHint(
+      this.mutate(
+        commandFunction("JoinSheetsCommand", [], `factory.sheets = args.ids.map((id) => typed(id, 'Sheet'));`),
+        ["JoinSheetsFactory"],
+        [{ ids }],
+      ),
+      "Operation has no effect",
+      "Nothing was joined: the Sheets must share edges.",
+    );
+  }
+
+  /**
+   * Take apart: a curve into its segments, a Solid / Sheet into one Sheet per face. One piece
+   * keeps the id, the others are new.
+   */
+  async unjoin(ids: number[]): Promise<MutationResult> {
+    const types = await this.typesOf(ids);
+    if (types.every((type) => type === "Wire")) {
+      return this.mutate(
+        commandFunction("UnjoinCurvesCommand", [], `factory.curves = args.ids.map((id) => typed(id, 'Wire'));`),
+        ["UnjoinCurvesFactory"],
+        [{ ids }],
+      );
+    }
+    if (types.every((type) => type === "Solid" || type === "Sheet")) {
+      return this.mutate(
+        commandFunction(
+          "UnjoinShellsCommand",
+          [],
+          `factory.shells = args.ids.map((id) => typed(id, 'Solid', 'Sheet'));`,
+        ),
+        ["UnjoinShellsFactory"],
+        [{ ids }],
+      );
+    }
+    throw new Error(`Unjoin takes either curves or Solids / Sheets, got: ${describeTypes(ids, types)}`);
+  }
+
+  /** Detach faces of one body: each becomes a Sheet of its own and the body is left open. */
+  unjoinFaces(id: number, faceIds: string[]): Promise<MutationResult> {
+    return this.mutate(
+      commandFunction("UnjoinFacesCommand", [], PICK_FACES),
+      ["UnjoinFacesFactory"],
+      [{ id, faceIds }],
+    );
+  }
+
+  private async typesOf(ids: number[]): Promise<string[]> {
+    if (new Set(ids).size !== ids.length) throw new Error("Body ids must be distinct");
+    const state = await this.state();
+    return ids.map((id) => {
+      const body = state.bodies.find((b) => b.id === id);
+      if (!body) throw new Error(`Unknown body id: ${id}`);
+      return body.type;
+    });
+  }
 }
+
+const describeTypes = (ids: number[], types: string[]): string =>
+  ids.map((id, i) => `${id} (${types[i] === "Wire" ? "curve" : types[i]})`).join(", ");

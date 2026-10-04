@@ -51,6 +51,17 @@ export const FIND_VIEW = `const findItem = (id) => {
   };
   const find = (id) => findItem(id).view;`;
 
+// Like `find`, but refuses a body of the wrong kind: typed(id, 'Solid', 'Sheet').
+export const FIND_TYPED = `const typed = (id, ...types) => {
+    const view = find(id);
+    const type = view.constructor.name;
+    if (!types.includes(type)) {
+      const wanted = types.map((t) => (t === 'Wire' ? 'curve' : t)).join(' or ');
+      throw new Error('Body ' + id + ' is a ' + (type === 'Wire' ? 'curve' : type) + ', not a ' + wanted);
+    }
+    return view;
+  };`;
+
 // Resolves face / edge ids of one body to their views. Ids are version-specific: any change
 // to the body invalidates them, so a miss is reported as stale rather than guessed at.
 export const PICK_TOPOLOGY = `const pick = (collection, ids, kind) => {
@@ -150,6 +161,7 @@ export function commandFunction(
   return `async function (${params.join(", ")}) {
     ${BUSY_GUARD}
     ${FIND_VIEW}
+    ${FIND_TYPED}
     ${PICK_TOPOLOGY}
     ${PROFILE_OF}
     ${PICK_REGIONS}
