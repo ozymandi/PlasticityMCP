@@ -21,7 +21,7 @@ Basics
 - If the tool list has find_tools: tools that are not listed are found with it and run with call_tool.
 
 Order of work — finish a stage for the whole model before the next one
-1. Blocking: the main volumes as simple bodies, in the right sizes and places.
+1. Blocking: the main volumes as simple bodies, in the right sizes and places. From large to small: no part gets details while another is still missing.
 2. Refining: the details, then the edges.
 3. Merge: union the parts that are one piece in reality, bevel the edges where they meet.
 4. Fine detail: knurling, text, screws, threads. Always last.
@@ -41,7 +41,7 @@ More: modelling_guide with topic "drawing", "blocking", "edges", "merge" or "det
 const TOPICS = {
   drawing: `Working from a drawing
 - Read the overall sizes first: width, height, depth. Then the sizes and positions of the main parts.
-- Choose the origin on a feature the drawing dimensions from (an axis of symmetry, the lens axis, a base face) and keep it.
+- Choose the origin on a feature the drawing dimensions from (an axis of symmetry, the axis of the main round feature, a base face) and keep it.
 - Views to axes: the front view is the XZ plane seen along +Y (X to the right, Z up); the top view is the XY plane; the side view is the YZ plane.
 - Before building, write the list of parts: name, shape, size, position. Mark every number that is not on the drawing as an estimate.
 - What the drawing does not show (the back, hidden sides) — ask the user or look for references; do not invent in silence.
@@ -50,7 +50,7 @@ const TOPICS = {
   blocking: `Blocking
 - One simple body per main volume: create_box, create_cylinder, or a closed create_polyline + extrude_profile for an outline that is not a rectangle.
 - Right sizes and places first, no details and no rounded edges yet.
-- Round parts (knobs, dials, rings, lenses): draw half of the section as a closed polyline and revolve_profile it around the axis; chamfers can be drawn into the section.
+- Round parts (shafts, knobs, rings, bosses): draw half of the section as a closed polyline and revolve_profile it around the axis; chamfers can be drawn into the section.
 - extrude_profile does not always go the way the sign suggests: read the returned bounds and correct with move_bodies.
 - Let a part that will be united later run a little into its neighbour instead of only touching it.
 - Check against the drawing from the front, the top and the side before refining.`,
@@ -67,8 +67,8 @@ const TOPICS = {
 - If an edge cannot be treated, say which one and why.`,
 
   merge: `Merge
-- One piece: fixed parts that touch and are one part in reality (a body and its bosses, lugs, sockets; a lever and its hub). Use boolean union.
-- Stay separate: moving parts (dials, buttons, levers), removable parts (covers, lenses), parts that are separate pieces in reality.
+- One piece: fixed parts that touch and are one part in reality (a housing and its bosses, ribs and lugs). Use boolean union.
+- Stay separate: moving parts (whatever turns, slides or is pressed), removable parts (covers, lids, fasteners), parts that are separate pieces in reality.
 - After the union bevel the junction: pick its edges with get_body_topology (include "edges", a thin \`box\` around the junction), then chamfer a closed loop or fillet an open chain.
 - A junction can be bevelled only where the joined part ends on the body. A part that runs past the body leaves an edge that cannot be bevelled — keep such a part separate.
 - Do not round a rim that will end up inside a junction.`,
