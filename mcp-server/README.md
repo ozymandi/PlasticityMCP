@@ -51,14 +51,29 @@ A second channel, independent of the WebSocket bridge: real B-Rep operations thr
 | `cut` | Cut Solids / Sheets into pieces with curves (`curveIds`, optional `extend` and sweep `direction`) or with faces of another body (`cutterId` + `faceIds`). |
 | `hollow` | Shell a Solid with walls of `thickness`; `faceIds` become the opening, without them the cavity is closed. Inward by default, `outward` optional. |
 | `thicken` | `front` / `back` thickness: a Sheet becomes a Solid; with `faceIds` those faces become a new Solid. |
-| `offset_faces` | Move faces along their normals by `distance`; neighbours follow. |
 | `draft_faces` | Tilt faces by `angle` degrees about the plane of `referenceFaceId`. |
 | `delete_faces` | Remove faces and heal the gap (removes a fillet, hole or boss); `heal: false` leaves an open Sheet. |
 | `remove_fillets` | Remove the fillets of bodies; optional `maxRadius` and `convexity` (any / convex / concave). |
 | `patch` | Close with a surface: closed curves (`curveIds`), regions (`regionIds`), all holes of a Sheet (`id`) or one opening by its edges (`id` + `edgeIds`). |
 | `pipe` | Round tubes along curves: `diameter`, optional `wallThickness` (added outside the bore). |
-| `join` | Curves that touch end to end → one curve; Sheets that share edges → one Sheet, or a Solid when closed. Keeps the first id. |
+| `join` | Curves that touch end to end → one curve; Sheets that share edges → one Sheet, or a Solid when closed (`ids`, keeps the first id). Faces of one body on the same surface → one face (`id` + `faceIds`). |
 | `unjoin` | A curve → its segments, a body → one Sheet per face (`ids`); or detach chosen faces (`id` + `faceIds`). |
+| `move_faces` | Move faces by `delta`; neighbours follow. |
+| `rotate_faces` | Rotate faces by `angle` around `axis` through `pivot` (default: the centre of the faces). |
+| `scale_faces` | Scale faces by `factor` about `pivot`; on a cylindrical face this changes the radius in place. |
+| `move_edges` | Move edges by `delta`; the faces around them tilt. |
+| `offset` | Offset by `distance`: faces along their normals (`faceIds`), the outline of faces on the surface (`faceIds` + `loops`), or edges across a face (`edgeIds`). `bothSides` and `gapFill` for the last two. |
+| `match_faces` | Put faces onto the surface of another face (`targetId`, `targetFaceId`). |
+| `refillet` | Change the radius of existing fillet faces: `radius` or `delta`. |
+| `duplicate_faces` | Copy faces into a new Sheet, or with `solid` into a Solid. |
+| `imprint` | Add edges to a body without changing its shape: from curves (`curveIds`, optional `direction`) or from crossing bodies (`toolIds`, optional `imprintTools`). `complete`: none / edge / boundary. |
+| `complete_edges` | Extend edges that end inside a face to its boundary. |
+| `dissolve_edges` | Remove edges and merge the faces they separate; without `edgeIds`, every redundant edge of the body. |
+| `isoparam` | Add `count` edges on a face along its `u` or `v` direction at `param`. |
+| `untrim` | Detach faces and restore their whole underlying surface; `keepEdges` optional. |
+| `unwrap_faces` | Flatten faces into a planar Sheet at the origin. |
+| `extend_sheet` | Extend a Sheet past boundary edges by `distance`; `shape`: linear / soft / reflective / natural. |
+| `reverse` | Flip the direction of curves or the normals of Sheets. |
 
 | `create_polyline` | Curve of straight segments through `points`; `closed` makes a profile. |
 | `create_spline` | Smooth curve through `points`. |
@@ -100,7 +115,7 @@ Face and edge ids are valid only until the body changes — re-read `get_body_to
 
 `pivot` is optional for rotate and scale; it defaults to the centre of the bodies' combined bounding box.
 
-Mutating tools return `created` and `changed` bodies (stable id, type, name, bounds, …) and `removedIds`. Transforms keep body ids, so their result is in `changed`.
+Mutating tools return `created` and `changed` bodies (stable id, type, name, bounds, …) and `removedIds`. Transforms keep body ids, so their result is in `changed`. A body is reported as changed whenever its geometry was rewritten, also when bounds and counts stay the same (a reversed Sheet, a new fillet radius).
 
 Live check — mutates the document, so it only runs in a fresh "Untitled" one and undoes everything:
 

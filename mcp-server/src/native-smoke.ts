@@ -65,6 +65,7 @@ async function main() {
   try {
     await runChecks(native, target.title);
     await solidChecks(native);
+    await faceChecks(native);
   } catch (err) {
     console.error("SMOKE ERROR:", (err as Error).message);
     process.exitCode = 1;
@@ -787,18 +788,19 @@ async function runChecks(native: NativeSession, title: string): Promise<void> {
   }
 }
 
+const failure = (p: Promise<unknown>) => p.then(() => null, (e: Error) => e);
+const changed = (result: MutationResult, id: number) => result.changed.find((b) => b.id === id);
+const faceBy = (t: BodyTopology, normal: Vec3) =>
+  t.faces!.find((f) => f.normal.every((n, i) => Math.abs(n - normal[i]!) < 1e-6))!.id;
+const brief = (result: MutationResult) => JSON.stringify({
+  created: result.created.map((b) => `${b.type}/${b.faceCount}`),
+  changed: result.changed.map((b) => `${b.type}/${b.faceCount}`),
+  removed: result.removedIds.length,
+});
+
 // Cut, hollow, thicken, face tools, patch, pipe, join / unjoin — drawn around x = 2000.
 async function solidChecks(native: NativeSession): Promise<void> {
   const X = 2000;
-  const failure = (p: Promise<unknown>) => p.then(() => null, (e: Error) => e);
-  const changed = (result: MutationResult, id: number) => result.changed.find((b) => b.id === id);
-  const faceBy = (t: BodyTopology, normal: Vec3) =>
-    t.faces!.find((f) => f.normal.every((n, i) => Math.abs(n - normal[i]!) < 1e-6))!.id;
-  const brief = (result: MutationResult) => JSON.stringify({
-    created: result.created.map((b) => `${b.type}/${b.faceCount}`),
-    changed: result.changed.map((b) => `${b.type}/${b.faceCount}`),
-    removed: result.removedIds.length,
-  });
 
   const box = (await native.createBox([X, 0, 0], [40, 30, 20])).created[0]!;
   let t = await native.topology(box.id);
@@ -806,8 +808,8 @@ async function solidChecks(native: NativeSession): Promise<void> {
   const sides = () => [faceBy(t, [1, 0, 0]), faceBy(t, [-1, 0, 0]), faceBy(t, [0, 1, 0]), faceBy(t, [0, -1, 0])];
 
   // --- faces ---
-  const raised = await native.offsetFaces(box.id, [top()], 5);
-  check("offset_faces +5 raises the top", boundsMatch(changed(raised, box.id), [X, 0, 0], [X + 40, 30, 25]),
+  const raised = await native.offset(box.id, { faceIds: [top()] }, 5);
+  check("offset faces +5 raises the top", boundsMatch(changed(raised, box.id), [X, 0, 0], [X + 40, 30, 25]),
     fmt(changed(raised, box.id)));
   await native.undo();
 
@@ -985,6 +987,183 @@ async function solidChecks(native: NativeSession): Promise<void> {
   await native.undo();
   const solidOnly = await failure(native.thicken(box.id, 2, 0));
   check("thicken without faces needs a Sheet", /not a Sheet/.test(solidOnly?.message ?? ""), solidOnly?.message);
+}
+
+// Face and edge tools: transform, offset, imprint, clean-up, sheets — drawn around x = 3000.
+async function faceChecks(native: NativeSession): Promise<void> {
+  const X = 3000;
+  const box = (await native.createBox([X, 0, 0], [40, 30, 20])).created[0]!;
+  let t = await native.topology(box.id);
+  const top = () => faceBy(t, [0, 0, 1]);
+  const frontTop = () => t.edges!.find((e) => e.midMm.join() === [X + 20, 0, 20].join())!.id;
+
+  // --- move, rotate ---
+  const lifted = await native.moveFaces(box.id, [top()], [0, 0, 5]);
+  check("move_faces lifts the top", boundsMatch(changed(lifted, box.id), [X, 0, 0], [X + 40, 30, 25]),
+    fmt(changed(lifted, box.id)));
+  await native.undo();
+  t = await native.topology(box.id);
+  const tilted = await native.rotateFaces(box.id, [top()], [1, 0, 0], 10);
+  const rise = 15 * Math.tan((10 * Math.PI) / 180);
+  check("rotate_faces tilts the top about its own centre",
+    boundsMatch(changed(tilted, box.id), [X, 0, 0], [X + 40, 30, 20 + rise]), fmt(changed(tilted, box.id)));
+  await native.undo();
+  t = await native.topology(box.id);
+  const sloped = await native.moveEdges(box.id, [frontTop()], [0, 0, -5]);
+  const slopedFaces = await native.topology(box.id, "faces");
+  check("move_edges slopes the top, and the change is reported", changed(sloped, box.id) !== undefined &&
+    slopedFaces.faceCount === 6 && !slopedFaces.faces!.some((f) => Math.abs(f.normal[2]! - 1) < 1e-6),
+    brief(sloped));
+  await native.undo();
+
+  // --- offset: loops and edges draw on the surface ---
+  t = await native.topology(box.id);
+  const inset = await native.offset(box.id, { faceIds: [top()], loops: true }, 5);
+  check("offset loops inward: an inset border on the face", changed(inset, box.id)?.faceCount === 7 &&
+    boundsMatch(changed(inset, box.id), [X, 0, 0], [X + 40, 30, 20]), brief(inset));
+  await native.undo();
+  t = await native.topology(box.id);
+  const outset = await native.offset(box.id, { faceIds: [top()], loops: true }, -5);
+  check("offset loops outward: onto the neighbouring faces", changed(outset, box.id)?.faceCount === 10, brief(outset));
+  await native.undo();
+  t = await native.topology(box.id);
+  const oneSide = await native.offset(box.id, { edgeIds: [frontTop()] }, 5);
+  check("offset an edge: a new edge across one face", changed(oneSide, box.id)?.faceCount === 7, brief(oneSide));
+  await native.undo();
+  t = await native.topology(box.id);
+  const twoSides = await native.offset(box.id, { edgeIds: [frontTop()] }, 5, { bothSides: true });
+  check("offset an edge both ways", changed(twoSides, box.id)?.faceCount === 8, brief(twoSides));
+  await native.undo();
+
+  // --- imprint, complete, dissolve, join faces ---
+  const scratch = (await native.createPolyline([[X + 10, 10, 20], [X + 30, 20, 20]])).created[0]!;
+  const stubbed = await native.imprint(box.id, { curveIds: [scratch.id] });
+  check("imprint without completion leaves an edge inside the face", changed(stubbed, box.id)?.faceCount === 6 &&
+    changed(stubbed, box.id)?.edgeCount === 13 && stubbed.removedIds.length === 0, brief(stubbed));
+  t = await native.topology(box.id);
+  const stub = t.edges!.filter((e) => e.faceIds.length === 1).map((e) => e.id);
+  const completed = await native.completeEdges(box.id, stub);
+  check("complete_edges runs the edge to the boundary and splits the face", stub.length === 1 &&
+    changed(completed, box.id)?.faceCount === 7, brief(completed));
+  t = await native.topology(box.id);
+  const tops = t.faces!.filter((f) => Math.abs(f.normal[2]! - 1) < 1e-6).map((f) => f.id);
+  const dividing = t.edges!.filter((e) => e.faceIds.length === 2 && e.faceIds.every((f) => tops.includes(f))).map((e) => e.id);
+  const merged = await native.joinFaces(box.id, tops);
+  check("join faces merges the two halves", tops.length === 2 && changed(merged, box.id)?.faceCount === 6, brief(merged));
+  await native.undo();
+  const dissolved = await native.dissolveEdges(box.id, dividing);
+  check("dissolve_edges removes the dividing edges", dividing.length > 0 && changed(dissolved, box.id)?.faceCount === 6,
+    brief(dissolved));
+  await native.undo();
+  const cleaned = await native.dissolveEdges(box.id);
+  check("dissolve_edges without ids removes all redundant edges", changed(cleaned, box.id)?.faceCount === 6 &&
+    changed(cleaned, box.id)?.edgeCount === 12, brief(cleaned));
+  await native.undo();
+  await native.undo(); // complete
+  await native.undo(); // imprint
+  const split = await native.imprint(box.id, { curveIds: [scratch.id] }, "edge");
+  check("imprint with complete: edge splits the face", changed(split, box.id)?.faceCount === 7, brief(split));
+  await native.undo();
+  const girdle = await native.imprint(box.id, { curveIds: [scratch.id] }, "boundary");
+  check("imprint with complete: boundary goes around the body", changed(girdle, box.id)?.faceCount === 10, brief(girdle));
+  await native.undo();
+  const above = (await native.createPolyline([[X + 10, 10, 40], [X + 30, 20, 40]])).created[0]!;
+  const dropped = await native.imprint(box.id, { curveIds: [above.id], direction: [0, 0, -1] }, "edge");
+  check("imprint along a direction projects a curve from a distance", changed(dropped, box.id)?.faceCount === 7,
+    brief(dropped));
+  await native.undo();
+  const post = (await native.createBox([X + 10, 10, 10], [20, 10, 20])).created[0]!;
+  const crossed = await native.imprint(box.id, { toolIds: [post.id] });
+  check("imprint with a body marks only the target", changed(crossed, box.id)?.faceCount === 7 &&
+    changed(crossed, post.id) === undefined, brief(crossed));
+  await native.undo();
+  const marked = await native.imprint(box.id, { toolIds: [post.id], imprintTools: true });
+  check("imprint with imprintTools marks the tool too", changed(marked, post.id) !== undefined, brief(marked));
+  await native.undo();
+  const selfImprint = await failure(native.imprint(box.id, { toolIds: [box.id] }));
+  check("imprint rejects the body itself as a tool", /with itself/.test(selfImprint?.message ?? ""), selfImprint?.message);
+
+  // --- match, duplicate ---
+  t = await native.topology(box.id);
+  const underside = faceBy(await native.topology(post.id, "faces"), [0, 0, -1]);
+  const flush = await native.matchFaces(box.id, [top()], post.id, underside);
+  check("match_faces brings the top onto the target face", boundsMatch(changed(flush, box.id), [X, 0, 0], [X + 40, 30, 10]),
+    fmt(changed(flush, box.id)));
+  await native.undo();
+  const patchCopy = await native.duplicateFaces(box.id, [top(), faceBy(t, [1, 0, 0])]);
+  check("duplicate_faces copies faces into a Sheet", patchCopy.created.length === 1 &&
+    patchCopy.created[0]?.type === "Sheet" && patchCopy.created[0].faceCount === 2 && patchCopy.changed.length === 0,
+    brief(patchCopy));
+  await native.undo();
+  const twin = await native.duplicateFaces(box.id, t.faces!.map((f) => f.id), true);
+  check("duplicate_faces with solid copies a closed set as a Solid", twin.created[0]?.type === "Solid" &&
+    twin.created[0].faceCount === 6, brief(twin));
+  await native.undo();
+  const open = await failure(native.duplicateFaces(box.id, [top()], true));
+  check("duplicate_faces solid rejects an open set", /enclose a volume/.test(open?.message ?? ""), open?.message);
+
+  // --- refillet ---
+  const upright = t.edges!.find((e) => e.kind === "line" && Math.abs(e.lengthMm - 20) < 1e-6)!.id;
+  await native.filletEdges(box.id, [upright], 4);
+  const roundFace = async () => (await native.topology(box.id, "faces")).faces!.find((f) => !f.planar)!;
+  const wider = await native.refillet(box.id, [(await roundFace()).id], { radiusMm: 6 });
+  check("refillet sets the radius, and the change is reported", changed(wider, box.id) !== undefined &&
+    (await roundFace()).radiusMm === 6, String((await roundFace()).radiusMm));
+  await native.undo();
+  await native.refillet(box.id, [(await roundFace()).id], { deltaMm: -2 });
+  check("refillet by delta", (await roundFace()).radiusMm === 2, String((await roundFace()).radiusMm));
+  await native.undo();
+  await native.undo(); // the fillet
+
+  // --- a cylinder: isoparam, scale, unwrap, untrim ---
+  const can = (await native.createCylinder([X + 100, 0, 0], 10, 30)).created[0]!;
+  const ct = await native.topology(can.id, "faces");
+  const wall = ct.faces!.find((f) => !f.planar)!.id;
+  const ring = await native.isoparam(can.id, wall, "v");
+  check("isoparam v on a cylinder wall adds a ring", changed(ring, can.id)?.faceCount === 4, brief(ring));
+  await native.undo();
+  const staves = await native.isoparam(can.id, wall, "u", 0.5, 3);
+  check("isoparam u with count 3 adds three lines", changed(staves, can.id)?.faceCount === 5, brief(staves));
+  await native.undo();
+  const fat = await native.scaleFaces(can.id, [wall], [2, 2, 1]);
+  check("scale_faces doubles the radius about the axis",
+    boundsMatch(changed(fat, can.id), [X + 80, -20, 0], [X + 120, 20, 30]), fmt(changed(fat, can.id)));
+  await native.undo();
+  const flat = await native.unwrapFaces(can.id, [wall]);
+  const half = Math.PI * 10;
+  check("unwrap_faces lays the wall flat at the origin", flat.changed.length === 0 &&
+    boundsMatch(flat.created[0], [-half, -15, 0], [half, 15, 0], 0.01), fmt(flat.created[0]));
+  await native.undo();
+  const bare = await native.untrim(can.id, [faceBy(ct, [0, 0, 1])]);
+  check("untrim detaches the face as its whole surface", changed(bare, can.id)?.type === "Sheet" &&
+    changed(bare, can.id)?.faceCount === 1 && bare.created.length === 1 && bare.created[0]?.faceCount === 2, brief(bare));
+  await native.undo();
+
+  // --- sheets and curves: extend, reverse ---
+  const path = (await native.createPolyline([[X + 200, 0, 0], [X + 240, 0, 0], [X + 240, 30, 0]])).created[0]!;
+  const fence = (await native.extrudeProfile(path.id, 20)).created[0]!;
+  const ft = await native.topology(fence.id);
+  const upper = ft.edges!.filter((e) => e.midMm[2] === 20).map((e) => e.id);
+  const taller = await native.extendSheet(fence.id, upper, 5);
+  check("extend_sheet grows the Sheet past its edges",
+    boundsMatch(changed(taller, fence.id), [X + 200, 0, 0], [X + 240, 30, 25]), fmt(changed(taller, fence.id)));
+  await native.undo();
+  const turned = await native.reverse([fence.id]);
+  const turnedNormals = (await native.topology(fence.id, "faces")).faces!.map((f) => f.normal);
+  check("reverse flips the normals of a Sheet, and the change is reported", changed(turned, fence.id) !== undefined &&
+    ft.faces!.every((f) => turnedNormals.some((n) => n.every((v, i) => Math.abs(v + f.normal[i]!) < 1e-6))),
+    JSON.stringify(turnedNormals));
+  await native.undo();
+  const startOf = async () => (await native.topology(path.id)).segments!.map((x) => x.startMm.join());
+  const startsBefore = await startOf();
+  await native.reverse([path.id]);
+  const startsAfter = await startOf();
+  check("reverse flips a curve", startsBefore.includes([X + 200, 0, 0].join()) &&
+    !startsAfter.includes([X + 200, 0, 0].join()) && startsAfter.includes([X + 240, 30, 0].join()),
+    JSON.stringify(startsAfter));
+  await native.undo();
+  const solidReverse = await failure(native.reverse([box.id]));
+  check("reverse rejects a Solid", /either curves or Sheets/.test(solidReverse?.message ?? ""), solidReverse?.message);
 }
 
 main().catch((err) => {

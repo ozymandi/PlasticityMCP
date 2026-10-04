@@ -3,10 +3,10 @@
 import { boundsCentre } from "./core.js";
 import { MM, cross, norm, toMeters, unit } from "./math.js";
 import { BUSY_GUARD, FIND_VIEW, STUCK_CHECK, commandFunction } from "./snippets.js";
-import { SolidTools } from "./solids.js";
+import { FaceTools } from "./faces.js";
 import { MutationResult, Vec3 } from "./types.js";
 
-export class TransformTools extends SolidTools {
+export class TransformTools extends FaceTools {
   moveBodies(ids: number[], deltaMm: Vec3): Promise<MutationResult> {
     const setup = `
         factory.items = args.ids.map(find);

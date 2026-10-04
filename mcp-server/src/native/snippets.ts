@@ -6,9 +6,11 @@ export const READ_STATE = `function () {
   // Metres to millimetres, rounded to 1e-6 mm to drop float noise.
   const mm = (v) => [v.x, v.y, v.z].map((n) => Math.round(n * 1e9) / 1e6 + 0);
   const bodies = [];
+  const versions = {};
   for (const [versionId, item] of this.geo.geometryModel) {
     const id = this.db.lookupStableId(versionId);
     if (!Number.isInteger(id)) continue;
+    versions[id] = String(versionId);
     let box = null;
     try { box = item.model?.FindBox?.() ?? null; } catch {}
     const view = item.view;
@@ -33,6 +35,7 @@ export const READ_STATE = `function () {
     undoDepth: this.history?.undoStack?.length ?? 0,
     redoDepth: this.history?.redoStack?.length ?? 0,
     bodies,
+    versions,
   };
 }`;
 

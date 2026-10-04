@@ -443,8 +443,8 @@ Excluded: Studio-only commands (Align, PolySplines, xNURBS, Square, Rebuild Face
 | 0 | Split `native.ts` into modules; curve topology (segments, vertices, control points) | — | 3.5 | ✅ done |
 | 0b | Split `index.ts` into `src/tools/` per family | — | 1 | ✅ done |
 | 11 | Solids: Cut, Hollow, Thicken, Thicken Face, Offset Face, Draft Face, Delete Face, Patch, Pipe, Join / Unjoin, Remove Fillets | 13 | 5 | ✅ done |
-| 12 | Faces and edges: Move / Rotate / Scale Face, Offset Edge, Offset Face Loop, Match Face, Extend Sheet, Untrim, Reverse, Unwrap, Isoparam, Complete Edge, Imprint | 14 | 5.5 | next |
-| 13 | Curves: Offset, Fillet Curve / Vertex, Trim, Cut, Split, Extend, Bridge, Rebuild, Raise Degree, Slot, Text, Spiral, Polygon, rectangles, tangent arcs and circles, control points | ~30 | 10 | |
+| 12 | Faces and edges: Move / Rotate / Scale Face, Offset Edge, Offset Face Loop, Match Face, Extend Sheet, Untrim, Reverse, Unwrap, Isoparam, Complete Edge, Imprint; added on the Designer's word: Dissolve edges / Delete Redundant Topology, Join Faces, Move Edge, Refillet, Duplicate Faces | 19 | 7 | ✅ done |
+| 13 | Curves: Offset, Fillet Curve / Vertex, Trim, Cut, Split, Extend, Bridge, Rebuild, Raise Degree, Slot, Text, Spiral, Polygon, rectangles, tangent arcs and circles, control points | ~30 | 10 | next |
 | 14 | Projection: Project (three kinds), Project Outline, Create Outline, Duplicate and Project | 7 | 3 | |
 | 15 | Surfaces: Bridge Surface, Constrained Surface, Raise Surface Degree, Slide CV, Deform, Loft Guide | 6 | 3 | |
 | 16 | Copies and placement: Curve Array, Place, Copy / Paste with Placement, instances | 6 | 2.5 | |
@@ -500,7 +500,48 @@ Verified live in Untitled: `smoke:native` passes with **206 checks** (33 new: ev
 
 **Not verified / not exposed:** the options of Patch (continuity G0–G2, fill preference single / minimal / quality, guide curves, tolerance) — defaults are used; Thicken's method (Offset / Punch) and "lock distances"; Hollow of several Solids in one call; Pipe options other than diameter and wall (twist, vertex count for a polygonal section, extension shape); `draft_faces` with a reference on another body or a free direction; Cut with several cutters of different kinds at once; behaviour on imported geometry with tolerant edges. Left out of block 11 on purpose: Join Faces / Join Vertices (`JoinFacesFactory`, `JoinVerticesCommand` exist; the manual's Join lists curves and Sheets only).
 
-Blocks 0b and 11 are committed (two commits), merged into `main` and published. The MCP client must be restarted to see the new tools.
+Blocks 0b and 11 are committed (two commits: `14579b6`, `2851ffb`), merged into `main` and published.
+
+### Block 12 — faces and edges — ✅ Done (2026-10-04, ~4 h)
+
+Designer's decisions on the proposal (2026-10-04): **one unified `offset`**, as in Plasticity (so `offset_faces` from block 11 is renamed), and the five commands found while probing **go into this block**.
+
+Sixteen new tools, **84 in total**:
+
+| Tool | Native factory / command | Notes |
+|------|--------------------------|-------|
+| `move_faces` | `MultiMoveFaceFactory` | A flat face moved within its own plane changes nothing. |
+| `rotate_faces` | `MultiRotateFaceFactory` | Rotation is set as a quaternion, like `rotate_bodies`. |
+| `scale_faces` | `MultiPlanarizingBasicScaleFaceFactory` | Meaningful on round faces (radius); a flat face scaled in its plane is unchanged. |
+| `move_edges` | `MoveEdgeFactory` | |
+| `offset` | `OffsetFaceFactory`, `OffsetFaceLoopFactory`, `OffsetEdgeFactory` | `faceIds` (move), `faceIds` + `loops` (outline on the surface; positive inward), `edgeIds` (the sign picks which adjacent face gets the new edge). `bothSides` = native `lockDistances`; `gapFill` round / linear / natural (21220–21222). |
+| `match_faces` | `MatchFaceFactory` | `replacement` is the target face. |
+| `refillet` | `RefilletFaceFactory` | Native `mode` is `delta` by default; any other value makes `distance` the radius — `radius` uses that. |
+| `duplicate_faces` | `CreateSheetFromFacesFactory` / `CreateSolidFromFacesFactory` | |
+| `imprint` | `ImprintCurveBodyFactory` / `ImprintBodyBodyFactory` | Curves: without `direction` the Normal projection (26520), with it Vector (26521). `complete`: none / edge / boundary (curves 25340 / 25341 / 25343, bodies 22780 / 22781). |
+| `complete_edges` | native `CompleteEdgeCommand` | No reachable factory: the edges are selected and the command runs as in the UI. |
+| `dissolve_edges` | `DeleteEdgeFactory`; native `DeleteRedundantTopologyCommand` | With `edgeIds` those edges; without, the whole body, through the selection like above. |
+| `isoparam` | `IsoparamFactory` | `u` ↔ native `uOrV = true`. |
+| `untrim` | `UntrimFactory` | The face is detached: it keeps the body's id as a Sheet, the rest of the body becomes separate Sheets. |
+| `unwrap_faces` | `UnwrapFactory` | Result at the world origin. |
+| `extend_sheet` | `ExtendSheetFactory` | `shape`: linear / soft / reflective / natural (22750–22753). |
+| `reverse` | `ReverseCurveFactory` / `ReverseSheetFactory` | |
+
+`join` gained a variant for faces of one body (`id` + `faceIds`, `JoinFacesFactory`).
+
+Also changed, because these tools needed it:
+- **`changed` is now reported by geometry version**, not only by bounds and counts. Until now a body whose bounds, face and edge counts stayed the same was not reported at all — a reversed Sheet, a moved edge, a changed fillet radius. `READ_STATE` returns the internal version of every body (`NativeState.versions`) and `mutate` compares it too. The existing checks pass unchanged.
+- Default pivot for `rotate_faces` / `scale_faces`: the centre of the box around the faces' edges — the middle of a flat face, a point on the axis for a cylindrical one (a model face has no bounding box of its own).
+- The two commands run through the selection have a guard: if the command waits for more input for 20 s it is cancelled (`executor.cancelActiveCommand`), so the editor is not left busy. Not triggered in any test.
+- `cut`: a cutter that does not divide the body fails with one of two kernel messages (`Failed to cut body into sections`, or — seen once in the smoke test — `PK_ATTRIB_create_empty … wrong_entity`); the hint is now attached to both.
+
+Code: `src/native/faces.ts` (class `FaceTools`, between `SolidTools` and `TransformTools`), `src/tools/faces.ts`.
+
+Verified live in Untitled: `smoke:native` passes with **239 checks** (33 new); the end-to-end script over stdio passes (84 tools, argument validation, stale ids, document restored); build and protocol tests pass.
+
+**Not verified / not exposed:** Match Face options (Grow, Side); Extend Sheet towards a target body (`type` Target / Bbox, `limit`), `modify`; Isoparam `subdivide`; Offset Face Loop `isIndividual`; the Grow mode of the face factories (Moving / Fixed / None) — native default is used; `imprint` options `bidirectional` and `occlude` (native defaults: both on); face tools on several bodies in one call (one body per call); behaviour on spline surfaces and imported geometry. Freestyle variants of the face transforms are excluded by the plan.
+
+Committed, merged into `main` and published. The MCP client must be restarted to see the new tools.
 
 Other ideas (not agreed yet): transforming and hiding reference meshes; opening `.plasticity` files is in block 19.
 
@@ -549,4 +590,4 @@ PlasticityMCP/
 ## Next action
 
 1. Designer: close Plasticity and call `native_launch` (or `npm run smoke:native`) once to verify the cold-start path; restart the MCP client so it picks up the new tools.
-2. Full command coverage: blocks 0, 0b (split of `index.ts`) and 11 (solids) are in `main` and published — 69 tools. Next: after the MCP client restart, check the new tools through it, then the proposal for block 12 (faces and edges). Work continues on branch `native-full-spectrum`.
+2. Full command coverage: blocks 0, 0b (split of `index.ts`) and 11 (solids) are in `main` and published — 69 tools. Blocks 0, 0b, 11 and 12 are in `main` and published — 84 tools. Next: the proposal for block 13 (curves, ~30 commands); the Designer asked for it on 2026-10-04. Work continues on branch `native-full-spectrum`.

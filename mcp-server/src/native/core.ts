@@ -271,7 +271,8 @@ export class NativeCore {
         created: after.bodies.filter((b) => !beforeById.has(b.id)),
         changed: after.bodies.filter((b) => {
           const previous = beforeById.get(b.id);
-          return previous !== undefined && fingerprint(previous) !== fingerprint(b);
+          return previous !== undefined &&
+            (fingerprint(previous) !== fingerprint(b) || before.versions[b.id] !== after.versions[b.id]);
         }),
         removedIds: before.bodies.filter((b) => !afterIds.has(b.id)).map((b) => b.id),
         bodyCount: after.bodies.length,

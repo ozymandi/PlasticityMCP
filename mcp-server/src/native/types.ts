@@ -27,6 +27,11 @@ export interface NativeState {
   undoDepth: number;
   redoDepth: number;
   bodies: BodyInfo[];
+  /**
+   * Internal version of each body by id. It moves on with every change of the geometry, also
+   * with those that leave bounds and counts as they were (a reversed Sheet, a new fillet radius).
+   */
+  versions: Record<number, string>;
 }
 
 export interface FaceInfo {
@@ -113,6 +118,28 @@ export type PatchSource =
   | { id: number; edgeIds?: string[] };
 
 export type FilletConvexity = "any" | "convex" | "concave";
+
+/** What `offset` works on: faces (moved, or with `loops` their outline), or edges. */
+export type OffsetTarget = { faceIds: string[]; loops?: boolean } | { edgeIds: string[] };
+
+/** How the corners of an offset outline are closed. */
+export type GapFill = "round" | "linear" | "natural";
+
+/** Options of the offsets that draw new edges on the surface (loops and edges). */
+export interface OffsetOptions {
+  bothSides?: boolean;
+  gapFill?: GapFill;
+}
+
+export type ExtensionShape = "linear" | "soft" | "reflective" | "natural";
+
+/** How far imprinted edges are continued: as drawn, to the next edges, or around the body. */
+export type ImprintCompletion = "none" | "edge" | "boundary";
+
+/** What `imprint` draws on a body: curves (projected along `direction`), or other bodies. */
+export type ImprintSource =
+  | { curveIds: number[]; direction?: Vec3 }
+  | { toolIds: number[]; imprintTools?: boolean };
 
 export interface MutationResult {
   created: BodyInfo[];

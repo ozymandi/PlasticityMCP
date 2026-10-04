@@ -82,12 +82,6 @@ const ThickenArgs = z
   })
   .refine((a) => a.front + a.back > 0, "front or back must be positive");
 
-const OffsetFacesArgs = z.object({
-  id: BodyId,
-  faceIds: TopologyIds,
-  distance: nonZero("distance"),
-});
-
 const DraftFacesArgs = z.object({
   id: BodyId,
   faceIds: TopologyIds,
@@ -126,9 +120,14 @@ const RemoveFilletsArgs = z.object({
   convexity: z.enum(["any", "convex", "concave"]).optional().default("any"),
 });
 
-const JoinArgs = z.object({
-  ids: BodyIds.min(2),
-});
+const JoinArgs = z
+  .object({
+    ids: BodyIds.min(2).optional(),
+    id: BodyId.optional(),
+    faceIds: TopologyIds.min(2).optional(),
+  })
+  .refine((a) => (a.ids === undefined) !== (a.id === undefined), "pass either ids, or id with faceIds")
+  .refine((a) => (a.id === undefined) === (a.faceIds === undefined), "id and faceIds go together");
 
 const UnjoinArgs = z
   .object({
@@ -281,20 +280,6 @@ const tools: Tool[] = [
     },
   },
   {
-    name: "offset_faces",
-    description:
-      "Move faces of one body along their normals by `distance` millimetres (positive outward, " +
-      "negative inward); the neighbouring faces are extended or trimmed to follow. On a round " +
-      "face this changes its radius. " +
-      FACE_IDS_NOTE +
-      " Undoable.",
-    inputSchema: {
-      type: "object",
-      required: ["id", "faceIds", "distance"],
-      properties: { id: { type: "number" }, faceIds: TOPOLOGY_IDS_SCHEMA, distance: { type: "number" } },
-    },
-  },
-  {
     name: "draft_faces",
     description:
       "Tilt faces of one body by `angle` degrees — a draft angle for moulding. The faces pivot " +
@@ -389,14 +374,19 @@ const tools: Tool[] = [
   {
     name: "join",
     description:
-      "Join bodies of one kind into one. Curves that touch end to end become one curve — " +
-      "needed to use several pieces (lines and arcs) as one sweep path. Sheets that share " +
-      "edges become one Sheet, or a Solid when together they close a volume. The result keeps " +
-      "the first id and is returned in `changed`; the others are in `removedIds`. Undoable.",
+      "Join into one. With `ids`, bodies of one kind: curves that touch end to end become one " +
+      "curve — needed to use several pieces (lines and arcs) as one sweep path; Sheets that " +
+      "share edges become one Sheet, or a Solid when together they close a volume. The result " +
+      "keeps the first id and is returned in `changed`; the others are in `removedIds`. With " +
+      "`id` + `faceIds`: faces of one body that lie on the same surface are merged into one " +
+      "face. Undoable.",
     inputSchema: {
       type: "object",
-      required: ["ids"],
-      properties: { ids: { ...BODY_IDS_SCHEMA, minItems: 2 } },
+      properties: {
+        ids: { ...BODY_IDS_SCHEMA, minItems: 2 },
+        id: { type: "number" },
+        faceIds: { ...TOPOLOGY_IDS_SCHEMA, minItems: 2 },
+      },
     },
   },
   {
@@ -463,11 +453,6 @@ const handlers: ToolFamily["handlers"] = {
     return ok(await native.thicken(args.id, args.front, args.back, args.faceIds));
   },
 
-  offset_faces: async (rawArgs) => {
-    const args = OffsetFacesArgs.parse(rawArgs ?? {});
-    return ok(await native.offsetFaces(args.id, args.faceIds, args.distance));
-  },
-
   draft_faces: async (rawArgs) => {
     const args = DraftFacesArgs.parse(rawArgs ?? {});
     return ok(await native.draftFaces(args.id, args.faceIds, args.referenceFaceId, args.angle));
@@ -497,7 +482,8 @@ const handlers: ToolFamily["handlers"] = {
 
   join: async (rawArgs) => {
     const args = JoinArgs.parse(rawArgs ?? {});
-    return ok(await native.join(args.ids));
+    if (args.ids) return ok(await native.join(args.ids));
+    return ok(await native.joinFaces(args.id!, args.faceIds!));
   },
 
   unjoin: async (rawArgs) => {

@@ -158,7 +158,7 @@ export const CONVEXITY_CODES: Record<FilletConvexity, number> = {
 };
 
 // Setup line shared by the face tools: `args.id` is the body, `args.faceIds` its faces.
-const PICK_FACES = `const view = typed(args.id, 'Solid', 'Sheet');
+export const PICK_FACES = `const view = typed(args.id, 'Solid', 'Sheet');
         factory.faces = pick(view.high.faces, args.faceIds, 'face');`;
 
 export class SolidTools extends ProfileTools {
@@ -256,14 +256,18 @@ export class SolidTools extends ProfileTools {
         } else {
           factory.faces = pick(typed(args.id, 'Solid', 'Sheet').high.faces, args.faceIds, 'face');
         }`;
+    // A cutter that does not divide the body fails in one of two ways, depending on the kernel's mood.
+    const hint =
+      "The cutter does not divide the body: a curve has to cross it completely (extend: true lengthens it).";
+    const cutting = this.mutate(
+      commandFunction("CutCommand", ["Vector3"], setup),
+      ["MultiCutFactory", "Vector3"],
+      [{ targetIds, ...cutter, extend, direction }],
+    );
     return withHint(
-      this.mutate(
-        commandFunction("CutCommand", ["Vector3"], setup),
-        ["MultiCutFactory", "Vector3"],
-        [{ targetIds, ...cutter, extend, direction }],
-      ),
-      "Failed to cut body into sections",
-      "The cutter does not divide the body: a curve has to cross it completely (extend: true lengthens it).",
+      withHint(cutting, "Failed to cut body into sections", hint),
+      "PK_ATTRIB_create_empty",
+      hint,
     );
   }
 
@@ -315,18 +319,6 @@ export class SolidTools extends ProfileTools {
         factory.front = args.front;
         factory.back = args.back;`;
     return this.mutate(commandFunction("ThickenSheetCommand", [], setup), ["ThickenSheetFactory"], values);
-  }
-
-  /** Move faces of one body along their normals by `distanceMm`; neighbours follow. */
-  offsetFaces(id: number, faceIds: string[], distanceMm: number): Promise<MutationResult> {
-    const setup = `
-        ${PICK_FACES}
-        factory.distance = args.distance;`;
-    return this.mutate(
-      commandFunction("OffsetFaceCommand", [], setup),
-      ["OffsetFaceFactory"],
-      [{ id, faceIds, distance: distanceMm * MM }],
-    );
   }
 
   /**
@@ -542,7 +534,7 @@ export class SolidTools extends ProfileTools {
     );
   }
 
-  private async typesOf(ids: number[]): Promise<string[]> {
+  protected async typesOf(ids: number[]): Promise<string[]> {
     if (new Set(ids).size !== ids.length) throw new Error("Body ids must be distinct");
     const state = await this.state();
     return ids.map((id) => {
@@ -553,5 +545,5 @@ export class SolidTools extends ProfileTools {
   }
 }
 
-const describeTypes = (ids: number[], types: string[]): string =>
+export const describeTypes = (ids: number[], types: string[]): string =>
   ids.map((id, i) => `${id} (${types[i] === "Wire" ? "curve" : types[i]})`).join(", ");

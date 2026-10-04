@@ -5,6 +5,7 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprot
 import { bridge } from "./tools/bridge.js";
 import { curves } from "./tools/curves.js";
 import { exchange } from "./tools/exchange.js";
+import { faces } from "./tools/faces.js";
 import { primitives } from "./tools/primitives.js";
 import { profiles } from "./tools/profiles.js";
 import { scene } from "./tools/scene.js";
@@ -22,6 +23,7 @@ const families: ToolFamily[] = [
   scene,
   transforms,
   solids,
+  faces,
   curves,
   profiles,
   exchange,
