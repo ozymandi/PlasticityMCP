@@ -1,8 +1,8 @@
 /** Topology and the operations on Solids and Sheets: boolean, cut, faces, edges, patch, join. */
 
 import { withHint } from "./core.js";
+import { CurveEditTools } from "./curve-edit.js";
 import { MM } from "./math.js";
-import { ProfileTools } from "./profiles.js";
 import { FIND_VIEW, commandFunction } from "./snippets.js";
 import {
   BodyTopology,
@@ -161,7 +161,7 @@ export const CONVEXITY_CODES: Record<FilletConvexity, number> = {
 export const PICK_FACES = `const view = typed(args.id, 'Solid', 'Sheet');
         factory.faces = pick(view.high.faces, args.faceIds, 'face');`;
 
-export class SolidTools extends ProfileTools {
+export class SolidTools extends CurveEditTools {
   /**
    * Faces and edges of a Solid / Sheet. Their ids are valid only until the body changes:
    * re-read after every operation on it.
@@ -240,12 +240,21 @@ export class SolidTools extends ProfileTools {
    * Cut Solids / Sheets into pieces. A curve cuts with the surface it sweeps along `direction`
    * (by default the normal of the curve's plane); `extend` lengthens a curve that stops short
    * of the body. Faces of another body cut with their whole surface. One piece keeps the id of
-   * its target, the others are new; the cutters stay.
+   * its target, the others are new; the cutters stay. Curves as targets are cut where the
+   * cutter curves cross them.
    */
-  cut(targetIds: number[], cutter: Cutter, extend = false, direction?: Vec3): Promise<MutationResult> {
+  async cut(targetIds: number[], cutter: Cutter, extend = false, direction?: Vec3): Promise<MutationResult> {
+    const types = await this.typesOf(targetIds);
+    if (types.every((type) => type === "Wire")) {
+      if (!("curveIds" in cutter)) throw new Error("Curves are cut with curves: pass curveIds");
+      return this.cutCurves(targetIds, cutter.curveIds);
+    }
+    if (types.some((type) => type === "Wire")) {
+      throw new Error(`Cut takes either curves or Solids / Sheets as targets, got: ${describeTypes(targetIds, types)}`);
+    }
     const cutterBody = "id" in cutter ? cutter.id : undefined;
     if (cutterBody !== undefined && targetIds.includes(cutterBody)) {
-      return Promise.reject(new Error("A body cannot be cut with its own faces"));
+      throw new Error("A body cannot be cut with its own faces");
     }
     const setup = `
         factory.shells = args.targetIds.map((id) => typed(id, 'Solid', 'Sheet'));
@@ -256,18 +265,16 @@ export class SolidTools extends ProfileTools {
         } else {
           factory.faces = pick(typed(args.id, 'Solid', 'Sheet').high.faces, args.faceIds, 'face');
         }`;
-    // A cutter that does not divide the body fails in one of two ways, depending on the kernel's mood.
-    const hint =
-      "The cutter does not divide the body: a curve has to cross it completely (extend: true lengthens it).";
-    const cutting = this.mutate(
-      commandFunction("CutCommand", ["Vector3"], setup),
-      ["MultiCutFactory", "Vector3"],
-      [{ targetIds, ...cutter, extend, direction }],
-    );
+    // A cutter that does not divide the body fails with Plasticity's own message or, from run
+    // to run, with one of several kernel errors about attributes.
     return withHint(
-      withHint(cutting, "Failed to cut body into sections", hint),
-      "PK_ATTRIB_create_empty",
-      hint,
+      this.mutate(
+        commandFunction("CutCommand", ["Vector3"], setup),
+        ["MultiCutFactory", "Vector3"],
+        [{ targetIds, ...cutter, extend, direction }],
+      ),
+      /Failed to cut body into sections|PK_ATTRIB_/,
+      "The cutter does not divide the body: a curve has to cross it completely (extend: true lengthens it).",
     );
   }
 

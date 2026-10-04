@@ -65,10 +65,11 @@ export const FIND_TYPED = `const typed = (id, ...types) => {
     return view;
   };`;
 
-// Resolves face / edge ids of one body to their views. Ids are version-specific: any change
-// to the body invalidates them, so a miss is reported as stale rather than guessed at.
+// Resolves ids from get_body_topology (faces and edges of a body; segments, vertices and
+// control points of a curve) to their views. Ids are version-specific: any change to the body
+// invalidates them, so a miss is reported as stale rather than guessed at.
 export const PICK_TOPOLOGY = `const pick = (collection, ids, kind) => {
-    const all = Array.from(collection?.versionIds ?? []).map(String);
+    const all = Array.from(collection?.versionIds ?? collection?.ids ?? []).map(String);
     return ids.map((id) => {
       const index = all.indexOf(String(id));
       if (index < 0) {

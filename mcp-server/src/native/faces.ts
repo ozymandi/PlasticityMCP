@@ -1,6 +1,7 @@
 /** Faces and edges of one body, and Sheets: transform, offset, match, imprint, clean-up. */
 
 import { withHint } from "./core.js";
+import { EXTENSION_SHAPE_CODES, GAP_FILL_CODES } from "./curve-edit.js";
 import { MM, toMeters } from "./math.js";
 import {
   BUSY_GUARD,
@@ -13,7 +14,6 @@ import {
 import { PICK_FACES, SolidTools, describeTypes } from "./solids.js";
 import {
   ExtensionShape,
-  GapFill,
   ImprintCompletion,
   ImprintSource,
   MutationResult,
@@ -21,16 +21,6 @@ import {
   OffsetTarget,
   Vec3,
 } from "./types.js";
-
-// Native codes, read from the running 26.1.3 app.
-export const GAP_FILL_CODES: Record<GapFill, number> = { round: 21220, linear: 21221, natural: 21222 };
-
-export const EXTENSION_SHAPE_CODES: Record<ExtensionShape, number> = {
-  linear: 22750,
-  soft: 22751,
-  reflective: 22752,
-  natural: 22753,
-};
 
 // Completion of imprinted edges: the curve and the body imprints use different code families.
 export const CURVE_COMPLETION_CODES: Record<ImprintCompletion, number> = {
@@ -320,7 +310,8 @@ export class FaceTools extends SolidTools {
 
   /**
    * Remove edges of one body and merge the faces they separate. Without `edgeIds` every
-   * redundant edge of the body goes (Plasticity's Delete Redundant Topology).
+   * redundant edge of the body goes (Plasticity's Delete Redundant Topology); on a curve that
+   * removes its redundant vertices.
    */
   dissolveEdges(id: number, edgeIds?: string[]): Promise<MutationResult> {
     if (!edgeIds) return this.nativeOnSelection("DeleteRedundantTopologyCommand", id);
@@ -399,7 +390,7 @@ export class FaceTools extends SolidTools {
         ${FIND_VIEW}
         ${FIND_TYPED}
         ${PICK_TOPOLOGY}
-        const view = typed(args.id, 'Solid', 'Sheet');
+        const view = args.edgeIds ? typed(args.id, 'Solid', 'Sheet') : find(args.id);
         const edges = args.edgeIds ? pick(view.high.edges, args.edgeIds, 'edge') : null;
         const selected = this.selection.selected;
         selected.removeAll();

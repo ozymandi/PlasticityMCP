@@ -444,8 +444,8 @@ Excluded: Studio-only commands (Align, PolySplines, xNURBS, Square, Rebuild Face
 | 0b | Split `index.ts` into `src/tools/` per family | — | 1 | ✅ done |
 | 11 | Solids: Cut, Hollow, Thicken, Thicken Face, Offset Face, Draft Face, Delete Face, Patch, Pipe, Join / Unjoin, Remove Fillets | 13 | 5 | ✅ done |
 | 12 | Faces and edges: Move / Rotate / Scale Face, Offset Edge, Offset Face Loop, Match Face, Extend Sheet, Untrim, Reverse, Unwrap, Isoparam, Complete Edge, Imprint; added on the Designer's word: Dissolve edges / Delete Redundant Topology, Join Faces, Move Edge, Refillet, Duplicate Faces | 19 | 7 | ✅ done |
-| 13 | Curves: Offset, Fillet Curve / Vertex, Trim, Cut, Split, Extend, Bridge, Rebuild, Raise Degree, Slot, Text, Spiral, Polygon, rectangles, tangent arcs and circles, control points | ~30 | 10 | next |
-| 14 | Projection: Project (three kinds), Project Outline, Create Outline, Duplicate and Project | 7 | 3 | |
+| 13 | Curves: Offset, Fillet Curve / Vertex, Trim, Cut, Split, Extend, Bridge, Rebuild, Raise Degree, Slot, Text, Spiral, Polygon, rectangles, tangent arcs and circles, control points | ~30 | 10 | ✅ done (Split Segment and Insert Knot deferred) |
+| 14 | Projection: Project (three kinds), Project Outline, Create Outline, Duplicate and Project | 7 | 3 | next |
 | 15 | Surfaces: Bridge Surface, Constrained Surface, Raise Surface Degree, Slide CV, Deform, Loft Guide | 6 | 3 | |
 | 16 | Copies and placement: Curve Array, Place, Copy / Paste with Placement, instances | 6 | 2.5 | |
 | 17 | Scene: groups, hide / show / isolate, lock, materials, extended selection | 12 | 4 | |
@@ -541,6 +541,58 @@ Verified live in Untitled: `smoke:native` passes with **239 checks** (33 new); t
 
 **Not verified / not exposed:** Match Face options (Grow, Side); Extend Sheet towards a target body (`type` Target / Bbox, `limit`), `modify`; Isoparam `subdivide`; Offset Face Loop `isIndividual`; the Grow mode of the face factories (Moving / Fixed / None) — native default is used; `imprint` options `bidirectional` and `occlude` (native defaults: both on); face tools on several bodies in one call (one body per call); behaviour on spline surfaces and imported geometry. Freestyle variants of the face transforms are excluded by the plan.
 
+Committed (`e876d6c`), merged into `main` and published.
+
+### Block 13 — curves — ✅ Done (2026-10-04, ~6 h)
+
+Approved by the Designer as proposed, including three renames to match Plasticity's unified commands. **105 tools in total** (21 new).
+
+**13a — creation** (`src/native/curves.ts`, `src/tools/curves.ts`):
+
+| Tool | Native factory | Notes |
+|------|----------------|-------|
+| `create_rectangle` | `ThreePointRectangleFactory` | Corner or centre with sizes in a plane, or three points; every variant is reduced to three points. |
+| `create_polygon` | `KnifePolygonFactory` | `radiusTo` vertex ↔ native `inscribed`, side ↔ `circumscribed`. One vertex lies along `xDirection` in both modes. |
+| `create_spiral` | `SpiralFactory` | `p1` / `p2` axis ends, `p3` the radius point, `handedness` true = right. |
+| `create_text` | `TextFactory` + rotate + move | Text is written at the origin of XY and then turned and moved in the same command: one undo step. Font is the built-in `inter`. |
+| `create_slot` | `SlotFactory` | **Not for a single straight line**: the factory takes the plane from the curve (`No basis found`), and a line has none. |
+| `create_tangent_arc` | `TangentArcFactory` | From an end of a segment (ids from `get_body_topology`). |
+| `create_tangent_circle` | `TangentCircleFactory` | `point` picks one of the several solutions. |
+| `create_circle` (extended) | `KnifeThreePointCircleFactory`, `KnifeTwoPointCircleFactory` | `points`: three on the circle, or two on a diameter. |
+| `create_spline` (extended) | `CurveFactory.splineThrough = false` | `controlPoints: true`. |
+
+**13b — editing** (`src/native/curve-edit.ts`, `src/tools/curve-edit.ts`):
+
+| Tool | Native factory | Notes |
+|------|----------------|-------|
+| `trim_curves` | `TrimFactory` | Takes fragments from `editor.fragments.read.modelId2info` (pieces between corners and crossings) and removes the one nearest to `near`. |
+| `bridge` | `BridgeVertexFactory` / `BridgeEdgeFactory` | Curve vertices, or body edges (nearest ends, `pickClosestVertices`). Continuity `ContinuityType` G0–G3. |
+| `rebuild` | `RebuildCurveFactory` | `method` 0 tolerance, 1 point count, 2 degree + spans. |
+| `raise_degree`, `subdivide_curves` | `RaiseDegreeCurveFactory`, `SubdivideCurveFactory` | |
+| `convert_vertices` | `ConvertVertexFactory` | |
+| `align_vertices` | `AlignVertexFactory` | `moving`, `target`, `continuity`. |
+| `move_control_points`, `rotate_control_points`, `scale_control_points` | `MultiMove` / `MultiRotate` / `MultiScaleControlPointFactory` | Take vertices and control points; default pivot is the centre of the points. |
+| `slide` | `MultiSlideControlPointFactory` | forward / backward / normal ↔ `posU` / `negU` / `normal`. |
+| `delete_control_points` | `DeleteControlPointFactory` | |
+| `curves_from_edges` | `CreateCurveFromEdgesFactory` | |
+| `deform` | `DeformCurveFactory` | Curves from a source face onto a target face. The Solid / Sheet variant belongs to block 15. |
+
+Extended: `offset` (`curveIds` → `OffsetPlanarCurvesFactory`, `regionIds` → `OffsetRegionFactory`, `vertexIds` → `OffsetVertexFactory`), `cut` (curves as targets → `MultiCurveCutFactory`), `dissolve_edges` (a curve id → redundant vertices).
+
+Renamed, as in Plasticity: `fillet_edges` → **`fillet`** and `chamfer_edges` → **`chamfer`** (edges of a body, or corner vertices of a curve — `FilletVertexFactory`; without ids every corner of a curve — `FilletCurveFactory`; on a curve a chamfer is the native fillet with a negative radius), `extend_sheet` → **`extend`** (Sheet edges, or the end vertices of a curve — `MultiExtendVertexFactory`).
+
+**Deferred, on purpose (Designer agreed on 2026-10-04 to leave them out):** Split Segment and Insert Knot. Their factories take the position only from the mouse inside the UI command; the only way in is to swap a private field of the factory for a proxy. I promised not to work around such cases without asking. A curve is split at a point with `cut` (curves as targets), and control points are added with `subdivide_curves` / `raise_degree`. `split_curves` from the proposal became `subdivide_curves`.
+
+Also changed: `pick` resolves segment, vertex and control point ids of a curve (collections that keep `ids` instead of `versionIds`); `withHint` accepts a pattern; the hint of `cut` is attached to every `PK_ATTRIB_…` kernel error — the failing cut gave three different ones over the runs of this session.
+
+Verified live in Untitled: `smoke:native` passes with **285 checks** (46 new); the end-to-end script over stdio passes (105 tools, argument validation, stale ids, old names gone, document restored); build and protocol tests pass.
+
+**Not verified / not exposed:** fonts other than the built-in one and text options (spacing, alignment); spiral taper (`angle`) and pitch; bridge tension, `trim` of the bridged curves and bridging at a point inside a curve (`BridgeCurveFactory` with a parameter); the Scale / Offset / Flip options of Deform; Rebuild `preserveParameterization`, `fairnessWeight`; proportional editing and mirror mode of the control point transforms; Offset Region with two distances and `isIndividual`; curves that are not planar for `offset` and `create_slot`; a vertex that is not an end is accepted by `extend` and left unchanged.
+
+**Incident during the final check (2026-10-04, ~22:00):** on the last control run of the smoke test the renderer process of Plasticity disappeared (the CDP call timed out, no `--type=renderer` process left, no new crash dump). It happened after the last check had passed, on the undo that follows it. That Plasticity session had been running since 19:46 with some 25 smoke runs, the probes and the end-to-end scripts in it. Not reproduced: after the Designer closed the window and Plasticity was started again, the full smoke test passed twice in a row (285 checks, 40 s). Renderer memory grows by about 50 MB per smoke run (356 → 409 MB) and is not given back, so memory exhaustion of a long session is the likely cause — not proven. On restart Plasticity restored its crash backup into Untitled: 75 bodies of test debris (ids 2631–2801), which were deleted with `delete_bodies` (undoable) before the test would run. The Designer's document had been empty; nothing of theirs was in it.
+
+What follows from it: restart Plasticity after a long automated session (a dozen smoke runs); after a renderer loss expect test debris in the restored Untitled document.
+
 Committed, merged into `main` and published. The MCP client must be restarted to see the new tools.
 
 Other ideas (not agreed yet): transforming and hiding reference meshes; opening `.plasticity` files is in block 19.
@@ -590,4 +642,4 @@ PlasticityMCP/
 ## Next action
 
 1. Designer: close Plasticity and call `native_launch` (or `npm run smoke:native`) once to verify the cold-start path; restart the MCP client so it picks up the new tools.
-2. Full command coverage: blocks 0, 0b (split of `index.ts`) and 11 (solids) are in `main` and published — 69 tools. Blocks 0, 0b, 11 and 12 are in `main` and published — 84 tools. Next: the proposal for block 13 (curves, ~30 commands); the Designer asked for it on 2026-10-04. Work continues on branch `native-full-spectrum`.
+2. Full command coverage: blocks 0, 0b (split of `index.ts`) and 11 (solids) are in `main` and published — 69 tools. Blocks 0, 0b, 11 and 12 are in `main` and published — 84 tools. Blocks 0, 0b, 11, 12 and 13 are in `main` and published — 105 tools. Next: the proposal for block 14 (projection); the Designer asked for it on 2026-10-04. Work continues on branch `native-full-spectrum`.

@@ -28,17 +28,27 @@ const BooleanArgs = z.object({
   keepTools: z.boolean().optional().default(false),
 });
 
-const FilletEdgesArgs = z.object({
-  id: BodyId,
-  edgeIds: TopologyIds,
-  radius: z.number().positive(),
-});
+const oneCornerKind = (a: { edgeIds?: string[]; vertexIds?: string[] }) =>
+  a.edgeIds === undefined || a.vertexIds === undefined;
+const ONE_CORNER_KIND_MESSAGE = "pass edgeIds (a body) or vertexIds (a curve), not both";
 
-const ChamferEdgesArgs = z.object({
-  id: BodyId,
-  edgeIds: TopologyIds,
-  distance: z.number().positive(),
-});
+const FilletArgs = z
+  .object({
+    id: BodyId,
+    edgeIds: TopologyIds.optional(),
+    vertexIds: TopologyIds.optional(),
+    radius: z.number().positive(),
+  })
+  .refine(oneCornerKind, ONE_CORNER_KIND_MESSAGE);
+
+const ChamferArgs = z
+  .object({
+    id: BodyId,
+    edgeIds: TopologyIds.optional(),
+    vertexIds: TopologyIds.optional(),
+    distance: z.number().positive(),
+  })
+  .refine(oneCornerKind, ONE_CORNER_KIND_MESSAGE);
 
 const ExtrudeFacesArgs = z.object({
   id: BodyId,
@@ -181,25 +191,39 @@ const tools: Tool[] = [
     },
   },
   {
-    name: "fillet_edges",
+    name: "fillet",
     description:
-      "Round edges of one body with a constant `radius` in millimetres. `edgeIds` come from " +
-      "get_body_topology of the same body, read after its last change. Undoable.",
+      "Round corners with a constant `radius` in millimetres. On a Solid / Sheet: the edges " +
+      "`edgeIds`. On a curve: the corner vertices `vertexIds`, or every corner of the curve " +
+      "when neither list is given. The ids come from get_body_topology of the same body or " +
+      "curve, read after its last change. Undoable.",
     inputSchema: {
       type: "object",
-      required: ["id", "edgeIds", "radius"],
-      properties: { id: { type: "number" }, edgeIds: TOPOLOGY_IDS_SCHEMA, radius: { type: "number" } },
+      required: ["id", "radius"],
+      properties: {
+        id: { type: "number" },
+        edgeIds: { ...TOPOLOGY_IDS_SCHEMA, description: "Edges of a Solid / Sheet" },
+        vertexIds: { ...TOPOLOGY_IDS_SCHEMA, description: "Corner vertices of a curve" },
+        radius: { type: "number" },
+      },
     },
   },
   {
-    name: "chamfer_edges",
+    name: "chamfer",
     description:
-      "Bevel edges of one body by `distance` in millimetres. `edgeIds` come from " +
-      "get_body_topology of the same body, read after its last change. Undoable.",
+      "Bevel corners by `distance` in millimetres, measured along each side. On a Solid / " +
+      "Sheet: the edges `edgeIds`. On a curve: the corner vertices `vertexIds`, or every " +
+      "corner when neither list is given. The ids come from get_body_topology of the same " +
+      "body or curve, read after its last change. Undoable.",
     inputSchema: {
       type: "object",
-      required: ["id", "edgeIds", "distance"],
-      properties: { id: { type: "number" }, edgeIds: TOPOLOGY_IDS_SCHEMA, distance: { type: "number" } },
+      required: ["id", "distance"],
+      properties: {
+        id: { type: "number" },
+        edgeIds: { ...TOPOLOGY_IDS_SCHEMA, description: "Edges of a Solid / Sheet" },
+        vertexIds: { ...TOPOLOGY_IDS_SCHEMA, description: "Corner vertices of a curve" },
+        distance: { type: "number" },
+      },
     },
   },
   {
@@ -225,7 +249,8 @@ const tools: Tool[] = [
       "`direction` cuts along any plane; `extend: true` lengthens a curve that stops short of " +
       "the body. A face cuts with its whole surface, however small the face is. One piece " +
       "keeps the id of its target (in `changed`), the other pieces are in `created`; the " +
-      "cutters stay. Undoable.",
+      "cutters stay. Curves can be targets too: they are cut where the cutter curves " +
+      "(`curveIds`) cross them — the way to split a curve at a point. Undoable.",
     inputSchema: {
       type: "object",
       required: ["targetIds"],
@@ -420,14 +445,17 @@ const handlers: ToolFamily["handlers"] = {
     );
   },
 
-  fillet_edges: async (rawArgs) => {
-    const args = FilletEdgesArgs.parse(rawArgs ?? {});
-    return ok(await native.filletEdges(args.id, args.edgeIds, args.radius));
+  fillet: async (rawArgs) => {
+    const args = FilletArgs.parse(rawArgs ?? {});
+    if (args.edgeIds) return ok(await native.filletEdges(args.id, args.edgeIds, args.radius));
+    return ok(await native.filletCurve(args.id, args.radius, args.vertexIds));
   },
 
-  chamfer_edges: async (rawArgs) => {
-    const args = ChamferEdgesArgs.parse(rawArgs ?? {});
-    return ok(await native.chamferEdges(args.id, args.edgeIds, args.distance));
+  chamfer: async (rawArgs) => {
+    const args = ChamferArgs.parse(rawArgs ?? {});
+    if (args.edgeIds) return ok(await native.chamferEdges(args.id, args.edgeIds, args.distance));
+    // On a curve the native fillet with a negative radius is the chamfer.
+    return ok(await native.filletCurve(args.id, -args.distance, args.vertexIds));
   },
 
   extrude_faces: async (rawArgs) => {

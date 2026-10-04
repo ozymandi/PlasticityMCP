@@ -14,9 +14,11 @@ export const COMMAND_TIMEOUT_MS = 60_000;
 export const LOAD_TIMEOUT_MS = 40_000;
 
 /** Append an explanation to a native kernel error that says nothing useful on its own. */
-export function withHint<T>(operation: Promise<T>, marker: string, hint: string): Promise<T> {
+export function withHint<T>(operation: Promise<T>, marker: string | RegExp, hint: string): Promise<T> {
+  const matches = (message: string) =>
+    typeof marker === "string" ? message.includes(marker) : marker.test(message);
   return operation.catch((err: Error) => {
-    throw err.message.includes(marker) ? new Error(`${err.message.trim()} ${hint}`) : err;
+    throw matches(err.message) ? new Error(`${err.message.trim()} ${hint}`) : err;
   });
 }
 

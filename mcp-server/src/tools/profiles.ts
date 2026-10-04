@@ -138,7 +138,7 @@ const tools: Tool[] = [
       "A curve `profileId` is refused when its profile is ambiguous — note that a path lying " +
       "in the profile's own plane and crossing it makes it so; pass `regionIds` from " +
       "list_regions instead to choose the regions. A path made of several pieces must first " +
-      "be merged with join_curves. Undoable.",
+      "be merged with join. Undoable.",
     inputSchema: {
       type: "object",
       required: ["pathId"],

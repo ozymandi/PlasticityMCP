@@ -108,6 +108,46 @@ export interface RegionInfo {
   holes?: number;
 }
 
+/** A rectangle: from a corner or centre with its sizes in a plane, or through three points. */
+export type RectangleSpec =
+  | {
+      originMm: Vec3;
+      widthMm: number;
+      heightMm: number;
+      centered?: boolean;
+      normal?: Vec3;
+      xDirection?: Vec3;
+    }
+  | { pointsMm: [Vec3, Vec3, Vec3] };
+
+/** One face of a body, by the ids from get_body_topology. */
+export interface FaceRef {
+  id: number;
+  faceId: string;
+}
+
+/** Vertices and control points of one curve, by the ids from get_body_topology. */
+export interface CurvePoints {
+  vertexIds?: string[];
+  controlPointIds?: string[];
+}
+
+export type Continuity = "G0" | "G1" | "G2" | "G3";
+
+export type SlideDirection = "forward" | "backward" | "normal";
+
+/** How `rebuild` refits a curve. */
+export type CurveRebuild =
+  | { toleranceMm: number }
+  | { pointCount: number }
+  | { degree: number; spans: number };
+
+/** One segment of a curve, by the ids from get_body_topology. */
+export interface SegmentRef {
+  id: number;
+  segmentId: string;
+}
+
 /** What cuts in `cut`: curves, or faces of another body. */
 export type Cutter = { curveIds: number[] } | { id: number; faceIds: string[] };
 

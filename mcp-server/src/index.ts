@@ -3,6 +3,7 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { bridge } from "./tools/bridge.js";
+import { curveEdit } from "./tools/curve-edit.js";
 import { curves } from "./tools/curves.js";
 import { exchange } from "./tools/exchange.js";
 import { faces } from "./tools/faces.js";
@@ -25,6 +26,7 @@ const families: ToolFamily[] = [
   solids,
   faces,
   curves,
+  curveEdit,
   profiles,
   exchange,
   view,

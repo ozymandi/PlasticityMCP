@@ -45,10 +45,10 @@ A second channel, independent of the WebSocket bridge: real B-Rep operations thr
 | `array_radial` | `count` items around an axis (`center`, `axis`) over `angle` degrees. |
 | `get_body_topology` | What a body is made of, with ids: faces and edges of a Solid / Sheet (`include`: faces / edges / all), or segments, vertices and control points of a curve. |
 | `boolean` | `union` / `difference` / `intersection` of `toolIds` against `targetIds`; `keepTools` optional. |
-| `fillet_edges` | Round edges with `radius`. |
-| `chamfer_edges` | Bevel edges by `distance`. |
+| `fillet` | Round with `radius`: edges of a body (`edgeIds`), corner vertices of a curve (`vertexIds`), or every corner of a curve. |
+| `chamfer` | Bevel by `distance`: edges of a body, or corners of a curve, the same way. |
 | `extrude_faces` | Push / pull faces of a Solid by `distance`: positive adds outward, negative cuts in. On a Sheet the extrusion becomes a new Solid. |
-| `cut` | Cut Solids / Sheets into pieces with curves (`curveIds`, optional `extend` and sweep `direction`) or with faces of another body (`cutterId` + `faceIds`). |
+| `cut` | Cut Solids / Sheets into pieces with curves (`curveIds`, optional `extend` and sweep `direction`) or with faces of another body (`cutterId` + `faceIds`). Curves as targets are cut where the cutter curves cross them. |
 | `hollow` | Shell a Solid with walls of `thickness`; `faceIds` become the opening, without them the cavity is closed. Inward by default, `outward` optional. |
 | `thicken` | `front` / `back` thickness: a Sheet becomes a Solid; with `faceIds` those faces become a new Solid. |
 | `draft_faces` | Tilt faces by `angle` degrees about the plane of `referenceFaceId`. |
@@ -62,25 +62,44 @@ A second channel, independent of the WebSocket bridge: real B-Rep operations thr
 | `rotate_faces` | Rotate faces by `angle` around `axis` through `pivot` (default: the centre of the faces). |
 | `scale_faces` | Scale faces by `factor` about `pivot`; on a cylindrical face this changes the radius in place. |
 | `move_edges` | Move edges by `delta`; the faces around them tilt. |
-| `offset` | Offset by `distance`: faces along their normals (`faceIds`), the outline of faces on the surface (`faceIds` + `loops`), or edges across a face (`edgeIds`). `bothSides` and `gapFill` for the last two. |
+| `offset` | Offset by `distance`: faces along their normals (`faceIds`), the outline of faces on the surface (`faceIds` + `loops`), edges across a face (`edgeIds`), new vertices beside a curve vertex (`vertexIds`), a parallel copy of curves (`curveIds`) or a curve around regions (`regionIds`). `bothSides` and `gapFill` where they apply. |
 | `match_faces` | Put faces onto the surface of another face (`targetId`, `targetFaceId`). |
 | `refillet` | Change the radius of existing fillet faces: `radius` or `delta`. |
 | `duplicate_faces` | Copy faces into a new Sheet, or with `solid` into a Solid. |
 | `imprint` | Add edges to a body without changing its shape: from curves (`curveIds`, optional `direction`) or from crossing bodies (`toolIds`, optional `imprintTools`). `complete`: none / edge / boundary. |
 | `complete_edges` | Extend edges that end inside a face to its boundary. |
-| `dissolve_edges` | Remove edges and merge the faces they separate; without `edgeIds`, every redundant edge of the body. |
+| `dissolve_edges` | Remove edges and merge the faces they separate; without `edgeIds`, every redundant edge of the body, or the redundant vertices of a curve. |
 | `isoparam` | Add `count` edges on a face along its `u` or `v` direction at `param`. |
 | `untrim` | Detach faces and restore their whole underlying surface; `keepEdges` optional. |
 | `unwrap_faces` | Flatten faces into a planar Sheet at the origin. |
-| `extend_sheet` | Extend a Sheet past boundary edges by `distance`; `shape`: linear / soft / reflective / natural. |
+| `extend` | Extend by `distance`: a Sheet past boundary edges (`edgeIds`) or a curve past its end vertices (`vertexIds`); `shape`: linear / soft / reflective / natural. |
 | `reverse` | Flip the direction of curves or the normals of Sheets. |
 
 | `create_polyline` | Curve of straight segments through `points`; `closed` makes a profile. |
-| `create_spline` | Smooth curve through `points`. |
-| `create_circle` | Circle from `center`, `radius`, optional plane `normal`. |
+| `create_spline` | Smooth curve through `points`, or shaped by them as control points (`controlPoints`). |
+| `create_circle` | Circle from `center`, `radius`, optional plane `normal`; or through two / three `points`. |
 | `create_arc` | Arc through three points (`start`, `through`, `end`). |
 | `create_arc_center` | Arc around `center` from `start` through `angle` degrees about `normal`. |
 | `create_ellipse` | Ellipse from `center`, `majorRadius`, `minorRadius`, optional `normal` and `majorDirection`. |
+| `create_rectangle` | Closed rectangle: `origin` (corner, or centre with `centered`), `width`, `height`, optional `normal` / `xDirection`; or three `points`. |
+| `create_polygon` | Regular polygon: `center`, `radius`, `sides`; `radiusTo` vertex / side. |
+| `create_spiral` | Helix: `base`, `axis`, `height`, `radius`, `turns`, `handedness`. |
+| `create_text` | Text as outline curves: `text`, `size`, optional `origin`, `normal`, `xDirection`. |
+| `create_slot` | Slot outline of `width` around planar curves (not a single straight line). |
+| `create_tangent_arc` | Arc leaving the `start` / `end` of a curve segment tangentially to point `end`. |
+| `create_tangent_circle` | Circle of `radius` touching two curve segments, the one nearest to `near`. |
+| `trim_curves` | Remove the piece of a curve nearest to `near` (pieces end at corners and crossings). |
+| `bridge` | Smooth connecting curve between two curve vertices or two body edges; `continuity` G0–G3. |
+| `rebuild` | Refit curves as splines: by `tolerance`, `pointCount`, or `degree` + `spans`. |
+| `raise_degree` | Raise the degree of curves by one. |
+| `subdivide_curves` | Add a control point in the middle of every segment. |
+| `convert_vertices` | Turn corner vertices of a curve into smooth ones. |
+| `align_vertices` | Bring a curve end onto a vertex of another curve with G0 / G1 / G2 continuity. |
+| `move_control_points` / `rotate_control_points` / `scale_control_points` | Transform vertices and control points of one curve. |
+| `slide` | Slide control points of a spline along or across its control polygon. |
+| `delete_control_points` | Delete control points of a spline. |
+| `curves_from_edges` | Copy edges of a body as curves. |
+| `deform` | Wrap curves from a `source` face onto a `target` face. |
 | `list_regions` | Regions Plasticity built from closed loops of curves: id, bounds, normal, boundary length, holes. |
 | `extrude_profile` | Closed planar curve → Solid, open curve → Sheet, by `distance` along the plane normal. Takes a curve `id` or `regionIds`. |
 
@@ -111,7 +130,7 @@ File tools take absolute paths, check the extension and never replace an existin
 
 The profile tools (`extrude_profile`, `revolve_profile`, `sweep_profile`, `loft_profiles`) take either a curve id or `regionIds` from `list_regions`. A curve id is refused when other curves in its plane cross it or lie inside it; regions are how to pick the plate-with-holes area, or a profile drawn as several lines and arcs.
 
-Face and edge ids are valid only until the body changes — re-read `get_body_topology` after every operation on it. Region ids likewise change whenever curves in their plane change. Stale ids are rejected.
+Face and edge ids — and the segment, vertex and control point ids of a curve — are valid only until the body changes — re-read `get_body_topology` after every operation on it. Region ids likewise change whenever curves in their plane change. Stale ids are rejected.
 
 `pivot` is optional for rotate and scale; it defaults to the centre of the bodies' combined bounding box.
 

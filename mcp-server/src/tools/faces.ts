@@ -7,6 +7,7 @@ import {
   Direction,
   native,
   ok,
+  RegionIds,
   type ToolFamily,
   TOPOLOGY_IDS_SCHEMA,
   TopologyIds,
@@ -49,15 +50,25 @@ const MoveEdgesArgs = z.object({
 
 const OffsetArgs = z
   .object({
-    id: BodyId,
+    id: BodyId.optional(),
     faceIds: TopologyIds.optional(),
     edgeIds: TopologyIds.optional(),
+    vertexIds: TopologyIds.optional(),
+    curveIds: BodyIds.optional(),
+    regionIds: RegionIds.optional(),
     loops: z.boolean().optional().default(false),
     distance: nonZero("distance"),
     bothSides: z.boolean().optional().default(false),
     gapFill: z.enum(["round", "linear", "natural"]).optional().default("round"),
   })
-  .refine((a) => (a.faceIds === undefined) !== (a.edgeIds === undefined), "pass either faceIds or edgeIds")
+  .refine(
+    (a) => [a.faceIds, a.edgeIds, a.vertexIds, a.curveIds, a.regionIds].filter((v) => v !== undefined).length === 1,
+    "pass exactly one of faceIds, edgeIds, vertexIds, curveIds or regionIds",
+  )
+  .refine(
+    (a) => (a.id !== undefined) === (a.curveIds === undefined && a.regionIds === undefined),
+    "id goes with faceIds, edgeIds and vertexIds; curveIds and regionIds stand alone",
+  )
   .refine((a) => !a.loops || a.faceIds !== undefined, "loops goes with faceIds");
 
 const MatchFacesArgs = z.object({
@@ -67,12 +78,18 @@ const MatchFacesArgs = z.object({
   targetFaceId: z.string().min(1),
 });
 
-const ExtendSheetArgs = z.object({
-  id: BodyId,
-  edgeIds: TopologyIds,
-  distance: z.number().positive(),
-  shape: z.enum(["linear", "soft", "reflective", "natural"]).optional().default("linear"),
-});
+const ExtendArgs = z
+  .object({
+    id: BodyId,
+    edgeIds: TopologyIds.optional(),
+    vertexIds: TopologyIds.optional(),
+    distance: z.number().positive(),
+    shape: z.enum(["linear", "soft", "reflective", "natural"]).optional(),
+  })
+  .refine(
+    (a) => (a.edgeIds === undefined) !== (a.vertexIds === undefined),
+    "pass edgeIds (a Sheet) or vertexIds (a curve)",
+  );
 
 const UntrimArgs = z.object({
   id: BodyId,
@@ -213,32 +230,34 @@ const tools: Tool[] = [
   {
     name: "offset",
     description:
-      "Offset by `distance` millimetres, three ways. `faceIds`: the faces move along their " +
-      "normals (positive outward) and the neighbours follow; on a round face this changes its " +
-      "radius. `faceIds` + `loops: true`: the outline of the faces is offset on the surface — " +
-      "positive inward, an inset border; negative outward onto the neighbouring faces. " +
-      "`edgeIds`: each edge is copied across one of its two faces; the sign picks the face. " +
-      "Loops and edges only draw new edges and split faces, nothing moves; for them " +
-      "`bothSides` offsets both ways at once and `gapFill` (round / linear / natural) shapes " +
-      "the corners. " +
+      "Offset by `distance` millimetres; what is offset depends on what is passed. On a body " +
+      "`id`: `faceIds` — the faces move along their normals (positive outward) and the " +
+      "neighbours follow; on a round face this changes its radius. `faceIds` + `loops: true` " +
+      "— the outline of the faces is offset on the surface: positive inward, an inset border; " +
+      "negative outward onto the neighbouring faces. `edgeIds` — each edge is copied across " +
+      "one of its two faces; the sign picks the face. Loops and edges only draw new edges and " +
+      "split faces, nothing moves. On a curve `id`: `vertexIds` — new vertices are inserted " +
+      "on both sides of each vertex, `distance` away along the curve. Without `id`: " +
+      "`curveIds` — a parallel copy of each planar curve (the sign picks the side; the curve " +
+      "stays); `regionIds` — a new curve around the outline of the regions (positive " +
+      "outward). `bothSides` offsets both ways at once (loops, edges, curves) and `gapFill` " +
+      "(round / linear / natural) shapes the corners (loops, edges, curves, regions). " +
       IDS_NOTE +
       " Undoable.",
     inputSchema: {
       type: "object",
-      required: ["id", "distance"],
+      required: ["distance"],
       properties: {
-        id: { type: "number" },
+        id: { type: "number", description: "Body (faceIds, edgeIds) or curve (vertexIds)" },
         faceIds: TOPOLOGY_IDS_SCHEMA,
         edgeIds: TOPOLOGY_IDS_SCHEMA,
+        vertexIds: { ...TOPOLOGY_IDS_SCHEMA, description: "Vertices of curve `id`" },
+        curveIds: { ...BODY_IDS_SCHEMA, description: "Planar curves to copy in parallel" },
+        regionIds: { ...TOPOLOGY_IDS_SCHEMA, description: "Region ids from list_regions" },
         loops: { type: "boolean", default: false, description: "With faceIds: offset their outline" },
         distance: { type: "number" },
-        bothSides: { type: "boolean", default: false, description: "Loops and edges only" },
-        gapFill: {
-          type: "string",
-          enum: ["round", "linear", "natural"],
-          default: "round",
-          description: "Loops and edges only",
-        },
+        bothSides: { type: "boolean", default: false },
+        gapFill: { type: "string", enum: ["round", "linear", "natural"], default: "round" },
       },
     },
   },
@@ -262,20 +281,24 @@ const tools: Tool[] = [
     },
   },
   {
-    name: "extend_sheet",
+    name: "extend",
     description:
-      "Extend a Sheet past its boundary edges by `distance` millimetres. `shape`: `linear` " +
-      "continues straight along the tangent, `natural` continues the curvature, `soft` blends " +
-      "smoothly, `reflective` mirrors the curvature. `edgeIds` are boundary edges of the Sheet " +
-      "(edges with one adjacent face). Undoable.",
+      "Extend by `distance` millimetres: a Sheet past its boundary edges (`edgeIds` — edges " +
+      "with one adjacent face), or a curve past its free ends (`vertexIds` — the end vertices " +
+      "of an open curve). `shape`: `linear` continues straight along the tangent, `natural` " +
+      "continues the curvature, `soft` blends smoothly, `reflective` mirrors the curvature; " +
+      "by default linear for a Sheet and natural for a curve. " +
+      IDS_NOTE +
+      " Undoable.",
     inputSchema: {
       type: "object",
-      required: ["id", "edgeIds", "distance"],
+      required: ["id", "distance"],
       properties: {
         id: { type: "number" },
-        edgeIds: TOPOLOGY_IDS_SCHEMA,
+        edgeIds: { ...TOPOLOGY_IDS_SCHEMA, description: "Boundary edges of a Sheet" },
+        vertexIds: { ...TOPOLOGY_IDS_SCHEMA, description: "End vertices of a curve" },
         distance: { type: "number" },
-        shape: { type: "string", enum: ["linear", "soft", "reflective", "natural"], default: "linear" },
+        shape: { type: "string", enum: ["linear", "soft", "reflective", "natural"] },
       },
     },
   },
@@ -386,8 +409,9 @@ const tools: Tool[] = [
     description:
       "Remove edges of one body and merge the faces they separate — the reverse of imprint. " +
       "With `edgeIds` only those edges; they must lie between faces of one surface. Without " +
-      "`edgeIds` every redundant edge of the body is removed (and the selection in the window " +
-      "is cleared). " +
+      "`edgeIds` every redundant edge of the body is removed — or, when `id` is a curve, its " +
+      "redundant vertices (the ones in the middle of a straight run); the selection in the " +
+      "window is then cleared. " +
       IDS_NOTE +
       " Undoable.",
     inputSchema: {
@@ -461,9 +485,14 @@ const handlers: ToolFamily["handlers"] = {
 
   offset: async (rawArgs) => {
     const args = OffsetArgs.parse(rawArgs ?? {});
+    if (args.curveIds) {
+      return ok(await native.offsetCurves(args.curveIds, args.distance, args.bothSides, args.gapFill));
+    }
+    if (args.regionIds) return ok(await native.offsetRegions(args.regionIds, args.distance, args.gapFill));
+    if (args.vertexIds) return ok(await native.offsetVertices(args.id!, args.vertexIds, Math.abs(args.distance)));
     const target = args.edgeIds ? { edgeIds: args.edgeIds } : { faceIds: args.faceIds!, loops: args.loops };
     return ok(
-      await native.offset(args.id, target, args.distance, { bothSides: args.bothSides, gapFill: args.gapFill }),
+      await native.offset(args.id!, target, args.distance, { bothSides: args.bothSides, gapFill: args.gapFill }),
     );
   },
 
@@ -472,9 +501,10 @@ const handlers: ToolFamily["handlers"] = {
     return ok(await native.matchFaces(args.id, args.faceIds, args.targetId, args.targetFaceId));
   },
 
-  extend_sheet: async (rawArgs) => {
-    const args = ExtendSheetArgs.parse(rawArgs ?? {});
-    return ok(await native.extendSheet(args.id, args.edgeIds, args.distance, args.shape));
+  extend: async (rawArgs) => {
+    const args = ExtendArgs.parse(rawArgs ?? {});
+    if (args.edgeIds) return ok(await native.extendSheet(args.id, args.edgeIds, args.distance, args.shape));
+    return ok(await native.extendCurve(args.id, args.vertexIds!, args.distance, args.shape));
   },
 
   untrim: async (rawArgs) => {

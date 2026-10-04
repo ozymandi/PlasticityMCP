@@ -66,6 +66,8 @@ async function main() {
     await runChecks(native, target.title);
     await solidChecks(native);
     await faceChecks(native);
+    await curveChecks(native);
+    await curveEditChecks(native);
   } catch (err) {
     console.error("SMOKE ERROR:", (err as Error).message);
     process.exitCode = 1;
@@ -1164,6 +1166,262 @@ async function faceChecks(native: NativeSession): Promise<void> {
   await native.undo();
   const solidReverse = await failure(native.reverse([box.id]));
   check("reverse rejects a Solid", /either curves or Sheets/.test(solidReverse?.message ?? ""), solidReverse?.message);
+}
+
+// More curves: rectangle, polygon, spiral, text, slot, tangent arc and circle — drawn around x = 4000.
+async function curveChecks(native: NativeSession): Promise<void> {
+  const X = 4000;
+  const wire = (result: MutationResult) => result.created.find((b) => b.type === "Wire");
+
+  const rect = wire(await native.createRectangle({ originMm: [X, 0, 0], widthMm: 40, heightMm: 20 }));
+  const rectTopo = await native.topology(rect!.id);
+  check("rectangle from a corner: one closed curve of four lines", boundsMatch(rect, [X, 0, 0], [X + 40, 20, 0]) &&
+    rectTopo.closed === true && rectTopo.segments?.length === 4, fmt(rect));
+  const upright = wire(await native.createRectangle(
+    { originMm: [X, 100, 0], widthMm: 40, heightMm: 20, centered: true, normal: [1, 0, 0] }));
+  check("centred rectangle in the plane with normal +X", boundsMatch(upright, [X, 80, -10], [X, 120, 10]), fmt(upright));
+  const slanted = wire(await native.createRectangle({ pointsMm: [[X, 200, 0], [X + 30, 200, 0], [X + 30, 210, 0]] }));
+  check("rectangle through three points", boundsMatch(slanted, [X, 200, 0], [X + 30, 210, 0]), fmt(slanted));
+  const parallel = await failure(native.createRectangle(
+    { originMm: [X, 0, 0], widthMm: 1, heightMm: 1, normal: [0, 0, 1], xDirection: [0, 0, 2] }));
+  check("rectangle rejects xDirection along the normal", /parallel to normal/.test(parallel?.message ?? ""), parallel?.message);
+
+  const hexagon = wire(await native.createPolygon([X + 100, 0, 0], 10, 6));
+  const half = 10 * Math.sin(Math.PI / 3);
+  check("polygon: radius to the vertices", boundsMatch(hexagon, [X + 90, -half, 0], [X + 110, half, 0]) &&
+    (await native.topology(hexagon!.id)).segments?.length === 6, fmt(hexagon));
+  const acrossFlats = wire(await native.createPolygon([X + 100, 100, 0], 10, 6, [0, 0, 1], "side"));
+  const corner = 10 / Math.cos(Math.PI / 6);
+  check("polygon: radius to the sides", boundsMatch(acrossFlats, [X + 100 - corner, 90, 0], [X + 100 + corner, 110, 0]),
+    fmt(acrossFlats));
+
+  const helix = wire(await native.createSpiral([X + 200, 0, 0], [0, 0, 1], 30, 10, 3));
+  check("spiral: three turns inside its cylinder", boundsMatch(helix, [X + 190, -10, 0], [X + 210, 10, 30], 0.5), fmt(helix));
+
+  const depthBefore = (await native.state()).undoDepth;
+  const word = await native.createText("AB", 10, [X + 300, 0, 0]);
+  check("text: curves for each letter, one undo step", word.created.length >= 2 &&
+    word.created.every((b) => b.type === "Wire") && word.undoDepth === depthBefore + 1 &&
+    word.created.every((b) => b.boundsMm!.min[0]! >= X + 299 && b.boundsMm!.max[0]! < X + 330 &&
+      b.boundsMm!.max[1]! < 15 && b.boundsMm!.max[2] === 0),
+    JSON.stringify(word.created.map((b) => b.boundsMm)));
+  const standing = await native.createText("A", 10, [X + 300, 100, 0], [0, -1, 0]);
+  check("text in an upright plane", standing.created.every((b) =>
+    Math.abs(b.boundsMm!.min[1]! - 100) < 1e-6 && Math.abs(b.boundsMm!.max[1]! - 100) < 1e-6) &&
+    standing.created.some((b) => b.boundsMm!.max[2]! > 5), JSON.stringify(standing.created.map((b) => b.boundsMm)));
+
+  const straight = wire(await native.createPolyline([[X + 400, 100, 0], [X + 440, 100, 0]]))!;
+  const noPlane = await failure(native.createSlot([straight.id], 10));
+  check("slot refuses a single straight line", /defines a plane/.test(noPlane?.message ?? ""), noPlane?.message);
+  const spine = wire(await native.createPolyline([[X + 400, 0, 0], [X + 440, 0, 0], [X + 440, 30, 0]]))!;
+  const slot = await native.createSlot([spine.id], 10);
+  check("slot around a bent line", boundsMatch(wire(slot), [X + 395, -5, 0], [X + 445, 35, 0], 0.01) &&
+    slot.removedIds.length === 0 && (await native.topology(wire(slot)!.id)).closed === true, fmt(wire(slot)));
+
+  const lastSegment = (await native.topology(spine.id)).segments!.find((x) => x.endMm.join() === [X + 440, 30, 0].join())!;
+  const bend = await native.createTangentArc({ id: spine.id, segmentId: lastSegment.id }, "end", [X + 450, 40, 0]);
+  check("tangent arc leaves the end of the curve", boundsMatch(wire(bend), [X + 440, 30, 0], [X + 450, 40, 0]),
+    fmt(wire(bend)));
+
+  const legA = wire(await native.createPolyline([[X + 500, 0, 0], [X + 540, 0, 0]]))!;
+  const legB = wire(await native.createPolyline([[X + 500, 0, 0], [X + 500, 40, 0]]))!;
+  const segmentOf = async (id: number) => ({ id, segmentId: (await native.topology(id)).segments![0]!.id });
+  const nested = await native.createTangentCircle(await segmentOf(legA.id), await segmentOf(legB.id), 5, [X + 510, 10, 0]);
+  check("tangent circle sits in the corner of two lines", boundsMatch(wire(nested), [X + 500, 0, 0], [X + 510, 10, 0]),
+    fmt(wire(nested)));
+
+  const through = wire(await native.createCircleThrough([[X + 600, 0, 0], [X + 620, 0, 0], [X + 610, 10, 0]]));
+  check("circle through three points", boundsMatch(through, [X + 600, -10, 0], [X + 620, 10, 0]), fmt(through));
+  const across = wire(await native.createCircleThrough([[X + 700, 0, 0], [X + 720, 0, 0]]));
+  check("circle on a diameter", boundsMatch(across, [X + 700, -10, 0], [X + 720, 10, 0]), fmt(across));
+  const tiltedDiameter = await failure(native.createCircleThrough([[X, 0, 0], [X, 0, 10]]));
+  check("circle on a diameter needs a perpendicular normal", /perpendicular/.test(tiltedDiameter?.message ?? ""),
+    tiltedDiameter?.message);
+
+  const hull: Vec3[] = [[X + 800, 0, 0], [X + 810, 10, 0], [X + 820, 0, 0]];
+  const pulled = wire(await native.createSpline(hull, false, undefined, true));
+  check("spline by control points stays inside its polygon", pulled!.boundsMm!.max[1]! < 9 &&
+    pulled!.boundsMm!.min[0] === X + 800 && pulled!.boundsMm!.max[0] === X + 820, fmt(pulled));
+}
+
+// Editing curves: corners, vertices and control points, trim, cut, bridge, offsets — drawn around x = 5000.
+async function curveEditChecks(native: NativeSession): Promise<void> {
+  const X = 5000;
+  const wire = (result: MutationResult) => result.created.find((b) => b.type === "Wire");
+  const near = (a: number[], b: number[], tolerance = 1e-3) => a.every((v, i) => Math.abs(v - b[i]!) < tolerance);
+  const vertexAt = async (id: number, at: Vec3) =>
+    (await native.topology(id)).vertices!.find((v) => near(v.positionMm, at))!.id;
+  const shape = async (id: number) => {
+    const t = await native.topology(id);
+    return {
+      kinds: t.segments!.map((x) => x.kind),
+      lengths: t.segments!.map((x) => x.lengthMm),
+      vertices: t.vertices!.map((v) => v.positionMm),
+      cvs: t.controlPoints!.length,
+    };
+  };
+
+  // --- corners and vertices of a polyline ---
+  const zig = wire(await native.createPolyline([[X, 0, 0], [X + 40, 0, 0], [X + 40, 30, 0], [X + 80, 30, 0]]))!;
+  const corner = await vertexAt(zig.id, [X + 40, 0, 0]);
+  const tail = await vertexAt(zig.id, [X + 80, 30, 0]);
+
+  await native.filletCurve(zig.id, 5, [corner]);
+  let now = await shape(zig.id);
+  check("fillet a vertex of a curve", now.kinds.filter((k) => k === "circle").length === 1 &&
+    now.lengths.some((l) => Math.abs(l - (Math.PI * 5) / 2) < 1e-3), JSON.stringify(now.lengths));
+  await native.undo();
+  await native.filletCurve(zig.id, -5, [corner]);
+  now = await shape(zig.id);
+  check("a negative radius chamfers the vertex", now.kinds.every((k) => k === "line") &&
+    now.lengths.some((l) => Math.abs(l - 5 * Math.SQRT2) < 1e-3), JSON.stringify(now.lengths));
+  await native.undo();
+  await native.filletCurve(zig.id, 5);
+  now = await shape(zig.id);
+  check("fillet without vertices rounds every corner", now.kinds.filter((k) => k === "circle").length === 2,
+    JSON.stringify(now.kinds));
+  await native.undo();
+  await native.offsetVertices(zig.id, [corner], 5);
+  now = await shape(zig.id);
+  check("offset a vertex adds a vertex on each side", now.vertices.length === 6 &&
+    now.vertices.some((v) => near(v, [X + 35, 0, 0])) && now.vertices.some((v) => near(v, [X + 40, 5, 0])),
+    JSON.stringify(now.vertices));
+  await native.undo();
+  await native.convertVertices(zig.id, [corner]);
+  now = await shape(zig.id);
+  check("convert a corner vertex into a smooth one", now.kinds.includes("curve") && now.kinds.length === 2,
+    JSON.stringify(now.kinds));
+  await native.undo();
+  const longer = await native.extendCurve(zig.id, [tail], 10);
+  check("extend a curve past its end", boundsMatch(changed(longer, zig.id), [X, 0, 0], [X + 90, 30, 0]),
+    fmt(changed(longer, zig.id)));
+  await native.undo();
+  await native.subdivideCurves([zig.id]);
+  check("subdivide adds a control point per segment", (await shape(zig.id)).cvs === 3);
+  await native.undo();
+  await native.raiseDegree([zig.id]);
+  check("raise_degree turns the lines into splines", (await shape(zig.id)).kinds.every((k) => k === "curve"));
+  await native.undo();
+  await native.rebuildCurves([zig.id], { pointCount: 6 });
+  now = await shape(zig.id);
+  check("rebuild with a point count makes one spline", now.kinds.join() === "curve", JSON.stringify(now.kinds));
+  await native.undo();
+  await native.rebuildCurves([zig.id], { degree: 3, spans: 4 });
+  now = await shape(zig.id);
+  check("rebuild with degree and spans keeps the corners", now.kinds.length === 3 && now.cvs > 3, JSON.stringify(now.cvs));
+  await native.undo();
+
+  await native.moveControlPoints(zig.id, { vertexIds: [corner] }, [0, 5, 0]);
+  check("move a vertex of a curve", (await shape(zig.id)).vertices.some((v) => near(v, [X + 40, 5, 0])));
+  await native.undo();
+  await native.rotateControlPoints(zig.id, { vertexIds: [tail] }, [0, 0, 1], 90, [X + 40, 30, 0]);
+  now = await shape(zig.id);
+  check("rotate a vertex about a pivot", now.vertices.some((v) => near(v, [X + 40, 70, 0], 0.01)), JSON.stringify(now.vertices));
+  await native.undo();
+  await native.scaleControlPoints(zig.id, { vertexIds: [tail] }, [2, 2, 2], [X + 40, 30, 0]);
+  now = await shape(zig.id);
+  check("scale a vertex about a pivot", now.vertices.some((v) => near(v, [X + 120, 30, 0], 0.01)), JSON.stringify(now.vertices));
+  await native.undo();
+
+  const parallel = await native.offsetCurves([zig.id], 5);
+  check("offset a curve: a parallel copy, the curve stays", parallel.removedIds.length === 0 &&
+    boundsMatch(wire(parallel), [X, 5, 0], [X + 80, 35, 0]), fmt(wire(parallel)));
+  await native.undo();
+  const flanks = await native.offsetCurves([zig.id], 5, true);
+  check("offset a curve both ways", flanks.created.filter((b) => b.type === "Wire").length === 2, brief(flanks));
+  await native.undo();
+
+  // --- crossing lines: cut and trim ---
+  const across = wire(await native.createPolyline([[X, 100, 0], [X + 60, 100, 0]]))!;
+  const upright = wire(await native.createPolyline([[X + 30, 80, 0], [X + 30, 120, 0]]))!;
+  const halves = await native.cut([across.id], { curveIds: [upright.id] });
+  const pieces = [...halves.created, ...halves.changed];
+  check("cut a curve with a curve", pieces.length === 2 &&
+    pieces.some((b) => boundsMatch(b, [X, 100, 0], [X + 30, 100, 0])) &&
+    pieces.some((b) => boundsMatch(b, [X + 30, 100, 0], [X + 60, 100, 0])), brief(halves));
+  await native.undo();
+  const trimmed = await native.trimCurve(across.id, [X + 45, 100, 0]);
+  const rest = [...trimmed.changed, ...trimmed.created].filter((b) => b.type === "Wire" && b.id !== upright.id);
+  check("trim removes the piece beyond the crossing", rest.length === 1 &&
+    boundsMatch(rest[0], [X, 100, 0], [X + 30, 100, 0]), brief(trimmed) + " " + fmt(rest[0]));
+  await native.undo();
+  const wrongCutter = await failure(native.cut([across.id], { id: upright.id, faceIds: ["x"] }));
+  check("curves are cut with curves only", /pass curveIds/.test(wrongCutter?.message ?? ""), wrongCutter?.message);
+
+  // --- splines: control points, bridge, align ---
+  const s1 = wire(await native.createSpline([[X, 200, 0], [X + 20, 210, 0], [X + 40, 200, 0], [X + 60, 210, 0]]))!;
+  const s2 = wire(await native.createSpline([[X + 100, 200, 0], [X + 120, 190, 0], [X + 140, 200, 0]]))!;
+  const cvsBefore = (await native.topology(s1.id)).controlPoints!;
+  const cv = cvsBefore[cvsBefore.length - 1]!;
+  await native.moveControlPoints(s1.id, { controlPointIds: [cv.id] }, [0, 5, 0]);
+  let cvsNow = (await native.topology(s1.id)).controlPoints!;
+  check("move a control point", near(cvsNow.find((c) => c.id === cv.id)!.positionMm,
+    [cv.positionMm[0]!, cv.positionMm[1]! + 5, cv.positionMm[2]!], 0.01), JSON.stringify(cvsNow));
+  await native.undo();
+  await native.slideControlPoints(s1.id, { controlPointIds: [cv.id] }, 3);
+  cvsNow = (await native.topology(s1.id)).controlPoints!;
+  const slid = cvsNow.find((c) => c.id === cv.id)!.positionMm;
+  check("slide a control point along the control polygon",
+    Math.abs(Math.hypot(...slid.map((v, i) => v - cv.positionMm[i]!)) - 3) < 0.01, JSON.stringify(slid));
+  await native.undo();
+  await native.deleteControlPoints(s1.id, { controlPointIds: [cv.id] });
+  check("delete a control point", (await native.topology(s1.id)).controlPoints!.length === cvsBefore.length - 1);
+  await native.undo();
+
+  const end1 = await vertexAt(s1.id, [X + 60, 210, 0]);
+  const start2 = await vertexAt(s2.id, [X + 100, 200, 0]);
+  const link = await native.bridge({ id: s1.id, vertexId: end1 }, { id: s2.id, vertexId: start2 });
+  check("bridge two curve ends with a new curve", wire(link) !== undefined &&
+    Math.abs(wire(link)!.boundsMm!.min[0]! - (X + 60)) < 0.01 && Math.abs(wire(link)!.boundsMm!.max[0]! - (X + 100)) < 0.01,
+    fmt(wire(link)));
+  await native.undo();
+  await native.alignVertex(s2.id, start2, s1.id, end1, "G1");
+  check("align brings one curve end onto another", (await shape(s2.id)).vertices.some((v) => near(v, [X + 60, 210, 0], 0.01)));
+  await native.undo();
+
+  // --- bodies: curves from edges, bridge between edges, deform onto a face ---
+  const box = (await native.createBox([X + 200, 0, 0], [40, 30, 20])).created[0]!;
+  const bt = await native.topology(box.id);
+  const rim = await native.curvesFromEdges(box.id, bt.edges!.filter((e) => e.midMm[2] === 20).map((e) => e.id));
+  check("curves_from_edges copies an edge loop as one closed curve", rim.created.length === 1 &&
+    boundsMatch(wire(rim), [X + 200, 0, 20], [X + 240, 30, 20]) && (await native.topology(wire(rim)!.id)).closed === true,
+    brief(rim));
+  await native.undo();
+  const other = (await native.createBox([X + 260, 0, 0], [40, 30, 20])).created[0]!;
+  const ot = await native.topology(other.id);
+  const edgeAt = (t: BodyTopology, mid: Vec3) => t.edges!.find((e) => near(e.midMm, mid))!.id;
+  const span = await native.bridge(
+    { id: box.id, edgeId: edgeAt(bt, [X + 240, 15, 20]) },
+    { id: other.id, edgeId: edgeAt(ot, [X + 260, 15, 20]) },
+    "G1",
+  );
+  check("bridge two body edges", wire(span) !== undefined && Math.abs(wire(span)!.boundsMm!.min[0]! - (X + 240)) < 0.01 &&
+    Math.abs(wire(span)!.boundsMm!.max[0]! - (X + 260)) < 0.01, fmt(wire(span)));
+  await native.undo();
+  const unlike = await failure(native.bridge({ id: s1.id, vertexId: end1 }, { id: box.id, edgeId: edgeAt(bt, [X + 240, 15, 20]) }));
+  check("bridge rejects a vertex with an edge", /not one of each/.test(unlike?.message ?? ""), unlike?.message);
+
+  const can = (await native.createCylinder([X + 400, 0, 0], 10, 30)).created[0]!;
+  const wall = (await native.topology(can.id, "faces")).faces!.find((f) => !f.planar)!.id;
+  const mark = wire(await native.createPolyline([[X + 205, 5, 20], [X + 235, 25, 20]]))!;
+  const wrapped = await native.deformCurves([mark.id], { id: box.id, faceId: faceBy(bt, [0, 0, 1]) }, { id: can.id, faceId: wall });
+  const onWall = [...wrapped.created, ...wrapped.changed].find((b) => b.type === "Wire");
+  check("deform wraps a curve from one face onto another", onWall !== undefined &&
+    onWall.boundsMm!.min[0]! >= X + 389.5 && onWall.boundsMm!.max[0]! <= X + 410.5, brief(wrapped) + " " + fmt(onWall));
+  await native.undo();
+
+  // --- regions and redundant vertices ---
+  await native.createCircle([X + 500, 0, 0], 10);
+  const disc = (await native.listRegions()).find((r) =>
+    Math.abs(r.boundsMm.min[0]! - (X + 490)) < 0.01 && Math.abs(r.boundsMm.max[0]! - (X + 510)) < 0.01)!;
+  const halo = await native.offsetRegions([disc.id], 2);
+  check("offset a region: a curve around its outline", boundsMatch(wire(halo), [X + 488, -12, 0], [X + 512, 12, 0], 0.01),
+    brief(halo) + " " + fmt(wire(halo)));
+  await native.undo();
+  const straight = wire(await native.createPolyline([[X + 600, 0, 0], [X + 620, 0, 0], [X + 640, 0, 0]]))!;
+  await native.dissolveEdges(straight.id);
+  check("dissolve on a curve removes a redundant vertex", (await shape(straight.id)).kinds.length === 1);
+  await native.undo();
 }
 
 main().catch((err) => {
