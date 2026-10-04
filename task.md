@@ -968,6 +968,16 @@ Files: `tests/nikon-f2/nikon-f2-back.plasticity`, `.step`, `back-view.png`, `cam
 
 Seen in the first close screenshot (before the turn): the aperture scale reads upside down when the lens stands front up (as recorded above); the knurling, the twelve flats, the index dot and the glass look right; the M39 thread is not visible from that side.
 
+### `smoke:native` after the day's server changes — ✅ passed (2026-10-05)
+
+The debt named in the three sections above (topology filter, compact results, `set_view` ids and direction — none of them run through the smoke test because the window held the model) is closed: the Designer opened a fresh Untitled document and `npm run smoke:native` passed in full — every check ok, none failed, 51 s, the document back to its baseline (the default cube). The renderer of that Plasticity session (running since 2026-10-04 22:38) was at 836 MB before the run and survived it.
+
+**Checks for the new things added to the smoke test (same day, on the Designer's word):** a block `listingChecks` with 13 checks — the topology filter (box on edges, faces by centre, kinds, both together, an empty box, a curve's segments and vertices, no `matched` without a filter), the printed form of results (one body per line, usual fields left out), `set_view` framing a chosen body, a direction from behind, leaving the X-ray state, an unknown id refused before the camera moves, a direction along Z refused. First run: 382 ok and one failure — in the new check itself, which assumed every new body is unnamed, while Plasticity names a cylinder "Cylinder.001"; the expectation was corrected, not the formatter. Second run: **383 checks, all ok, 52 s.**
+
+Still outside the smoke test, because they live in the tools layer and the smoke test drives the native layer: the `box` of `list_regions` and the return shape of the group tools (both exercised through the MCP client on the Nikon).
+
+After the run the Nikon scene was reopened from `tests/nikon-f2/nikon-f2-back.plasticity` with `open_document` (41 bodies). The window is now on that file, not on an Untitled document: body ids and history start anew, and Plasticity's own Save would write into that file.
+
 ## Risks
 
 - **Binary protocol details**: WS payloads are likely binary (efficient mesh transfer). Recon must decode framing exactly. Mitigation: addon source is Python and readable.

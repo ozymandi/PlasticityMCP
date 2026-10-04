@@ -18,6 +18,7 @@ import {
   Vec3,
   ViewName,
 } from "./native.js";
+import { formatResult } from "./tools/output.js";
 
 const TOLERANCE_MM = 1e-3;
 
@@ -74,6 +75,7 @@ async function main() {
     await sceneChecks(native);
     await measureChecks(native);
     await environmentChecks(native);
+    await listingChecks(native);
   } catch (err) {
     console.error("SMOKE ERROR:", (err as Error).message);
     process.exitCode = 1;
@@ -1867,6 +1869,67 @@ async function environmentChecks(native: NativeSession): Promise<void> {
     if (original.name === "XY") await native.setConstructionPlane({ preset: "xy" });
     else await native.setConstructionPlane({ originMm: original.originMm, normal: original.normal, xDirection: original.xDirection });
   }
+}
+
+// Reading a part of a body, framing chosen bodies, views from any side, the printed form of results.
+async function listingChecks(native: NativeSession): Promise<void> {
+  const X = 12000;
+  const block = (await native.createBox([X, 0, 0], [40, 30, 20])).created[0]!;
+  const post = (await native.createCylinder([X + 100, 0, 0], 8, 40)).created[0]!;
+  const path = (await native.createPolyline([[X, 100, 0], [X + 30, 100, 0], [X + 30, 130, 0]])).created[0]!;
+
+  const full = await native.topology(block.id);
+  check("topology without a filter lists everything", full.matched === undefined && full.edges?.length === 12);
+  const top = await native.topology(block.id, "edges", { boxMm: { min: [X - 1, -1, 19.9], max: [X + 41, 31, 20.1] } });
+  check("topology box keeps the four edges of the top face", top.edges?.length === 4 && top.matched?.edges === 4 &&
+    top.edgeCount === 12 && top.edges.every((e) => e.startMm[2] === 20 && e.endMm[2] === 20), JSON.stringify(top.matched));
+  const side = await native.topology(block.id, "faces", { boxMm: { min: [X + 39, 0, 0], max: [X + 41, 30, 20] } });
+  check("topology box keeps faces by their centre", side.faces?.length === 1 && side.faces[0]!.normal.join() === "1,0,0" &&
+    side.matched?.faces === 1 && side.faceCount === 6, JSON.stringify(side.matched));
+  const circles = await native.topology(post.id, "edges", { kinds: ["circle"] });
+  const lines = await native.topology(post.id, "edges", { kinds: ["line"] });
+  check("topology kinds keeps edges of that kind", circles.edges?.length === 2 && lines.edges?.length === 0 &&
+    lines.matched?.edges === 0, `${circles.edges?.length} circles, ${lines.edges?.length} lines`);
+  const rim = await native.topology(post.id, "edges", {
+    kinds: ["circle"], boxMm: { min: [X + 91, -9, 39.9], max: [X + 109, 9, 40.1] },
+  });
+  check("topology box and kinds together", rim.edges?.length === 1 && rim.edges[0]!.midMm[2] === 40);
+  const nothing = await native.topology(block.id, "all", { boxMm: { min: [0, 0, 0], max: [1, 1, 1] } });
+  check("an empty box gives empty lists", nothing.faces?.length === 0 && nothing.edges?.length === 0 &&
+    nothing.matched?.faces === 0 && nothing.matched.edges === 0);
+  const corner = await native.topology(path.id, "all", { boxMm: { min: [X + 29, 99, -1], max: [X + 31, 131, 1] } });
+  check("topology box on a curve: its segments and vertices", corner.segments?.length === 1 &&
+    corner.vertices?.length === 2 && corner.matched?.segments === 1, JSON.stringify(corner.matched));
+
+  const printed = formatResult({ bodies: [block, post, path] });
+  const parsed = JSON.parse(printed) as { bodies: Array<Record<string, unknown>> };
+  // The box has no name; Plasticity names a cylinder itself ("Cylinder.001"), and that stays.
+  check("results print one body per line, without the usual fields", printed.split("\n").length === 7 &&
+    parsed.bodies.every((b) => b.id !== undefined && b.visible === undefined && b.locked === undefined) &&
+    parsed.bodies[0]!.name === undefined && parsed.bodies[1]!.name === post.name &&
+    parsed.bodies[0]!.faceCount === 6 && parsed.bodies[2]!.faceCount === undefined, printed.split("\n")[2]?.trim());
+
+  if ((await native.state()).windowHidden) {
+    console.log(" skip  framing and directions — the Plasticity window is covered or minimized");
+    return;
+  }
+  const close = await native.setView("isometric", true, [block.id]);
+  check("set_view frames the chosen body", close.targetMm.every((v, i) => Math.abs(v - [X + 20, 15, 10][i]!) < 0.01),
+    JSON.stringify(close.targetMm));
+  const behind = await native.setView([1, 1, 1], true, [block.id, post.id]);
+  check("set_view from a direction: from behind, not an axis view", behind.view === "custom" && !behind.aligned &&
+    behind.direction.every((v) => Math.abs(v - 1 / Math.sqrt(3)) < 1e-6), JSON.stringify(behind.direction));
+  const axis = await native.setView("back");
+  const away = await native.setView([-2, 3, 1], false);
+  check("a direction leaves the X-ray state of an axis view", axis.aligned && !away.aligned &&
+    away.direction.every((v, i) => Math.abs(v - [-2, 3, 1][i]! / Math.hypot(-2, 3, 1)) < 1e-6), JSON.stringify(away.direction));
+  const unknown = await failure(native.setView("top", true, [block.id, 999999]));
+  const after = await native.setView([-2, 3, 1], false);
+  check("set_view refuses an unknown id before moving the camera", /Unknown body id: 999999/.test(unknown?.message ?? "") &&
+    after.targetMm.every((v, i) => Math.abs(v - away.targetMm[i]!) < 1e-3), unknown?.message);
+  const vertical = await failure(native.setView([0, 0, 2]));
+  check("a direction along Z is refused", /top or bottom/.test(vertical?.message ?? ""), vertical?.message);
+  await native.setView("isometric");
 }
 
 main().catch((err) => {
