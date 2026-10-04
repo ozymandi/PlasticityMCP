@@ -64,14 +64,23 @@ A second channel, independent of the WebSocket bridge: real B-Rep operations thr
 | `loft_profiles` | Loft through ordered profiles; optional `guideIds`, `closed`. Closed profiles → Solid, open → Sheet. |
 | `export_step` | Exact B-Rep export to `.step` / `.stp`; all Solids and Sheets unless `ids` given. |
 | `export_parasolid` | Exact B-Rep export to `.x_t` (text) or `.x_b` (binary). |
-| `export_mesh` | Triangle mesh to `.stl`, `.obj` or `.3mf` (millimetres, Z up); `tolerance` and `angle` control the density. |
+| `export_mesh` | Triangle mesh to `.stl`, `.obj` (millimetres) or `.3mf` (metres, unit declared), Z up; `tolerance` and `angle` control the density. |
 | `export_drawing` | Technical drawing as SVG in millimetres: hidden-line projections of the chosen `views`, laid out left to right. |
 | `import_step` | Add a STEP file's geometry to the document. Undoable. |
+| `import_parasolid` | Add the bodies of a `.x_t` / `.x_b` file. Undoable. |
+| `import_svg` | SVG shapes as editable curves in the XY plane (`unit`, default millimetre; SVG y is flipped). Undoable. |
+| `import_mesh` | `.stl` / `.obj` / `.3mf` as a **reference mesh** — visible, but not a body (`unit` for STL and OBJ). Undoable. |
+| `list_reference_meshes` | Reference meshes: id, name, source file, bounds, triangles. |
+| `delete_reference_meshes` | Delete reference meshes by id. Undoable. |
 | `save_document` | Save a **copy** as `.plasticity`; the open document stays as it is. |
 | `set_view` | Camera to front / back / left / right / top / bottom / isometric; `fit` frames all bodies. |
 | `screenshot` | PNG of the 3D viewport (longest side ≤ 1568 px), returned as an image; optional `path`. |
 
 `native_launch` adds Chromium switches that keep the window drawing while it is covered by other windows, so everything works at full speed with Plasticity in the background. A **minimized** window does not draw: `set_view` and `screenshot` then fail with a clear message (`native_status` reports `windowVisible`) and modelling tools slow down to about two seconds per operation.
+
+Reference meshes are a separate family of objects with ids of their own: `list_bodies`, the transform tools and the modelling tools do not see them.
+
+IGES and SAT are not available: they need the Studio edition of Plasticity (this server is developed against an Indie licence).
 
 File tools take absolute paths, check the extension and never replace an existing file without `overwrite: true`.
 

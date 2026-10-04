@@ -395,7 +395,39 @@ Findings:
 
 Block 9 is committed, merged into `main` (fast-forward) and pushed. The MCP client must be restarted to see the new tools.
 
-Ideas beyond the agreed list (not agreed yet): importing other formats (Parasolid, meshes, SVG); opening `.plasticity` files.
+### IGES — closed: not available in this edition (2026-10-04)
+
+Designer confirmed that the installed Plasticity has an **Indie** licence, which does not support IGES — only the Studio edition does. The Save dialog of the UI offers exactly: OBJ, STL, PNG, STEP, Parasolid (`.x_b`, `.x_t`), 3MF, SVG. So the tools cover every exchange format this edition has; no IGES or SAT tool will be added.
+
+For the record, the programmatic attempts (export through `ExportCadFactory` and through `ExportIgesCommand` / `ExportSatCommand` with the file dialog bypassed, import of a sample `.igs` through `ExchangeImportFactory`) all failed with kernel attribute errors (`PK_ATTRIB_create_empty` → `PK_ERROR_wrong_entity`, `PK_ATTRIB_ask_doubles` → `PK_ERROR_not_an_entity`, or an empty error with condition `:'(`) — that is what the edition limit looks like from the inside. The sample `cilinder.igs` did not come from this installation's export.
+
+Two things learned on the way:
+- `ExportStepCommand` run with its `getPath` replaced did not return within 60 s (it waits for a dialog). Do not drive the UI's export commands; `export_step` uses the factory directly and works.
+- `editor.importer` (`import`, `importNative`, `importSVG`, `import3mf`) is the UI's import entry point — relevant for block 10.
+
+## Native block 10 — more import formats — ✅ Done (2026-10-04, ~2.5 h)
+
+Work is on branch `native-block-10`. Designer chose the variant with meshes.
+
+New tools: `import_parasolid`, `import_svg`, `import_mesh`, `list_reference_meshes`, `delete_reference_meshes` — 59 tools total. `importStep` and the new importers share one helper that runs an import factory inside `ImportCommand`.
+
+Verified live on 26.1.3 (Untitled), `smoke:native` extended and passing (171 checks, 21 s):
+- Parasolid: export → import brings the plate back with the same faces and exact bounds.
+- SVG: a hand-written file (rect + circle) becomes two curves with the right sizes; a curve from it extrudes into a Solid; `unit: centimeter` scales by 10.
+- Meshes: STL / OBJ / 3MF import as reference meshes with the right bounds and triangle count; a reference mesh is not a body; delete, Undo of the delete, Undo of the import; `unit: meter` scales by 1000; unknown reference id, missing file and wrong extension refused.
+- Built stdio server exercised end to end (SVG logo → regions → plate with a hole) incl. validation errors.
+
+Findings:
+- `ParasolidImportFactory`, `VectorImportFactory` (`unit`, default centimetre) and `MeshImportFactory` (`unit`, default metre) all take `filePath` and run inside `ImportCommand`. 3MF goes through `editor.importer.import3mf(path)`.
+- **SVG import:** shapes land in the XY plane at the SVG origin, **y flipped** (SVG y grows downward: a rect at y 10…40 arrives at y −40…−10). `rect`, `circle`, `path` and `polyline` are understood; group transforms are applied. Closed shapes immediately form regions.
+- **Meshes are not bodies.** They become `Empties_ObjectEmpty` objects in `editor.db.empties` (tag `Object`), found with `db.lookupEmptyById(id)` (throws "Empty not found" for an unknown id). Ids start at 0 and live in a number space of their own. Selection uses `selected.addEmpty`, deletion the native `DeleteCommand`.
+- **Bug found and fixed in `export_mesh` (shipped in block 9):** Plasticity's 3MF exporter always writes `unit="meter"`, whatever unit the coordinates are in. The tool had set millimetres for all three formats, so a 40 mm part was exported to 3MF as 40 m. 3MF is now written in metres (unit declared, correct size everywhere); STL and OBJ stay in millimetres. The 3MF round trip is in the smoke test.
+
+**Not verified:** SVG features beyond the four basic elements (curved paths, text, nested transforms, units in `width`/`height`); meshes with several objects in one file; moving or hiding reference meshes (no tools for that); STEP / Parasolid / mesh files written by other programs.
+
+Block 10 is committed, merged into `main` (fast-forward) and pushed. The MCP client must be restarted to see the new tools.
+
+Ideas beyond the agreed list (not agreed yet): transforming and hiding reference meshes; PolySplines (mesh → NURBS); opening `.plasticity` files.
 
 ## Risks
 
@@ -442,4 +474,4 @@ PlasticityMCP/
 ## Next action
 
 1. Designer: close Plasticity and call `native_launch` (or `npm run smoke:native`) once to verify the cold-start path; restart the MCP client so it picks up the new tools.
-2. Blocks 1–9 are in `main` and published. Designer decides what comes next (see the ideas list).
+2. Blocks 1–10 are in `main` and published. Designer decides what comes next (see the ideas list).

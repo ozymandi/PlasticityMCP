@@ -5,7 +5,7 @@
  *
  *   npm run smoke:native
  */
-import { copyFileSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchPlasticity } from "./launcher.js";
@@ -52,6 +52,7 @@ async function main() {
     );
   }
   const baselineIds = baseline.bodies.map((b) => b.id).join(",");
+  const baselineReferences = (await native.listReferenceMeshes()).length;
 
   try {
     await runChecks(native, target.title);
@@ -67,7 +68,9 @@ async function main() {
   await native.selectBodies(baseline.bodies.filter((b) => b.selected).map((b) => b.id));
   const final = await native.state();
   check("document is back to its baseline",
-    final.bodies.map((b) => b.id).join(",") === baselineIds, `${final.bodies.length} bodies`);
+    final.bodies.map((b) => b.id).join(",") === baselineIds &&
+      (await native.listReferenceMeshes()).length === baselineReferences,
+    `${final.bodies.length} bodies`);
 
   native.disconnect();
   console.log(process.exitCode ? "\nSMOKE FAILED" : "\nSMOKE PASSED");
@@ -651,6 +654,68 @@ async function runChecks(native: NativeSession, title: string): Promise<void> {
     check("drawing of the plain plate, top view", holedDrawing.views[0]?.sizeMm.join(" x ") === "40 x 30");
     const drawCurve = await failure(native.exportDrawing(join(folder, "curve.svg"), [rect!.id]));
     check("only Solids can be drawn", /only Solids can be drawn/.test(drawCurve?.message ?? ""));
+
+    // Imports: Parasolid and meshes round-trip the files written above; SVG is hand-written.
+    const fromParasolid = await native.importParasolid(join(folder, "plate.x_t"));
+    check("import Parasolid brings the plate back", fromParasolid.created.length === 1 &&
+      fromParasolid.created[0]?.faceCount === 6 &&
+      boundsMatch(fromParasolid.created[0], [200, 0, 0], [240, 30, 10]), fmt(fromParasolid.created[0]));
+    await native.undo();
+
+    const shapesPath = join(folder, "shapes.svg");
+    writeFileSync(shapesPath, `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 80">
+  <rect x="10" y="10" width="40" height="30" fill="none" stroke="black"/>
+  <circle cx="75" cy="25" r="10" fill="none" stroke="black"/>
+</svg>`);
+    const shapes = await native.importSvg(shapesPath);
+    const svgRect = shapes.created.find((b) => boundsMatch(b, [10, -40, 0], [50, -10, 0]));
+    const svgCircle = shapes.created.find((b) => boundsMatch(b, [65, -35, 0], [85, -15, 0]));
+    check("import SVG: curves in millimetres, y flipped", shapes.created.length === 2 &&
+      svgRect?.type === "Wire" && svgCircle?.type === "Wire",
+      shapes.created.map((b) => fmt(b)).join(" "));
+    const svgSolid = made(await native.extrudeProfile(svgCircle!.id, 5), "Solid");
+    check("an imported SVG shape is a usable profile",
+      boundsMatch(svgSolid, [65, -35, 0], [85, -15, 5]), fmt(svgSolid));
+    await native.undo();
+    await native.undo();
+    const bigShapes = await native.importSvg(shapesPath, "centimeter");
+    check("import SVG in centimetres",
+      bigShapes.created.some((b) => boundsMatch(b, [100, -400, 0], [500, -100, 0])));
+    await native.undo();
+
+    const bodiesBeforeMesh = (await native.state()).bodies.length;
+    const reference = await native.importMesh(stlPath);
+    const mesh = reference.created[0];
+    const sameBox = (m: { boundsMm: { min: Vec3; max: Vec3 } | null } | undefined, min: Vec3, max: Vec3) =>
+      m?.boundsMm != null && m.boundsMm.min.every((v, i) => Math.abs(v - min[i]!) < 1e-3) &&
+      m.boundsMm.max.every((v, i) => Math.abs(v - max[i]!) < 1e-3);
+    check("import STL as a reference mesh", reference.created.length === 1 && mesh?.triangles === 12 &&
+      sameBox(mesh, [200, 0, 0], [240, 30, 10]), JSON.stringify(mesh?.boundsMm));
+    check("a reference mesh is not a body", (await native.state()).bodies.length === bodiesBeforeMesh &&
+      (await native.listReferenceMeshes()).some((m) => m.id === mesh?.id));
+    const dropped = await native.deleteReferenceMeshes([mesh!.id]);
+    check("delete a reference mesh", dropped.removedIds[0] === mesh!.id && dropped.referenceCount === 0);
+    await native.undo();
+    check("undo brings the reference mesh back", (await native.listReferenceMeshes()).length === 1);
+    await native.undo();
+    check("undo of the import removes it", (await native.listReferenceMeshes()).length === 0);
+    const inMetres = await native.importMesh(stlPath, "meter");
+    check("mesh unit scales the import", sameBox(inMetres.created[0], [200000, 0, 0], [240000, 30000, 10000]));
+    await native.undo();
+    const fromObj = await native.importMesh(objPath);
+    check("import OBJ", sameBox(fromObj.created[0], [200, 0, 0], [240, 30, 10]), JSON.stringify(fromObj.created[0]?.boundsMm));
+    await native.undo();
+    const from3mf = await native.importMesh(join(folder, "plate.3mf"));
+    check("3MF round trip keeps the true size", sameBox(from3mf.created[0], [200, 0, 0], [240, 30, 10]),
+      JSON.stringify(from3mf.created[0]?.boundsMm));
+    await native.undo();
+    const noReference = await failure(native.deleteReferenceMeshes([424242]));
+    check("unknown reference mesh id is refused", /Unknown reference mesh id/.test(noReference?.message ?? ""),
+      noReference?.message ?? "no error");
+    const missingMesh = await failure(native.importMesh(join(folder, "nothing.stl")));
+    check("import of a missing mesh is refused", /not found/.test(missingMesh?.message ?? ""));
+    const wrongImport = await failure(native.importParasolid(stepPath));
+    check("import checks the extension", /must end in/.test(wrongImport?.message ?? ""));
 
     const imported = await native.importStep(stepPath);
     check("import STEP brings the plate back", imported.created.length === 1 &&

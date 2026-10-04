@@ -342,6 +342,26 @@ const ImportStepArgs = z.object({
   path: z.string().min(1),
 });
 
+const ImportUnitSchema = z.enum(["millimeter", "centimeter", "meter", "inch"]);
+
+const ImportParasolidArgs = z.object({
+  path: z.string().min(1),
+});
+
+const ImportSvgArgs = z.object({
+  path: z.string().min(1),
+  unit: ImportUnitSchema.optional().default("millimeter"),
+});
+
+const ImportMeshArgs = z.object({
+  path: z.string().min(1),
+  unit: ImportUnitSchema.optional().default("millimeter"),
+});
+
+const DeleteReferenceMeshesArgs = z.object({
+  ids: z.array(z.number().int().nonnegative()).min(1),
+});
+
 const SaveDocumentArgs = z.object({
   path: z.string().min(1),
   overwrite: z.boolean().optional().default(false),
@@ -1100,8 +1120,10 @@ const tools: Tool[] = [
     name: "export_mesh",
     description:
       "Export bodies as a triangle mesh for 3D printing or rendering. The extension of `path` " +
-      "(absolute) picks the format: `.stl` (binary), `.obj` or `.3mf`. The file is in " +
-      "millimetres with Z up. `tolerance` is the largest allowed gap between the mesh and the " +
+      "(absolute) picks the format: `.stl` (binary), `.obj` or `.3mf`. STL and OBJ are written " +
+      "in millimetres (they carry no unit); 3MF is written in metres with that unit declared, " +
+      "so it has the right size wherever units are honoured. Z is up. " +
+      "`tolerance` is the largest allowed gap between the mesh and the " +
       "true surface in millimetres (default 0.05; smaller = more triangles), `angle` the " +
       "largest angle between neighbouring facets in degrees (default 15). Without `ids`, every " +
       "Solid and Sheet is exported. Returns the triangle count for STL and OBJ. An existing " +
@@ -1157,6 +1179,68 @@ const tools: Tool[] = [
       type: "object",
       required: ["path"],
       properties: { path: { type: "string", description: "Absolute path of the STEP file" } },
+    },
+  },
+  {
+    name: "import_parasolid",
+    description:
+      "Add the bodies of a Parasolid file (`.x_t` or `.x_b`, absolute path) to the current " +
+      "document as exact B-Rep. The imported bodies are returned in `created`. Undoable.",
+    inputSchema: {
+      type: "object",
+      required: ["path"],
+      properties: { path: { type: "string", description: "Absolute path of the Parasolid file" } },
+    },
+  },
+  {
+    name: "import_svg",
+    description:
+      "Import the shapes of an SVG file (absolute path) as editable curves (Wires), returned " +
+      "in `created`. One SVG user unit is read as one `unit` (default millimeter). Closed " +
+      "shapes become regions that list_regions and the profile tools can use. Undoable.",
+    inputSchema: {
+      type: "object",
+      required: ["path"],
+      properties: {
+        path: { type: "string", description: "Absolute path of the SVG file" },
+        unit: { type: "string", enum: ["millimeter", "centimeter", "meter", "inch"], default: "millimeter" },
+      },
+    },
+  },
+  {
+    name: "import_mesh",
+    description:
+      "Import a triangle mesh (`.stl`, `.obj` or `.3mf`, absolute path) as a REFERENCE MESH: " +
+      "it is shown in the viewport and on screenshots and can be modelled around, but it is " +
+      "not a body — it has no faces to edit and list_bodies, move_bodies etc. do not see it. " +
+      "Reference meshes have ids of their own (see list_reference_meshes). STL and OBJ carry " +
+      "no units: one file unit is read as one `unit` (default millimeter). Undoable.",
+    inputSchema: {
+      type: "object",
+      required: ["path"],
+      properties: {
+        path: { type: "string", description: "Absolute path of the mesh file" },
+        unit: { type: "string", enum: ["millimeter", "centimeter", "meter", "inch"], default: "millimeter" },
+      },
+    },
+  },
+  {
+    name: "list_reference_meshes",
+    description:
+      "List the reference meshes of the document (imported with import_mesh): id, name, source " +
+      "file, bounds in millimetres, triangle count, visibility. These ids are separate from " +
+      "body ids.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "delete_reference_meshes",
+    description:
+      "Delete reference meshes by id (from list_reference_meshes). Undoable. Clears the " +
+      "current selection.",
+    inputSchema: {
+      type: "object",
+      required: ["ids"],
+      properties: { ids: { type: "array", items: { type: "number" }, minItems: 1 } },
     },
   },
   {
@@ -1744,6 +1828,31 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "import_step": {
         const args = ImportStepArgs.parse(rawArgs ?? {});
         return ok(await native.importStep(args.path));
+      }
+
+      case "import_parasolid": {
+        const args = ImportParasolidArgs.parse(rawArgs ?? {});
+        return ok(await native.importParasolid(args.path));
+      }
+
+      case "import_svg": {
+        const args = ImportSvgArgs.parse(rawArgs ?? {});
+        return ok(await native.importSvg(args.path, args.unit));
+      }
+
+      case "import_mesh": {
+        const args = ImportMeshArgs.parse(rawArgs ?? {});
+        return ok(await native.importMesh(args.path, args.unit));
+      }
+
+      case "list_reference_meshes": {
+        const meshes = await native.listReferenceMeshes();
+        return ok({ count: meshes.length, meshes });
+      }
+
+      case "delete_reference_meshes": {
+        const args = DeleteReferenceMeshesArgs.parse(rawArgs ?? {});
+        return ok(await native.deleteReferenceMeshes(args.ids));
       }
 
       case "save_document": {

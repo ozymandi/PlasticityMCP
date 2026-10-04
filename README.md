@@ -2,7 +2,7 @@
 
 MCP server for [Plasticity](https://www.plasticity.xyz/) — lets an LLM read, create and modify real CAD geometry inside a running Plasticity window.
 
-**Status:** working, for internal use. 54 tools, verified live on **Plasticity 26.1.3 / Windows**. Unofficial: it relies on Plasticity's internal APIs and is pinned to that exact version.
+**Status:** working, for internal use. 59 tools, verified live on **Plasticity 26.1.3 / Windows**. Unofficial: it relies on Plasticity's internal APIs and is pinned to that exact version.
 
 ## What it can do
 
@@ -16,7 +16,8 @@ MCP server for [Plasticity](https://www.plasticity.xyz/) — lets an LLM read, c
 | Transforms | `move_bodies`, `rotate_bodies`, `scale_bodies` |
 | Copies | `copy_bodies`, `mirror_bodies`, `array_rectangular`, `array_radial` |
 | Modelling | `get_body_topology`, `boolean`, `fillet_edges`, `chamfer_edges`, `extrude_faces` |
-| Files | `export_step`, `export_parasolid`, `export_mesh`, `export_drawing`, `import_step`, `save_document` |
+| Export | `export_step`, `export_parasolid`, `export_mesh`, `export_drawing`, `save_document` |
+| Import | `import_step`, `import_parasolid`, `import_svg`, `import_mesh`, `list_reference_meshes`, `delete_reference_meshes` |
 | View | `set_view`, `screenshot` |
 | History | `undo`, `redo` |
 | Blender-bridge channel | `connect`, `status`, `list_scene`, `get_object`, `subscribe_changes`, `unsubscribe_changes`, `drain_events`, `refacet`, `push_mesh` |

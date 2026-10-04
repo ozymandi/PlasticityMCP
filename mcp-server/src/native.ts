@@ -121,6 +121,44 @@ const SCREENSHOT_MAX_SIDE = 1568;
 const STEP_EXTENSIONS = [".step", ".stp"];
 const PARASOLID_EXTENSIONS = [".x_t", ".x_b"];
 // Mesh formats and the native exporter behind each.
+const SVG_EXTENSIONS = [".svg"];
+const MESH_IMPORT_EXTENSIONS = [".stl", ".obj", ".3mf"];
+
+// Runs with `this` = editor. Imported meshes live among the "empties", tagged 'Object'.
+const READ_REFERENCES = `function () {
+  const mm = (v) => [v.x, v.y, v.z].map((n) => Math.round(n * 1e9) / 1e6 + 0);
+  const snapshot = this.db.empties.snapshot();
+  const empties = Array.from(snapshot.empties ?? []);
+  const infos = Array.from(snapshot.infos ?? []);
+  const out = [];
+  empties.forEach((empty, index) => {
+    const info = infos[index];
+    if (!empty || info?.tag !== 'Object') return;
+    const stable = this.db.lookupEmptyById(Number(empty.versionId));
+    if (stable?.constructor?.name !== 'Empties_ObjectEmpty') return;
+    let triangles = 0;
+    stable.traverse?.((node) => {
+      const geometry = node?.geometry;
+      const positions = geometry?.attributes?.position;
+      if (!positions) return;
+      const indices = Number(geometry.index?.count);
+      triangles += Number.isFinite(indices) ? indices / 3 : positions.count / 3;
+    });
+    const box = stable.boundingBox?.clone?.()?.applyMatrix4?.(stable.matrixWorld);
+    const key = this.db.nodes?.item2key?.(stable);
+    const path = String(info.path ?? '');
+    out.push({
+      id: Number(stable.versionId),
+      name: (key === undefined ? null : this.db.nodes.getName(key)) ?? (path.split(/[\\\\/]/).pop() || null),
+      sourcePath: path,
+      boundsMm: box ? { min: mm(box.min), max: mm(box.max) } : null,
+      triangles: Math.round(triangles),
+      visible: key === undefined ? Boolean(stable.visible) : Boolean(this.db.nodes.isVisible(key)) && !this.db.nodes.isHidden(key),
+    });
+  });
+  return out.sort((a, b) => a.id - b.id);
+}`;
+
 const MESH_EXPORTERS: Record<string, string> = {
   ".stl": "STLExportFactory",
   ".obj": "OBJExportFactory",
@@ -156,6 +194,31 @@ const VIEW_ORIENTATIONS: Record<Exclude<ViewName, "isometric">, number> = {
 export interface FileResult {
   path: string;
   bytes: number;
+}
+
+/** Length unit a file without units of its own is read in. */
+export type ImportUnit = "millimeter" | "centimeter" | "meter" | "inch";
+
+/**
+ * An imported mesh. Plasticity keeps it as a reference object, not as a body: it is drawn and
+ * can be modelled around, but it has no B-Rep and is invisible to the body tools. Its id lives
+ * in a number space of its own.
+ */
+export interface ReferenceMeshInfo {
+  id: number;
+  name: string | null;
+  sourcePath: string;
+  boundsMm: { min: Vec3; max: Vec3 } | null;
+  triangles: number;
+  visible: boolean;
+}
+
+export interface ReferenceMutation {
+  created: ReferenceMeshInfo[];
+  removedIds: number[];
+  referenceCount: number;
+  undoDepth: number;
+  redoDepth: number;
 }
 
 export interface MeshResult extends FileResult {
@@ -1407,8 +1470,9 @@ export class NativeSession {
   }
 
   /**
-   * Export bodies as a triangle mesh; the extension picks STL, OBJ or 3MF. The file is in
-   * millimetres with Z up. `toleranceMm` is the largest allowed gap between mesh and surface,
+   * Export bodies as a triangle mesh; the extension picks STL, OBJ or 3MF. STL and OBJ are
+   * written in millimetres, 3MF in metres with that unit declared; Z is up.
+   * `toleranceMm` is the largest allowed gap between mesh and surface,
    * `angleDeg` the largest angle between neighbouring facets.
    */
   exportMesh(
@@ -1428,7 +1492,9 @@ export class NativeSession {
         output,
         overwrite,
         (staged) =>
-          // Plasticity's mesh exporters default to metres; slicers expect millimetres.
+          // STL and OBJ carry no unit and slicers assume millimetres, while Plasticity's
+          // exporters default to metres. 3MF declares its unit, and Plasticity always writes
+          // unit="meter" there whatever the coordinates are — so 3MF must stay in metres.
           this.call(
             `async function (Factory, args) {
               ${BUSY_GUARD}
@@ -1440,7 +1506,7 @@ export class NativeSession {
                 return view;
               });
               factory.filePath = args.path;
-              factory.unit = 'millimeter';
+              factory.unit = args.unit;
               factory.upAxis = 'z';
               factory.scale = 1;
               factory.showWireframe = false;
@@ -1452,7 +1518,15 @@ export class NativeSession {
               await factory.commit();
             }`,
             [MESH_EXPORTERS[extension]!],
-            [{ ids: exported, path: staged, tolerance: toleranceMm * MM, angle: angleDeg }],
+            [
+              {
+                ids: exported,
+                path: staged,
+                tolerance: toleranceMm * MM,
+                angle: angleDeg,
+                unit: format === "3mf" ? "meter" : "millimeter",
+              },
+            ],
           ),
         async (staged) => {
           const content = await readFile(staged).catch(() => Buffer.alloc(0));
@@ -1579,36 +1653,152 @@ export class NativeSession {
     });
   }
 
+  /**
+   * Run one of Plasticity's import factories inside its ImportCommand (which exists only in
+   * the module closure). `setup` may set further options on `factory`.
+   */
+  private importFunction(setup = ""): string {
+    return commandFunction(
+      "ImportCommand",
+      [],
+      `factory.filePath = args.path;
+        ${setup}`,
+      true,
+    );
+  }
+
   /** Add the geometry of a STEP file to the current document. */
   async importStep(path: string): Promise<MutationResult> {
     const input = await checkInput(path, STEP_EXTENSIONS);
-    // ImportCommand is not in editor.commands; it comes from the module closure.
     return this.mutate(
-      `async function (Factory, Command, args) {
+      this.importFunction(),
+      ["ExchangeImportFactory", "ImportCommand"],
+      [{ path: input }],
+      IMPORT_TIMEOUT_MS,
+    );
+  }
+
+  /** Add the bodies of a Parasolid file (`.x_t` / `.x_b`) to the current document. */
+  async importParasolid(path: string): Promise<MutationResult> {
+    const input = await checkInput(path, PARASOLID_EXTENSIONS);
+    return this.mutate(
+      this.importFunction(),
+      ["ParasolidImportFactory", "ImportCommand"],
+      [{ path: input }],
+      IMPORT_TIMEOUT_MS,
+    );
+  }
+
+  /** Import the shapes of an SVG file as editable curves; one SVG unit is one `unit`. */
+  async importSvg(path: string, unit: ImportUnit = "millimeter"): Promise<MutationResult> {
+    const input = await checkInput(path, SVG_EXTENSIONS);
+    return this.mutate(
+      this.importFunction("factory.unit = args.unit;"),
+      ["VectorImportFactory", "ImportCommand"],
+      [{ path: input, unit }],
+      IMPORT_TIMEOUT_MS,
+    );
+  }
+
+  /** Imported meshes of the document. */
+  listReferenceMeshes(): Promise<ReferenceMeshInfo[]> {
+    return this.enqueue(() => this.call<ReferenceMeshInfo[]>(READ_REFERENCES));
+  }
+
+  /** Run a mutation and report how the set of reference meshes changed. */
+  private mutateReferences(
+    functionDeclaration: string,
+    bindingNames: string[],
+    values: unknown[],
+    timeoutMs = COMMAND_TIMEOUT_MS,
+  ): Promise<ReferenceMutation> {
+    return this.enqueue(async () => {
+      await this.waitForBackup();
+      const before = await this.call<ReferenceMeshInfo[]>(READ_REFERENCES);
+      await this.call(functionDeclaration, bindingNames, values, timeoutMs);
+      const after = await this.call<ReferenceMeshInfo[]>(READ_REFERENCES);
+      const state = await this.call<NativeState>(READ_STATE);
+      const beforeIds = new Set(before.map((m) => m.id));
+      const afterIds = new Set(after.map((m) => m.id));
+      return {
+        created: after.filter((m) => !beforeIds.has(m.id)),
+        removedIds: before.filter((m) => !afterIds.has(m.id)).map((m) => m.id),
+        referenceCount: after.length,
+        undoDepth: state.undoDepth,
+        redoDepth: state.redoDepth,
+      };
+    });
+  }
+
+  /**
+   * Import a mesh (`.stl`, `.obj`, `.3mf`) as a reference object. STL and OBJ carry no units:
+   * one file unit is read as one `unit`.
+   */
+  async importMesh(path: string, unit: ImportUnit = "millimeter"): Promise<ReferenceMutation> {
+    const input = await checkInput(path, MESH_IMPORT_EXTENSIONS);
+    if (input.toLowerCase().endsWith(".3mf")) {
+      // 3MF has its own importer on editor.importer and carries its units.
+      return this.mutateReferences(
+        `async function (Command, args) {
+          ${BUSY_GUARD}
+          const editor = this;
+          let failure;
+          let ran = false;
+          const command = new Command(this);
+          command.remember = false;
+          command.execute = async function () {
+            ran = true;
+            try { await editor.importer.import3mf(args.path); }
+            catch (error) { failure = error; throw error; }
+          };
+          await this.exec(command);
+          if (failure) throw failure;
+          ${STUCK_CHECK}
+        }`,
+        ["ImportCommand"],
+        [{ path: input }],
+        IMPORT_TIMEOUT_MS,
+      );
+    }
+    return this.mutateReferences(
+      this.importFunction("factory.unit = args.unit;"),
+      ["MeshImportFactory", "ImportCommand"],
+      [{ path: input, unit }],
+      IMPORT_TIMEOUT_MS,
+    );
+  }
+
+  /** Delete reference meshes with the native Delete command. Clears the selection. */
+  deleteReferenceMeshes(ids: number[]): Promise<ReferenceMutation> {
+    return this.mutateReferences(
+      `async function (args) {
         ${BUSY_GUARD}
-        const editor = this;
+        const empties = args.ids.map((id) => {
+          let empty = null;
+          try { empty = this.db.lookupEmptyById(id); } catch {}
+          if (empty?.constructor?.name !== 'Empties_ObjectEmpty') {
+            throw new Error('Unknown reference mesh id: ' + id);
+          }
+          return empty;
+        });
+        this.selection.selected.removeAll();
+        for (const empty of empties) this.selection.selected.addEmpty(empty);
         let failure;
         let ran = false;
-        const command = new Command(this);
+        const command = new this.commands.DeleteCommand(this);
         command.remember = false;
+        const execute = command.execute.bind(command);
         command.execute = async function () {
           ran = true;
-          try {
-            const factory = new Factory(editor).resource(this);
-            factory.filePath = args.path;
-            await factory.commit();
-          } catch (error) {
-            failure = error;
-            throw error;
-          }
+          try { return await execute(); }
+          catch (error) { failure = error; throw error; }
         };
         await this.exec(command);
         if (failure) throw failure;
         ${STUCK_CHECK}
       }`,
-      ["ExchangeImportFactory", "ImportCommand"],
-      [{ path: input }],
-      IMPORT_TIMEOUT_MS,
+      [],
+      [{ ids }],
     );
   }
 
