@@ -71,6 +71,7 @@ async function main() {
     await projectionChecks(native);
     await surfaceChecks(native);
     await instanceChecks(native);
+    await sceneChecks(native);
   } catch (err) {
     console.error("SMOKE ERROR:", (err as Error).message);
     process.exitCode = 1;
@@ -1634,6 +1635,106 @@ async function instanceChecks(native: NativeSession): Promise<void> {
   await native.undo();
   const selfPath = await failure(native.arrayCurve([path.id], path.id, 3));
   check("array_curve refuses its own path as an item", /path curve/.test(selfPath?.message ?? ""), selfPath?.message);
+}
+
+// Groups, visibility, isolation, locking, materials, selection of faces — drawn around x = 9000.
+async function sceneChecks(native: NativeSession): Promise<void> {
+  const X = 9000;
+  const a = (await native.createBox([X, 0, 0], [10, 10, 10], "mcp-smoke-a")).created[0]!;
+  const b = (await native.createBox([X + 20, 0, 0], [10, 10, 10], "mcp-smoke-b")).created[0]!;
+  const c = (await native.createBox([X + 40, 0, 0], [10, 10, 10], "mcp-smoke-c")).created[0]!;
+  const body = async (id: number) => (await native.state()).bodies.find((x) => x.id === id)!;
+
+  // --- groups ---
+  const groupsBefore = (await native.listGroups()).groups.length;
+  const grouped = await native.groupBodies([a.id, b.id], "mcp-smoke-group");
+  const group = grouped.created[0];
+  check("group_bodies makes a named group under the scene", grouped.created.length === 1 &&
+    group?.name === "mcp-smoke-group" && group.parentId === 0 &&
+    group.bodyIds.join() === [a.id, b.id].sort((x, y) => x - y).join(), JSON.stringify(group));
+  const joined = await native.moveToGroup([c.id], group!.id);
+  check("move_to_group adds a body to the group",
+    joined.groups.find((g) => g.id === group!.id)?.bodyIds.includes(c.id) === true &&
+      joined.groups.find((g) => g.id === 0)?.bodyIds.includes(c.id) === false, JSON.stringify(joined.groups.map((g) => g.bodyIds)));
+  const left = await native.moveToGroup([a.id], 0);
+  check("move_to_group 0 returns a body to the scene",
+    left.groups.find((g) => g.id === 0)?.bodyIds.includes(a.id) === true &&
+      left.groups.find((g) => g.id === group!.id)?.bodyIds.includes(a.id) === false);
+  await native.undo();
+  await native.undo();
+  const dissolved = await native.ungroup([group!.id]);
+  check("ungroup dissolves the group and keeps its bodies", dissolved.removedIds.join() === String(group!.id) &&
+    dissolved.groups.find((g) => g.id === 0)?.bodyIds.includes(a.id) === true &&
+    (await native.state()).bodies.some((x) => x.id === b.id), JSON.stringify(dissolved.removedIds));
+  await native.undo();
+  await native.undo(); // the group
+  check("undo removes the group", (await native.listGroups()).groups.length === groupsBefore);
+  const scene = await failure(native.ungroup([0]));
+  check("the scene itself cannot be ungrouped", /Unknown group id/.test(scene?.message ?? ""), scene?.message);
+  const nowhere = await failure(native.moveToGroup([a.id], 424242));
+  check("an unknown group is refused", /Unknown group id/.test(nowhere?.message ?? ""), nowhere?.message);
+
+  // --- visibility, isolation, locking ---
+  const hidden = await native.setVisibility([a.id], false);
+  check("set_visibility hides a body", changed(hidden, a.id)?.visible === false, brief(hidden));
+  const shown = await native.setVisibility([a.id], true);
+  check("set_visibility shows it again", changed(shown, a.id)?.visible === true);
+  await native.undo();
+  check("undo of showing hides it again", (await body(a.id)).visible === false);
+  const all = await native.unhideAll();
+  check("unhide_all shows everything", changed(all, a.id)?.visible === true && (await body(b.id)).visible);
+  await native.undo();
+  await native.undo();
+
+  const alone = await native.isolate([a.id]);
+  check("isolate leaves only the given bodies visible", changed(alone, b.id)?.visible === false &&
+    changed(alone, c.id)?.visible === false && (await body(a.id)).visible === true, brief(alone));
+  const together = await native.unisolate();
+  check("unisolate brings the others back", changed(together, b.id)?.visible === true && (await body(c.id)).visible);
+  const nothing = await failure(native.unisolate());
+  check("unisolate with nothing isolated is refused", /Nothing is isolated/.test(nothing?.message ?? ""), nothing?.message);
+  await native.undo();
+  await native.undo();
+
+  const locked = await native.setLocked([a.id], true);
+  check("set_locked locks a body", changed(locked, a.id)?.locked === true);
+  const free = await native.unlockAll();
+  check("unlock_all unlocks it", changed(free, a.id)?.locked === false);
+  await native.undo();
+  await native.undo();
+
+  // --- materials ---
+  const red = await native.createMaterial({ name: "mcp-smoke-red", color: "#cc2200", roughness: 0.4, metalness: 0.1, opacity: 1 });
+  check("create_material adds a material", red.name === "mcp-smoke-red" && red.color === "#cc2200" &&
+    Math.abs(red.roughness! - 0.4) < 1e-6, JSON.stringify(red));
+  const painted = await native.setMaterial([a.id], red.id);
+  check("set_material gives it to a body", changed(painted, a.id)?.materialId === red.id && (await body(b.id)).materialId === null);
+  const bare = await native.removeMaterial([a.id]);
+  check("remove_material takes it off", changed(bare, a.id)?.materialId === null && bare.undoDepth === painted.undoDepth + 1,
+    brief(bare));
+  const noSuch = await failure(native.setMaterial([a.id], 424242));
+  check("unknown material id is refused", /Unknown material id/.test(noSuch?.message ?? ""), noSuch?.message);
+  await native.undo();
+  await native.undo();
+  await native.undo();
+  check("undo removes the material", !(await native.listMaterials()).some((m) => m.name === "mcp-smoke-red"));
+
+  // --- selection of faces and edges ---
+  const t = await native.topology(a.id);
+  const topFace = faceBy(t, [0, 0, 1]);
+  const anEdge = t.edges![0]!.id;
+  const picked = await native.selectTopology(a.id, [topFace], [anEdge]);
+  check("select_topology selects a face and an edge", picked.faces.length === 1 && picked.faces[0]?.id === a.id &&
+    picked.faces[0].faceId === topFace && picked.edges[0]?.edgeId === anEdge && picked.bodyIds.length === 0,
+    JSON.stringify(picked));
+  const stale = await failure(native.selectTopology(a.id, ["nope"]));
+  check("a stale face id leaves the selection as it was", /Stale or unknown face/.test(stale?.message ?? "") &&
+    (await native.getSelectionDetail()).faces.length === 1, stale?.message);
+  await native.selectBodies([b.id]);
+  const whole = await native.getSelectionDetail();
+  check("the selection reports whole bodies too", whole.bodyIds.join() === String(b.id) && whole.faces.length === 0,
+    JSON.stringify(whole));
+  await native.selectBodies([]);
 }
 
 main().catch((err) => {

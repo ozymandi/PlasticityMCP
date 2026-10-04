@@ -1,11 +1,11 @@
 /** Box, sphere, cylinder. */
 
 import { MM, toMeters } from "./math.js";
-import { SceneTools } from "./scene.js";
+import { OrganizeTools } from "./organize.js";
 import { commandFunction } from "./snippets.js";
 import { MutationResult, Vec3 } from "./types.js";
 
-export class PrimitiveTools extends SceneTools {
+export class PrimitiveTools extends OrganizeTools {
   /** Axis-aligned box: `originMm` is the min corner, `sizeMm` the extents along X, Y, Z. */
   createBox(originMm: Vec3, sizeMm: Vec3, name?: string): Promise<MutationResult> {
     const setup = `

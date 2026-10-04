@@ -448,8 +448,8 @@ Excluded: Studio-only commands (Align, PolySplines, xNURBS, Square, Rebuild Face
 | 14 | Projection: Project (three kinds), Project Outline, Create Outline, Duplicate and Project | 7 | 3 | ✅ done |
 | 15 | Surfaces: Bridge Surface, Constrained Surface, Raise Surface Degree, Slide CV, Deform, Rebuild Face, Remove Nominal Surface (Loft Guide is part of Loft) | 7 | 3 | ✅ done |
 | 16 | Copies and placement: Curve Array, Place, Copy / Paste with Placement, instances | 6 | 2.5 | ✅ done (Place and Copy / Paste with Placement deferred) |
-| 17 | Scene: groups, hide / show / isolate, lock, materials, extended selection | 12 | 4 | next |
-| 18 | Measuring: distance, radius, continuity, Dimension, Section Analysis, Check | 7 | 3 | |
+| 17 | Scene: groups, hide / show / isolate, lock, materials, extended selection | 15 | 4.5 | ✅ done |
+| 18 | Measuring: distance, radius, continuity, Dimension, Section Analysis, Check | 7 | 3 | next |
 | 19 | Environment: construction planes, new / open / save document, units and grid | 5 | 2.5 | |
 
 Each block: its own proposal, live verification, `smoke:native` checks, commit on Designer's word. Work is on branch `native-full-spectrum`.
@@ -661,6 +661,35 @@ Verified live in Untitled: `smoke:native` passes with **322 checks** (13 new); t
 
 **Not verified / not exposed:** `array_curve` extent as a metric distance (only the ratio); moving, rotating or hiding existing instances (no tools — an instance is placed when it is made); instances of instances; what happens to instances when their source is deleted.
 
+Committed (`b04906a`), merged into `main` and published.
+
+### Block 17 — scene — ✅ Done (2026-10-04, ~2.5 h)
+
+Fifteen new tools, **131 in total** (`src/native/organize.ts`, a class between `SceneTools` and `PrimitiveTools`; tools in `src/tools/scene.ts`):
+
+| Tool | How it works | Notes |
+|------|--------------|-------|
+| `list_groups` | `db.groups.snapshot()` | Groups are a tree under group 0 ("Scene"). A group's children are node keys, resolved to groups, bodies, instances and reference meshes. |
+| `group_bodies` | native `GroupSelectedCommand` on the selection | The native command leaves the new group selected; the name is set inside the same command. |
+| `ungroup` | native `DissolveGroupCommand` | |
+| `move_to_group` | native `MoveSelectionToGroupCommand(editor, group)` | `db.groups.lookupById` does not fail on a number that is not a group, so ids are checked against the snapshot first. |
+| `set_visibility` | `nodes.setHidden` / `setVisible` inside a carrier command | Undoable, like `rename_body`. |
+| `unhide_all`, `isolate`, `unisolate`, `unlock_all` | native commands | `unisolate` is refused when `nodes.isolationLevel` is 0. |
+| `set_locked` | `nodes.setLocked` inside a carrier command | |
+| `list_materials`, `create_material` | `db.materials.list()` / `default.clone()` + `add(name, material)` | Creating is undoable. |
+| `set_material` | `nodes.setMaterial(key, id)` inside a carrier command | |
+| `remove_material` | native `RemoveMaterialCommand` on the selection | `setMaterial(key, 0)` is refused by Plasticity ("invalid material id"). |
+| `select_topology` | `selection.selected.addFace` / `addEdge` | Not an undo step. |
+
+Changes to existing output:
+- `list_bodies` (and every result that carries bodies) has a new field **`materialId`**.
+- **`visible` now also reflects isolation**: a body left out while others are isolated reports `visible: false`.
+- `get_selection` also returns `faces`, `edges` (each with the body id and the face / edge id of `get_body_topology`), `regionIds` and `groupIds`.
+
+Verified live in Untitled (fresh Plasticity): `smoke:native` passes with **346 checks** (24 new); the end-to-end script over stdio passes (131 tools, argument validation, document restored); build and protocol tests pass.
+
+**Not verified / not exposed:** materials on individual faces (the risk named in the proposal — not attempted; materials are per body); editing or renaming an existing material, Fork Material, deleting a material; groups of groups created through the tools (`group_bodies` takes bodies only), renaming or deleting a group, the active group; visibility and locking of groups, instances and reference meshes; selecting curves' vertices, control points or regions through a tool (they are reported by `get_selection` only as far as regions and groups).
+
 Committed, merged into `main` and published. The MCP client must be restarted to see the new tools.
 
 Other ideas (not agreed yet): transforming and hiding reference meshes; opening `.plasticity` files is in block 19.
@@ -710,4 +739,4 @@ PlasticityMCP/
 ## Next action
 
 1. Designer: close Plasticity and call `native_launch` (or `npm run smoke:native`) once to verify the cold-start path; restart the MCP client so it picks up the new tools.
-2. Full command coverage: blocks 0, 0b (split of `index.ts`) and 11 (solids) are in `main` and published — 69 tools. Blocks 0, 0b, 11 and 12 are in `main` and published — 84 tools. Blocks 0, 0b, 11, 12 and 13 are in `main` and published — 105 tools. Blocks 0, 0b and 11–14 are in `main` and published — 108 tools. Blocks 0, 0b and 11–15 are in `main` and published — 111 tools. Blocks 0, 0b and 11–16 are in `main` and published — 116 tools. Next: the proposal for block 17 (scene); the Designer asked for it on 2026-10-04. Before the next live work ask the Designer to restart Plasticity (renderer at 617 MB after six smoke runs). Work continues on branch `native-full-spectrum`.
+2. Full command coverage: blocks 0, 0b (split of `index.ts`) and 11 (solids) are in `main` and published — 69 tools. Blocks 0, 0b, 11 and 12 are in `main` and published — 84 tools. Blocks 0, 0b, 11, 12 and 13 are in `main` and published — 105 tools. Blocks 0, 0b and 11–14 are in `main` and published — 108 tools. Blocks 0, 0b and 11–15 are in `main` and published — 111 tools. Blocks 0, 0b and 11–16 are in `main` and published — 116 tools. Blocks 0, 0b and 11–17 are in `main` and published — 131 tools. Next: the proposal for block 18 (measuring); the Designer asked for it on 2026-10-04. Work continues on branch `native-full-spectrum`.

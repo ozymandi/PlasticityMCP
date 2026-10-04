@@ -30,11 +30,23 @@ A second channel, independent of the WebSocket bridge: real B-Rep operations thr
 | `create_sphere` | `center` + `radius`. |
 | `create_cylinder` | `base` (bottom cap centre) + `radius` + `height`, optional `axis`. |
 | `undo` / `redo` | Native history. |
-| `list_bodies` | All bodies: stable id, type (Solid / Sheet / Wire), name, bounds, face/edge counts, visible / locked / selected. |
-| `get_selection` | Bodies selected in the window (whole bodies, not faces or edges). |
+| `list_bodies` | All bodies: stable id, type (Solid / Sheet / Wire), name, bounds, face/edge counts, visible / locked / selected, `materialId`. |
+| `get_selection` | What is selected in the window: whole bodies, faces and edges (with their body), regions, groups. |
 | `select_bodies` | Replace the selection; empty list clears it. Not an undo step. |
 | `delete_bodies` | Native Delete by id. Undoable. Clears the selection. |
 | `rename_body` | Rename a body. Undoable. |
+| `select_topology` | Select faces and edges of one body in the window. Not an undo step. |
+| `list_groups` | The group tree: id, name, parent and direct members of each group; group 0 is the scene. |
+| `group_bodies` | Put bodies into a new group, optional `name`. |
+| `ungroup` | Dissolve groups; members move up to the parent. |
+| `move_to_group` | Move bodies into a group; 0 is the scene. |
+| `set_visibility` | Hide or show bodies. |
+| `unhide_all` | Show everything hidden. |
+| `isolate` / `unisolate` | Show only the given bodies; return to the full scene. |
+| `set_locked` / `unlock_all` | Lock bodies against picking in the window; unlock everything. |
+| `list_materials` | Materials of the document: id, name, colour, roughness, metalness, opacity. |
+| `create_material` | New material: `name`, `color` (#rrggbb), optional `roughness`, `metalness`, `opacity`. |
+| `set_material` / `remove_material` | Give a material to bodies; take it off. |
 | `move_bodies` | Translate by `delta`. |
 | `rotate_bodies` | Rotate `angle` degrees around `axis` through `pivot`. |
 | `scale_bodies` | Scale by `factor` (number or `[x, y, z]`) relative to `pivot`. |

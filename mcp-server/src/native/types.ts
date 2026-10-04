@@ -15,6 +15,63 @@ export interface BodyInfo {
   visible: boolean;
   locked: boolean;
   selected: boolean;
+  /** Material of the document given to the body, if any. */
+  materialId: number | null;
+}
+
+export interface GroupInfo {
+  /** 0 is the scene itself, the root of the tree. */
+  id: number;
+  name: string | null;
+  parentId: number | null;
+  /** Direct members. */
+  groupIds: number[];
+  bodyIds: number[];
+  instanceIds: number[];
+  referenceMeshIds: number[];
+  visible: boolean;
+  locked: boolean;
+}
+
+export interface GroupsState {
+  /** The group new objects are created in. */
+  activeGroupId: number;
+  groups: GroupInfo[];
+}
+
+export interface GroupMutation {
+  created: GroupInfo[];
+  removedIds: number[];
+  groups: GroupInfo[];
+  undoDepth: number;
+  redoDepth: number;
+}
+
+export interface MaterialSpec {
+  name: string;
+  /** "#rrggbb" */
+  color: string;
+  roughness: number;
+  metalness: number;
+  opacity: number;
+}
+
+export interface MaterialInfo {
+  id: number;
+  name: string;
+  color: string | null;
+  roughness: number | null;
+  metalness: number | null;
+  opacity: number | null;
+}
+
+/** What is selected in the window. Face and edge ids are the ones of get_body_topology. */
+export interface SelectionDetail {
+  bodyIds: number[];
+  faces: Array<{ id: number; faceId: string }>;
+  edges: Array<{ id: number; edgeId: string }>;
+  regionIds: string[];
+  groupIds: number[];
 }
 
 export interface NativeState {

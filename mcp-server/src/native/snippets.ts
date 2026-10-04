@@ -23,9 +23,11 @@ export const READ_STATE = `function () {
       boundsMm: box ? { min: mm(box.min), max: mm(box.max) } : null,
       faceCount: view?.high?.faces?.versionIds?.length ?? 0,
       edgeCount: view?.high?.edges?.versionIds?.length ?? 0,
-      visible: Boolean(nodes.isVisible(key)) && !nodes.isHidden(key),
+      // Shown in the window: not hidden, and inside the isolated set when something is isolated.
+      visible: Boolean(nodes.isVisible(key)) && !nodes.isHidden(key) && Boolean(nodes.isIsolated(key)),
       locked: Boolean(nodes.isLocked(key)),
       selected: Boolean(this.selection.selected.has(view)),
+      materialId: nodes.getMaterialId(key) ?? null,
     });
   }
   bodies.sort((a, b) => a.id - b.id);

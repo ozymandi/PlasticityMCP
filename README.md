@@ -2,7 +2,7 @@
 
 MCP server for [Plasticity](https://www.plasticity.xyz/) — lets an LLM read, create and modify real CAD geometry inside a running Plasticity window.
 
-**Status:** working, for internal use. 116 tools, verified live on **Plasticity 26.1.3 / Windows**. Unofficial: it relies on Plasticity's internal APIs and is pinned to that exact version.
+**Status:** working, for internal use. 131 tools, verified live on **Plasticity 26.1.3 / Windows**. Unofficial: it relies on Plasticity's internal APIs and is pinned to that exact version.
 
 ## What it can do
 
@@ -15,7 +15,10 @@ MCP server for [Plasticity](https://www.plasticity.xyz/) — lets an LLM read, c
 | Projection | `project`, `create_outline`, `duplicate_and_project` |
 | Surfaces | `bridge_surface`, `constrained_surface`, `remove_nominal_surface` (and `raise_degree`, `rebuild`, `deform`, `slide`, the control point tools on faces and bodies) |
 | Profiles | `list_regions`, `extrude_profile`, `revolve_profile`, `sweep_profile`, `loft_profiles` |
-| Scene | `list_bodies`, `get_selection`, `select_bodies`, `delete_bodies`, `rename_body` |
+| Scene | `list_bodies`, `get_selection`, `select_bodies`, `select_topology`, `delete_bodies`, `rename_body` |
+| Groups | `list_groups`, `group_bodies`, `ungroup`, `move_to_group` |
+| Visibility and locking | `set_visibility`, `unhide_all`, `isolate`, `unisolate`, `set_locked`, `unlock_all` |
+| Materials | `list_materials`, `create_material`, `set_material`, `remove_material` |
 | Transforms | `move_bodies`, `rotate_bodies`, `scale_bodies` |
 | Copies | `copy_bodies`, `mirror_bodies`, `array_rectangular`, `array_radial`, `array_curve` |
 | Instances | `list_instances`, `create_instances`, `realize_instances`, `delete_instances` |
