@@ -70,10 +70,10 @@ export class ViewTools extends ExchangeTools {
   }
 
   /**
-   * Point the first viewport's camera at a standard view. `fit` also frames every body.
-   * Not an undo step.
+   * Point the first viewport's camera at a standard view. `fit` also frames every body, or
+   * only the bodies `ids`. Not an undo step.
    */
-  setView(view: ViewName, fit = true): Promise<CameraInfo> {
+  setView(view: ViewName, fit = true, ids?: number[]): Promise<CameraInfo> {
     return this.enqueue(async () => {
       const info = await this.call<Omit<CameraInfo, "view">>(
         `async function (args) {
@@ -86,6 +86,27 @@ export class ViewTools extends ExchangeTools {
           if (!viewport) throw new Error('Plasticity viewport is unavailable');
           const camera = viewport.camera;
           const controls = viewport.orbitControls;
+          // What to frame is settled before the camera moves, so a wrong id changes nothing.
+          const min = [Infinity, Infinity, Infinity];
+          const max = [-Infinity, -Infinity, -Infinity];
+          if (args.fit) {
+            const wanted = args.ids ? new Set(args.ids) : null;
+            const found = new Set();
+            for (const [versionId, item] of this.geo.geometryModel) {
+              const id = this.db.lookupStableId(versionId);
+              if (!Number.isInteger(id) || (wanted && !wanted.has(id))) continue;
+              found.add(id);
+              let box = null;
+              try { box = item.model?.FindBox?.() ?? null; } catch {}
+              if (!box) continue;
+              ['x', 'y', 'z'].forEach((k, i) => {
+                min[i] = Math.min(min[i], box.min[k]);
+                max[i] = Math.max(max[i], box.max[k]);
+              });
+            }
+            const missing = (args.ids ?? []).filter((id) => !found.has(id));
+            if (missing.length > 0) throw new Error('Unknown body id: ' + missing.join(', '));
+          }
           // Navigation is animated and its promise resolves early: wait until the camera rests.
           const settle = async () => {
             let last = null;
@@ -109,18 +130,6 @@ export class ViewTools extends ExchangeTools {
           }
           await settle();
           if (args.fit) {
-            const min = [Infinity, Infinity, Infinity];
-            const max = [-Infinity, -Infinity, -Infinity];
-            for (const [versionId, item] of this.geo.geometryModel) {
-              if (!Number.isInteger(this.db.lookupStableId(versionId))) continue;
-              let box = null;
-              try { box = item.model?.FindBox?.() ?? null; } catch {}
-              if (!box) continue;
-              ['x', 'y', 'z'].forEach((k, i) => {
-                min[i] = Math.min(min[i], box.min[k]);
-                max[i] = Math.max(max[i], box.max[k]);
-              });
-            }
             if (Number.isFinite(min[0])) {
               const center = camera.target.clone().fromArray(min.map((v, i) => (v + max[i]) / 2));
               const radius = Math.max(1e-6, Math.hypot(...max.map((v, i) => v - min[i])) / 2);
@@ -154,7 +163,7 @@ export class ViewTools extends ExchangeTools {
           };
         }`,
         [],
-        [{ view, fit, orientation: VIEW_ORIENTATIONS[view as Exclude<ViewName, "isometric">] ?? null }],
+        [{ view, fit, ids: ids ?? null, orientation: VIEW_ORIENTATIONS[view as Exclude<ViewName, "isometric">] ?? null }],
       );
       return { view, ...info };
     });

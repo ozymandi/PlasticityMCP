@@ -12,7 +12,8 @@ import {
   TOPOLOGY_IDS_SCHEMA,
   TopologyIds,
   VEC3_SCHEMA,
-  Vec3Mm,
+  BOX_SCHEMA,
+  BoxMm,
 } from "./shared.js";
 
 /** Topology and the operations on Solids and Sheets: boolean, cut, faces, edges, patch, join. */
@@ -20,10 +21,7 @@ import {
 const GetBodyTopologyArgs = z.object({
   id: BodyId,
   include: z.enum(["faces", "edges", "all"]).optional().default("all"),
-  box: z
-    .object({ min: Vec3Mm, max: Vec3Mm })
-    .refine((b) => b.min.every((v, i) => v <= b.max[i]), "box min must not exceed max")
-    .optional(),
+  box: BoxMm.optional(),
   kinds: z.array(z.enum(["line", "circle", "curve"])).min(1).optional(),
 });
 
@@ -183,12 +181,7 @@ const tools: Tool[] = [
       properties: {
         id: { type: "number" },
         include: { type: "string", enum: ["faces", "edges", "all"], default: "all" },
-        box: {
-          type: "object",
-          required: ["min", "max"],
-          description: "Only what lies inside this box, millimetres",
-          properties: { min: VEC3_SCHEMA, max: VEC3_SCHEMA },
-        },
+        box: BOX_SCHEMA,
         kinds: {
           type: "array",
           minItems: 1,

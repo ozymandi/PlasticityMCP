@@ -249,7 +249,7 @@ Real B-Rep operations through Plasticity's own factories and history. Unofficial
 
 | Tool | Description |
 |------|-------------|
-| `set_view` | Camera to front / back / left / right / top / bottom / isometric; `fit` frames all bodies. |
+| `set_view` | Camera to front / back / left / right / top / bottom / isometric; `fit` frames all bodies, or with `ids` only those — a close look at one part. |
 | `screenshot` | PNG of the 3D viewport (longest side ≤ 1568 px), returned as an image; optional `path`. |
 
 ### Notes
@@ -269,6 +269,8 @@ Face and edge ids — and the segment, vertex and control point ids of a curve �
 A full `get_body_topology` of a detailed body is very long — 337 edges come to about 130 thousand characters. Read such a body through the filter: a thin `box` around a plane or a line returns only the edges there (the same body, one plane: 11 edges, 4 thousand characters).
 
 `pivot` is optional for rotate and scale; it defaults to the centre of the bodies' combined bounding box.
+
+Results are plain JSON printed compactly: whatever fits on one line stays on one line (one body, edge or region per line), and a body is printed without the fields at their usual value — no `name` means unnamed, no `visible` shown, no `locked` / `selected` not locked / not selected, no `materialId` no material; a curve has no `faceCount` / `edgeCount`; a group lists only the kinds of members it has. The group tools return what they touched, not the whole tree (`list_groups` gives the tree). `list_regions` takes a `box` like `get_body_topology`.
 
 Mutating tools return `created` and `changed` bodies (stable id, type, name, bounds, …) and `removedIds`. Transforms keep body ids, so their result is in `changed`. A body is reported as changed whenever its geometry was rewritten, also when bounds and counts stay the same (a reversed Sheet, a new fillet radius).
 

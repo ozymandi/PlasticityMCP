@@ -2,6 +2,8 @@ import { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import {
   BodyId,
+  BOX_SCHEMA,
+  BoxMm,
   native,
   ok,
   RegionIds,
@@ -16,6 +18,10 @@ const oneProfile = (a: { id?: number; profileId?: number; regionIds?: string[] }
   ((a.id ?? a.profileId) === undefined) !== (a.regionIds === undefined);
 
 const ONE_PROFILE_MESSAGE = "pass exactly one of the curve id or regionIds";
+
+const ListRegionsArgs = z.object({ box: BoxMm.optional() });
+
+const REGION_BOX_SLACK_MM = 0.02;
 
 const ExtrudeProfileArgs = z
   .object({
@@ -81,8 +87,10 @@ const tools: Tool[] = [
       "boundary edges, total boundary length, number of holes. Pass the ids as `regionIds` to " +
       "extrude_profile, revolve_profile, sweep_profile or loft_profiles. IMPORTANT: region ids " +
       "are valid only until curves in that plane change — re-read after creating, moving or " +
-      "deleting curves.",
-    inputSchema: { type: "object", properties: {} },
+      "deleting curves. Text and overlapping curves give many regions: `box` ({min, max}) " +
+      "lists only the regions whose bounds lie inside it (`count` is then the number listed, " +
+      "`total` the number in the document).",
+    inputSchema: { type: "object", properties: { box: BOX_SCHEMA } },
   },
   {
     name: "extrude_profile",
@@ -181,9 +189,17 @@ const tools: Tool[] = [
 ];
 
 const handlers: ToolFamily["handlers"] = {
-  list_regions: async () => {
-    const regions = await native.listRegions();
-    return ok({ count: regions.length, regions });
+  list_regions: async (rawArgs) => {
+    const { box } = ListRegionsArgs.parse(rawArgs ?? {});
+    const all = await native.listRegions();
+    if (!box) return ok({ count: all.length, regions: all });
+    // Bounds come from the display mesh, about 0.01 mm accurate: the box gets that much slack.
+    const inside = (p: number[], low: number[], high: number[]) =>
+      p.every((v, i) => v >= low[i] - REGION_BOX_SLACK_MM && v <= high[i] + REGION_BOX_SLACK_MM);
+    const regions = all.filter(
+      (r) => inside(r.boundsMm.min, box.min, box.max) && inside(r.boundsMm.max, box.min, box.max),
+    );
+    return ok({ count: regions.length, total: all.length, regions });
   },
 
   extrude_profile: async (rawArgs) => {

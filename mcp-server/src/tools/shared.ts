@@ -1,6 +1,7 @@
 import { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { NativeSession } from "../native.js";
+import { formatResult } from "./output.js";
 
 /** Shared by the tool families in this folder: the native session, schema pieces, result helpers. */
 
@@ -42,6 +43,18 @@ export const VEC3_SCHEMA = {
   description: "[x, y, z] in millimetres",
 };
 
+/** A box that limits a listing to a part of the model. */
+export const BoxMm = z
+  .object({ min: Vec3Mm, max: Vec3Mm })
+  .refine((b) => b.min.every((v, i) => v <= b.max[i]), "box min must not exceed max");
+
+export const BOX_SCHEMA = {
+  type: "object",
+  required: ["min", "max"],
+  description: "Only what lies inside this box, millimetres",
+  properties: { min: VEC3_SCHEMA, max: VEC3_SCHEMA },
+};
+
 export const BODY_IDS_SCHEMA = {
   type: "array",
   items: { type: "number" },
@@ -58,7 +71,7 @@ export const TOPOLOGY_IDS_SCHEMA = {
 
 export function ok(data: unknown) {
   return {
-    content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],
+    content: [{ type: "text" as const, text: formatResult(data) }],
   };
 }
 

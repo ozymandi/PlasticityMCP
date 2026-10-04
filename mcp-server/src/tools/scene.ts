@@ -88,8 +88,11 @@ const tools: Tool[] = [
       "List every body in the connected Plasticity document (native channel): stable id, type " +
       "(Solid / Sheet / Wire), name, bounds in millimetres, face and edge counts, " +
       "visible / locked / selected flags and `materialId`. `visible` is whether the body is " +
-      "shown in the window: false when it is hidden, or left out while other bodies are " +
-      "isolated. Ids are the ones used by all native tools.",
+      "shown in the window: false when it is hidden, or put away while other bodies are " +
+      "isolated. Ids are the ones used by all native tools. In this and every other result a " +
+      "body is printed without the fields at their usual value: no `name` means unnamed, no " +
+      "`visible` means shown, no `locked` / `selected` means not locked / not selected, no " +
+      "`materialId` means no material.",
     inputSchema: { type: "object", properties: {} },
   },
   {
@@ -148,8 +151,9 @@ const tools: Tool[] = [
     name: "list_groups",
     description:
       "List the groups of the document as a tree: id, name, `parentId`, and the direct " +
-      "members of each — `groupIds`, `bodyIds`, `instanceIds`, `referenceMeshIds` — with " +
-      "visible / locked flags. Group 0 is the scene itself, the root; bodies outside any " +
+      "members of each — `groupIds`, `bodyIds`, `instanceIds`, `referenceMeshIds` (a kind it " +
+      "has none of is left out) — and `visible: false` / `locked: true` when it is hidden or " +
+      "locked. Group 0 is the scene itself, the root; bodies outside any " +
       "group are its members. `activeGroupId` is the group new objects are created in.",
     inputSchema: NO_ARGS,
   },
@@ -158,7 +162,7 @@ const tools: Tool[] = [
     description:
       "Put bodies into a new group, optionally with a `name`. The group is created in the " +
       "common parent of the bodies and returned in `created`. Clears the selection in the " +
-      "window. Undoable.",
+      "window. Undoable. (The whole tree: list_groups.)",
     inputSchema: {
       type: "object",
       required: ["ids"],
@@ -181,7 +185,7 @@ const tools: Tool[] = [
     name: "move_to_group",
     description:
       "Move bodies into group `groupId` (from list_groups); 0 moves them out of every group, " +
-      "back to the scene. Undoable.",
+      "back to the scene. Returns that group in `group`. Undoable.",
     inputSchema: {
       type: "object",
       required: ["ids", "groupId"],
@@ -321,19 +325,23 @@ const handlers: ToolFamily["handlers"] = {
 
   list_groups: async () => ok(await native.listGroups()),
 
+  // A change reports what it touched; the whole tree is what list_groups is for.
   group_bodies: async (rawArgs) => {
     const args = GroupBodiesArgs.parse(rawArgs ?? {});
-    return ok(await native.groupBodies(args.ids, args.name));
+    const { groups: _tree, ...result } = await native.groupBodies(args.ids, args.name);
+    return ok(result);
   },
 
   ungroup: async (rawArgs) => {
     const args = UngroupArgs.parse(rawArgs ?? {});
-    return ok(await native.ungroup(args.groupIds));
+    const { groups: _tree, ...result } = await native.ungroup(args.groupIds);
+    return ok(result);
   },
 
   move_to_group: async (rawArgs) => {
     const args = MoveToGroupArgs.parse(rawArgs ?? {});
-    return ok(await native.moveToGroup(args.ids, args.groupId));
+    const { groups, ...result } = await native.moveToGroup(args.ids, args.groupId);
+    return ok({ ...result, group: groups.find((g) => g.id === args.groupId) });
   },
 
   set_visibility: async (rawArgs) => {

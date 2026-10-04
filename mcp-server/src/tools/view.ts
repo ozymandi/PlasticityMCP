@@ -1,6 +1,6 @@
 import { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
-import { native, ok, type ToolFamily } from "./shared.js";
+import { BODY_IDS_SCHEMA, BodyIds, native, ok, type ToolFamily } from "./shared.js";
 
 /** Camera and screenshots. */
 
@@ -9,10 +9,13 @@ const ScreenshotArgs = z.object({
   overwrite: z.boolean().optional().default(false),
 });
 
-const SetViewArgs = z.object({
-  view: z.enum(["front", "back", "left", "right", "top", "bottom", "isometric"]),
-  fit: z.boolean().optional().default(true),
-});
+const SetViewArgs = z
+  .object({
+    view: z.enum(["front", "back", "left", "right", "top", "bottom", "isometric"]),
+    fit: z.boolean().optional().default(true),
+    ids: BodyIds.optional(),
+  })
+  .refine((a) => a.ids === undefined || a.fit, "ids frame the view: they need fit");
 
 const tools: Tool[] = [
   {
@@ -20,8 +23,10 @@ const tools: Tool[] = [
     description:
       "Point the camera of the first viewport at a standard view: front, back, left, right, " +
       "top, bottom or isometric (Z is up; front looks along +Y). `fit` (default true) also " +
-      "frames all bodies. The six axis views are shown by Plasticity in X-ray. Not an undo " +
-      "step. Use before screenshot to look at the model from a chosen side.",
+      "frames all bodies — hidden and isolated-away ones included — or, with `ids`, only " +
+      "those bodies: the way to look closely at one part of a scene. The six axis views are " +
+      "shown by Plasticity in X-ray. Not an undo step. Use before screenshot to look at the " +
+      "model from a chosen side.",
     inputSchema: {
       type: "object",
       required: ["view"],
@@ -31,6 +36,7 @@ const tools: Tool[] = [
           enum: ["front", "back", "left", "right", "top", "bottom", "isometric"],
         },
         fit: { type: "boolean", default: true },
+        ids: { ...BODY_IDS_SCHEMA, description: "Frame only these bodies" },
       },
     },
   },
@@ -53,7 +59,7 @@ const tools: Tool[] = [
 const handlers: ToolFamily["handlers"] = {
   set_view: async (rawArgs) => {
     const args = SetViewArgs.parse(rawArgs ?? {});
-    return ok(await native.setView(args.view, args.fit));
+    return ok(await native.setView(args.view, args.fit, args.ids));
   },
 
   screenshot: async (rawArgs) => {

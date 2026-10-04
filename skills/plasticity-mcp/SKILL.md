@@ -52,7 +52,13 @@ step of detailing.
      same radius), or
      through unwrap (flatten the face with `unwrap_faces`, make the pattern flat, wrap it
      back with `deform`) — the second for patterns that do not simply run along the axis.
-   - **Inscriptions and decals** (the maker's name, scales, numbers, "MADE IN …").
+   - **Inscriptions and decals** (the maker's name, scales, numbers, "MADE IN …"). On a
+     flat face: text, letter regions extruded, `boolean` difference. On a cylinder:
+     `unwrap_faces` of the wall (do it while the body is still simple) gives a flat Sheet
+     at the origin; make the letters there as solids that straddle the Sheet (text drawn
+     0.3 below it, extruded 0.6); `deform` them from the Sheet's face onto the wall; read
+     from the returned bounds where and which way up they landed — the Sheet's axes may
+     map reversed — and shift them along the axis with `move_bodies`; then subtract.
    - **Screws** and other small hardware.
    - **Threads** (sockets, bushings, screw-in rings): a helix from `create_spiral`, a small
      thread profile swept along it with `sweep_profile`, then `boolean` into the part. Give
@@ -130,5 +136,6 @@ How to keep to it:
 - Face, edge, vertex and region ids change after every change of the body: re-read
   `get_body_topology` / `list_regions` before each operation that takes them.
 - After risky steps (booleans, fillets, deleted faces): `check_bodies`, and a `screenshot`
-  from `set_view` to see the result.
+  from `set_view` to see the result. To look closely at one part of a scene pass its
+  bodies as `ids` to `set_view` — without them it frames everything.
 - Undo only your own steps: the history may hold the user's work from before.
