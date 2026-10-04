@@ -147,6 +147,33 @@ const fails = async (run: () => Promise<unknown>, part: string) => {
   check("every tool named in the guide exists", unknown.length === 0, unknown.join(", "));
 }
 
+{
+  console.log("[rules with native_connect]");
+  const session: ToolFamily = {
+    tools: [tool("native_connect", "Stand-in.")],
+    handlers: { native_connect: async () => ({ content: [{ type: "text", text: '{"connected": true}' }] }) },
+  };
+  const withGuide = { guide, session, core: { tools: core.tools.filter((t) => !["modelling_guide", "native_connect"].includes(t.name)), handlers: {} }, solids, scene, transforms };
+  const rulesText = await text(guide.handlers.modelling_guide({}));
+
+  const skipping = compactCatalog(withGuide);
+  const first = await text(skipping.handlers.native_connect({}));
+  check("a model that skipped the guide gets the rules with native_connect", first.startsWith('{"connected": true}') && first.endsWith(rulesText));
+  check("only once", (await text(skipping.handlers.native_connect({}))) === '{"connected": true}');
+
+  const reading = compactCatalog(withGuide);
+  await reading.handlers.modelling_guide({});
+  check("a model that read the guide gets a plain answer", (await text(reading.handlers.native_connect({}))) === '{"connected": true}');
+
+  const viaCall = compactCatalog(withGuide);
+  check("the same through call_tool", (await text(viaCall.handlers.call_tool({ name: "native_connect" }))).endsWith(rulesText));
+
+  const failing = compactCatalog({ ...withGuide, session: { tools: session.tools, handlers: { native_connect: async () => ({ isError: true, content: [{ type: "text", text: "Error: no window" }] }) } } });
+  check("a failed connection carries no rules", (await text(failing.handlers.native_connect({}))) === "Error: no window");
+
+  check("the full catalog leaves native_connect as it is", fullCatalog(withGuide).handlers.native_connect === session.handlers.native_connect);
+}
+
 if (failures > 0) {
   console.error(`\n${failures} check(s) failed.`);
   process.exit(1);

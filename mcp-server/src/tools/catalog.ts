@@ -188,12 +188,36 @@ export function compactCatalog(families: Record<string, ToolFamily>): ToolFamily
     return { content: [{ type: "text", text }] };
   };
 
+  // A model that skips modelling_guide still connects: the rules then come with the answer of
+  // native_connect, once, so that no model builds without having seen them.
+  const own = { ...full.handlers };
+  const { modelling_guide: readGuide, native_connect: connect } = full.handlers;
+  if (readGuide && connect) {
+    let rulesSeen = false;
+    own.modelling_guide = async (rawArgs) => {
+      const result = await readGuide(rawArgs);
+      rulesSeen = true;
+      return result;
+    };
+    own.native_connect = async (rawArgs) => {
+      const result = await connect(rawArgs);
+      if (rulesSeen || result.isError) return result;
+      const rules = (await readGuide({})).content[0];
+      rulesSeen = true;
+      // One text block: some clients show a model only the first.
+      const [first, ...rest] = result.content;
+      if (first?.type !== "text" || rules.type !== "text") return result;
+      const text = `${first.text}\n\nRead before building.\n\n${rules.text}`;
+      return { ...result, content: [{ type: "text", text }, ...rest] };
+    };
+  }
+
   const callTool: ToolHandler = async (rawArgs) => {
     const args = CallToolArgs.parse(rawArgs ?? {});
-    const handler = full.handlers[args.name];
+    const handler = own[args.name];
     if (!handler) throw new Error(`Unknown tool: ${args.name}; look it up with find_tools`);
     return handler(args.arguments);
   };
 
-  return { tools, handlers: { ...full.handlers, find_tools: findTools, call_tool: callTool } };
+  return { tools, handlers: { ...own, find_tools: findTools, call_tool: callTool } };
 }

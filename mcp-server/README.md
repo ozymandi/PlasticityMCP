@@ -348,6 +348,7 @@ node dist/index.js --catalog=compact
 - 24 core tools are listed as usual: `modelling_guide`, `native_launch`, `native_connect`, `native_status`, `undo`, `list_bodies`, `get_body_topology`, `list_regions`, `check_bodies`, `create_box`, `create_cylinder`, `create_polyline`, `create_circle`, `extrude_profile`, `revolve_profile`, `boolean`, `fillet`, `chamfer`, `move_bodies`, `delete_bodies`, `set_view`, `screenshot`, `save_document`, `export_step`.
 - `find_tools` returns the full definition (description and input schema) of other tools: by `names`, by the words of a `query` (best matches first), by `family`. Its own description names every tool of the server by family.
 - `call_tool` runs any tool by `name` with its `arguments` — same checks, same result as a direct call.
+- A model that connects without having called `modelling_guide` gets the rules together with the answer of `native_connect`, once per server process — so no model builds without having seen them. (The full catalog does not do this.)
 
 Without the argument (or with `--catalog=full`) the server lists all 144 tools, as before.
 
