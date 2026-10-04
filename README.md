@@ -35,6 +35,8 @@ MCP server for [Plasticity](https://www.plasticity.xyz/) — lets an LLM read, c
 
 Geometry is native B-Rep made by Plasticity's own factories, so every operation lands in Plasticity's history and can be undone there. Units are millimetres. Details per tool: [mcp-server/README.md](mcp-server/README.md).
 
+For models with a small context the server can be started with `--catalog=compact`: it then lists 25 tools (about 5 thousand tokens instead of about 25 thousand) — 23 core ones plus `find_tools` and `call_tool`, through which every other tool is found and run.
+
 ## Coverage and limits
 
 The tools cover the command set of Plasticity's Indie edition, grouped the way Plasticity groups it. Which command is behind which tool, and what each cannot do: [docs/coverage.md](docs/coverage.md). In short:

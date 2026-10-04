@@ -3,6 +3,7 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { bridge } from "./tools/bridge.js";
+import { catalogMode, compactCatalog, fullCatalog } from "./tools/catalog.js";
 import { curveEdit } from "./tools/curve-edit.js";
 import { curves } from "./tools/curves.js";
 import { environment } from "./tools/environment.js";
@@ -22,7 +23,7 @@ import { view } from "./tools/view.js";
 import { error, type ToolFamily } from "./tools/shared.js";
 
 // Tool families: each file in src/tools/ holds the schemas, definitions and handlers of one.
-const families: ToolFamily[] = [
+const families: Record<string, ToolFamily> = {
   bridge,
   session,
   primitives,
@@ -40,10 +41,12 @@ const families: ToolFamily[] = [
   profiles,
   exchange,
   view,
-];
+};
 
-const tools = families.flatMap((family) => family.tools);
-const handlers = new Map(families.flatMap((family) => Object.entries(family.handlers)));
+// `--catalog=compact` lists a few tools and lets the rest be found and called by name.
+const catalog = catalogMode(process.argv) === "compact" ? compactCatalog(families) : fullCatalog(families);
+const tools = catalog.tools;
+const handlers = new Map(Object.entries(catalog.handlers));
 
 // ---------- Server wiring ----------
 

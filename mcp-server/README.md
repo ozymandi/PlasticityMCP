@@ -329,6 +329,20 @@ npm run dev
 
 Override server with `PLASTICITY_SERVER=host:port` env var (default `localhost:8980`).
 
+### Compact catalog (models with a small context)
+
+The full tool list is about 25 thousand tokens. Started with `--catalog=compact`, the server lists 25 tools — about 5 thousand tokens — and nothing is lost:
+
+```bash
+node dist/index.js --catalog=compact
+```
+
+- 23 core tools are listed as usual: `native_launch`, `native_connect`, `native_status`, `undo`, `list_bodies`, `get_body_topology`, `list_regions`, `check_bodies`, `create_box`, `create_cylinder`, `create_polyline`, `create_circle`, `extrude_profile`, `revolve_profile`, `boolean`, `fillet`, `chamfer`, `move_bodies`, `delete_bodies`, `set_view`, `screenshot`, `save_document`, `export_step`.
+- `find_tools` returns the full definition (description and input schema) of other tools: by `names`, by the words of a `query` (best matches first), by `family`. Its own description names every tool of the server by family.
+- `call_tool` runs any tool by `name` with its `arguments` — same checks, same result as a direct call.
+
+Without the argument (or with `--catalog=full`) the server lists all 143 tools, as before.
+
 ## Wiring into Claude Code
 
 Add to your `claude_desktop_config.json` or project settings:
