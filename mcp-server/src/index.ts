@@ -9,6 +9,7 @@ import { exchange } from "./tools/exchange.js";
 import { faces } from "./tools/faces.js";
 import { primitives } from "./tools/primitives.js";
 import { profiles } from "./tools/profiles.js";
+import { projection } from "./tools/projection.js";
 import { scene } from "./tools/scene.js";
 import { session } from "./tools/session.js";
 import { solids } from "./tools/solids.js";
@@ -27,6 +28,7 @@ const families: ToolFamily[] = [
   faces,
   curves,
   curveEdit,
+  projection,
   profiles,
   exchange,
   view,

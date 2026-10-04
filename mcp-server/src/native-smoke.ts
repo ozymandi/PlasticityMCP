@@ -68,6 +68,7 @@ async function main() {
     await faceChecks(native);
     await curveChecks(native);
     await curveEditChecks(native);
+    await projectionChecks(native);
   } catch (err) {
     console.error("SMOKE ERROR:", (err as Error).message);
     process.exitCode = 1;
@@ -1421,6 +1422,72 @@ async function curveEditChecks(native: NativeSession): Promise<void> {
   const straight = wire(await native.createPolyline([[X + 600, 0, 0], [X + 620, 0, 0], [X + 640, 0, 0]]))!;
   await native.dissolveEdges(straight.id);
   check("dissolve on a curve removes a redundant vertex", (await shape(straight.id)).kinds.length === 1);
+  await native.undo();
+}
+
+// Projection: curves onto bodies, intersections, outlines, flattening — drawn around x = 6000.
+async function projectionChecks(native: NativeSession): Promise<void> {
+  const X = 6000;
+  const wires = (result: MutationResult) => result.created.filter((b) => b.type === "Wire");
+  const box = (await native.createBox([X, 0, 0], [40, 30, 20])).created[0]!;
+  const post = (await native.createCylinder([X + 20, 15, -10], 8, 40)).created[0]!;
+
+  const crossing = await native.project({ bodyIds: [box.id, post.id] });
+  check("project two bodies: the lines where they cross", wires(crossing).length === 2 && crossing.changed.length === 0 &&
+    wires(crossing).some((b) => boundsMatch(b, [X + 12, 7, 20], [X + 28, 23, 20])) &&
+    wires(crossing).some((b) => boundsMatch(b, [X + 12, 7, 0], [X + 28, 23, 0])), brief(crossing));
+  await native.undo();
+  const apart = (await native.createBox([X, 100, 0], [10, 10, 10])).created[0]!;
+  const noCrossing = await failure(native.project({ bodyIds: [box.id, apart.id] }));
+  check("project bodies that do not cross is refused", /must cross/.test(noCrossing?.message ?? ""), noCrossing?.message);
+
+  const above = (await native.createPolyline([[X + 5, 5, 40], [X + 35, 25, 40]])).created[0]!;
+  const dropped = await native.project({ curveIds: [above.id], targetId: box.id });
+  check("project a curve onto a body along the surface normals", wires(dropped).length === 1 &&
+    boundsMatch(wires(dropped)[0], [X + 5, 5, 20], [X + 35, 25, 20]) && dropped.changed.length === 0, brief(dropped));
+  await native.undo();
+  const slanted = await native.project({ curveIds: [above.id], targetId: box.id, direction: [1, 0, -1] });
+  check("project a curve along a direction", wires(slanted).length === 1 &&
+    boundsMatch(wires(slanted)[0], [X + 25, 5, 20], [X + 40, 15, 20], 0.01), fmt(wires(slanted)[0]));
+  await native.undo();
+
+  const plan = (await native.createSpline([[X + 100, 0, 0], [X + 120, 10, 0], [X + 140, 0, 0]])).created[0]!;
+  const elevation = (await native.createSpline([[X + 100, -20, 0], [X + 120, -20, 15], [X + 140, -20, 0]])).created[0]!;
+  const combined = await native.project({ curveIds: [plan.id, elevation.id] });
+  const space = wires(combined)[0];
+  check("project two curves into one curve in space", space !== undefined &&
+    Math.abs(space.boundsMm!.min[0]! - (X + 100)) < 0.01 && Math.abs(space.boundsMm!.max[0]! - (X + 140)) < 0.01 &&
+    space.boundsMm!.max[1]! > 5 && space.boundsMm!.max[2]! > 5, fmt(space));
+  await native.undo();
+
+  const silhouette = await native.createOutline([post.id]);
+  check("create_outline: the outline on the body", wires(silhouette).length === 1 &&
+    Math.abs(wires(silhouette)[0]!.boundsMm!.min[0]! - (X + 12)) < 0.01 &&
+    Math.abs(wires(silhouette)[0]!.boundsMm!.max[1]! - 23) < 0.01 && silhouette.changed.length === 0, brief(silhouette));
+  await native.undo();
+  const footprint = await native.createOutline([post.id], true);
+  check("create_outline flat: projected onto the construction plane",
+    boundsMatch(wires(footprint)[0], [X + 12, 7, 0], [X + 28, 23, 0], 0.01), fmt(wires(footprint)[0]));
+  await native.undo();
+
+  const wavy = (await native.createSpline([[X + 200, 0, 0], [X + 220, 10, 15], [X + 240, 0, 30]])).created[0]!;
+  const depth = (await native.state()).undoDepth;
+  const shadow = await native.duplicateAndProject({ curveIds: [wavy.id] }, [0, 0, 0], [0, 0, 1]);
+  check("duplicate_and_project flattens a copy, one undo step", wires(shadow).length === 1 &&
+    shadow.changed.length === 0 && shadow.undoDepth === depth + 1 &&
+    wires(shadow)[0]!.boundsMm!.min[2] === 0 && wires(shadow)[0]!.boundsMm!.max[2] === 0 &&
+    Math.abs(wires(shadow)[0]!.boundsMm!.max[0]! - (X + 240)) < 0.01, fmt(wires(shadow)[0]));
+  await native.undo();
+  const sideways = await native.duplicateAndProject({ curveIds: [wavy.id] }, [X + 250, 0, 0], [1, 0, 0]);
+  check("duplicate_and_project onto another plane", wires(sideways)[0]!.boundsMm!.min[0] === X + 250 &&
+    wires(sideways)[0]!.boundsMm!.max[0] === X + 250 && Math.abs(wires(sideways)[0]!.boundsMm!.max[2]! - 30) < 0.01,
+    fmt(wires(sideways)[0]));
+  await native.undo();
+  const bt = await native.topology(box.id);
+  const topEdges = bt.edges!.filter((e) => e.midMm[2] === 20).map((e) => e.id);
+  const floor = await native.duplicateAndProject({ id: box.id, edgeIds: topEdges }, [0, 0, -5], [0, 0, 1]);
+  check("duplicate_and_project takes edges of a body", wires(floor).length === 1 &&
+    boundsMatch(wires(floor)[0], [X, 0, -5], [X + 40, 30, -5]) && floor.changed.length === 0, brief(floor));
   await native.undo();
 }
 

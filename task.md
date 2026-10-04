@@ -445,8 +445,8 @@ Excluded: Studio-only commands (Align, PolySplines, xNURBS, Square, Rebuild Face
 | 11 | Solids: Cut, Hollow, Thicken, Thicken Face, Offset Face, Draft Face, Delete Face, Patch, Pipe, Join / Unjoin, Remove Fillets | 13 | 5 | ✅ done |
 | 12 | Faces and edges: Move / Rotate / Scale Face, Offset Edge, Offset Face Loop, Match Face, Extend Sheet, Untrim, Reverse, Unwrap, Isoparam, Complete Edge, Imprint; added on the Designer's word: Dissolve edges / Delete Redundant Topology, Join Faces, Move Edge, Refillet, Duplicate Faces | 19 | 7 | ✅ done |
 | 13 | Curves: Offset, Fillet Curve / Vertex, Trim, Cut, Split, Extend, Bridge, Rebuild, Raise Degree, Slot, Text, Spiral, Polygon, rectangles, tangent arcs and circles, control points | ~30 | 10 | ✅ done (Split Segment and Insert Knot deferred) |
-| 14 | Projection: Project (three kinds), Project Outline, Create Outline, Duplicate and Project | 7 | 3 | next |
-| 15 | Surfaces: Bridge Surface, Constrained Surface, Raise Surface Degree, Slide CV, Deform, Loft Guide | 6 | 3 | |
+| 14 | Projection: Project (three kinds), Project Outline, Create Outline, Duplicate and Project | 7 | 3 | ✅ done |
+| 15 | Surfaces: Bridge Surface, Constrained Surface, Raise Surface Degree, Slide CV, Deform, Loft Guide | 6 | 3 | next |
 | 16 | Copies and placement: Curve Array, Place, Copy / Paste with Placement, instances | 6 | 2.5 | |
 | 17 | Scene: groups, hide / show / isolate, lock, materials, extended selection | 12 | 4 | |
 | 18 | Measuring: distance, radius, continuity, Dimension, Section Analysis, Check | 7 | 3 | |
@@ -593,6 +593,26 @@ Verified live in Untitled: `smoke:native` passes with **285 checks** (46 new); t
 
 What follows from it: restart Plasticity after a long automated session (a dozen smoke runs); after a renderer loss expect test debris in the restored Untitled document.
 
+Committed (`6de07e2`), merged into `main` and published.
+
+### Block 14 — projection — ✅ Done (2026-10-04, ~1.5 h)
+
+Three tools for seven commands, **108 in total** (`src/native/projection.ts`, `src/tools/projection.ts`):
+
+| Tool | Native factory | Notes |
+|------|----------------|-------|
+| `project` | `ProjectCurveBodyFactory`, `ProjectBodyBodyFactory`, `ProjectCurveCurveFactory` | Curves onto a body (Normal method 26520 without `direction`, Vector 26521 with it), crossing lines of bodies (first is the target, the rest are tools), or two planar curves into one curve in space. New curves; nothing else changes. |
+| `create_outline` | `CreateOutlineFromShellsFactory` / `ProjectOutlineFromShellsFactory` | Outline in space on the bodies, or with `flat` projected onto the plane. |
+| `duplicate_and_project` | `CurveDuplicateFactory` or `CreateCurveFromEdgesFactory`, then `PlanarizeCurveFactory` | Copy and flatten inside one command — one undo step. The plane is given explicitly (`planeOrigin`, `planeNormal`). |
+
+**The risk named in the proposal is real:** the two outline factories have no direction or plane of their own; they read the **active construction plane of the viewport** (`editor.activeViewport.constructionPlane`, a `ConstructionPlaneSnap` with normal `n` and point `p`). I did not switch that plane behind the Designer's back: `create_outline` works along whatever plane is active in the window — the world XY plane by default, i.e. a top view — and has no direction parameter. Choosing another direction needs the construction plane to be set, which is block 19 (construction planes); once that tool exists the direction of `create_outline` follows it, the same way as in Plasticity.
+
+Verified live in Untitled: `smoke:native` passes with **295 checks** (10 new); the end-to-end script over stdio passes (108 tools, argument validation, document restored); build and protocol tests pass.
+
+**Not verified / not exposed:** `create_outline` with a construction plane other than world XY; the `complete`, `bidirectional` and `occlude` options of curve projection (native defaults: no completion, both directions, hidden surfaces skipped); projection onto several bodies at once; curve-curve projection of curves that are not planar (refused with a hint).
+
+Designer's decision (2026-10-04): leave `create_outline` following the active construction plane; its direction will be controlled by the construction plane tool of block 19.
+
 Committed, merged into `main` and published. The MCP client must be restarted to see the new tools.
 
 Other ideas (not agreed yet): transforming and hiding reference meshes; opening `.plasticity` files is in block 19.
@@ -642,4 +662,4 @@ PlasticityMCP/
 ## Next action
 
 1. Designer: close Plasticity and call `native_launch` (or `npm run smoke:native`) once to verify the cold-start path; restart the MCP client so it picks up the new tools.
-2. Full command coverage: blocks 0, 0b (split of `index.ts`) and 11 (solids) are in `main` and published — 69 tools. Blocks 0, 0b, 11 and 12 are in `main` and published — 84 tools. Blocks 0, 0b, 11, 12 and 13 are in `main` and published — 105 tools. Next: the proposal for block 14 (projection); the Designer asked for it on 2026-10-04. Work continues on branch `native-full-spectrum`.
+2. Full command coverage: blocks 0, 0b (split of `index.ts`) and 11 (solids) are in `main` and published — 69 tools. Blocks 0, 0b, 11 and 12 are in `main` and published — 84 tools. Blocks 0, 0b, 11, 12 and 13 are in `main` and published — 105 tools. Blocks 0, 0b and 11–14 are in `main` and published — 108 tools. Next: the proposal for block 15 (surfaces); the Designer asked for it on 2026-10-04. Work continues on branch `native-full-spectrum`.

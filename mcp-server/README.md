@@ -100,6 +100,9 @@ A second channel, independent of the WebSocket bridge: real B-Rep operations thr
 | `delete_control_points` | Delete control points of a spline. |
 | `curves_from_edges` | Copy edges of a body as curves. |
 | `deform` | Wrap curves from a `source` face onto a `target` face. |
+| `project` | New curves by projection: curves onto a body (`curveIds` + `targetId`, optional `direction`), crossing lines of bodies (`bodyIds`), or two planar curves into one curve in space (two `curveIds`). |
+| `create_outline` | Outline of bodies seen along the normal of the window's active construction plane; `flat` projects it onto that plane. |
+| `duplicate_and_project` | Copy curves or body edges and flatten the copies onto a plane (`planeOrigin`, `planeNormal`). |
 | `list_regions` | Regions Plasticity built from closed loops of curves: id, bounds, normal, boundary length, holes. |
 | `extrude_profile` | Closed planar curve → Solid, open curve → Sheet, by `distance` along the plane normal. Takes a curve `id` or `regionIds`. |
 

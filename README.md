@@ -2,7 +2,7 @@
 
 MCP server for [Plasticity](https://www.plasticity.xyz/) — lets an LLM read, create and modify real CAD geometry inside a running Plasticity window.
 
-**Status:** working, for internal use. 105 tools, verified live on **Plasticity 26.1.3 / Windows**. Unofficial: it relies on Plasticity's internal APIs and is pinned to that exact version.
+**Status:** working, for internal use. 108 tools, verified live on **Plasticity 26.1.3 / Windows**. Unofficial: it relies on Plasticity's internal APIs and is pinned to that exact version.
 
 ## What it can do
 
@@ -12,6 +12,7 @@ MCP server for [Plasticity](https://www.plasticity.xyz/) — lets an LLM read, c
 | Primitives | `create_box`, `create_sphere`, `create_cylinder` |
 | Curves | `create_polyline`, `create_spline`, `create_circle`, `create_arc`, `create_arc_center`, `create_ellipse`, `create_rectangle`, `create_polygon`, `create_spiral`, `create_text`, `create_slot`, `create_tangent_arc`, `create_tangent_circle` |
 | Curve editing | `trim_curves`, `bridge`, `rebuild`, `raise_degree`, `subdivide_curves`, `convert_vertices`, `align_vertices`, `move_control_points`, `rotate_control_points`, `scale_control_points`, `slide`, `delete_control_points`, `curves_from_edges`, `deform` |
+| Projection | `project`, `create_outline`, `duplicate_and_project` |
 | Profiles | `list_regions`, `extrude_profile`, `revolve_profile`, `sweep_profile`, `loft_profiles` |
 | Scene | `list_bodies`, `get_selection`, `select_bodies`, `delete_bodies`, `rename_body` |
 | Transforms | `move_bodies`, `rotate_bodies`, `scale_bodies` |

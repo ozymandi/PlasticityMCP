@@ -120,6 +120,11 @@ export type RectangleSpec =
     }
   | { pointsMm: [Vec3, Vec3, Vec3] };
 
+/** What `project` projects: curves (onto a body, or two of them onto each other), or bodies onto each other. */
+export type ProjectionSource =
+  | { curveIds: number[]; targetId?: number; direction?: Vec3 }
+  | { bodyIds: number[] };
+
 /** One face of a body, by the ids from get_body_topology. */
 export interface FaceRef {
   id: number;
