@@ -35,8 +35,13 @@ A second channel, independent of the WebSocket bridge: real B-Rep operations thr
 | `select_bodies` | Replace the selection; empty list clears it. Not an undo step. |
 | `delete_bodies` | Native Delete by id. Undoable. Clears the selection. |
 | `rename_body` | Rename a body. Undoable. |
+| `move_bodies` | Translate by `delta`. |
+| `rotate_bodies` | Rotate `angle` degrees around `axis` through `pivot`. |
+| `scale_bodies` | Scale by `factor` (number or `[x, y, z]`) relative to `pivot`. |
 
-Mutating tools return the created bodies (stable id, type, name, bounds) and removed ids.
+`pivot` is optional for rotate and scale; it defaults to the centre of the bodies' combined bounding box.
+
+Mutating tools return `created` and `changed` bodies (stable id, type, name, bounds, …) and `removedIds`. Transforms keep body ids, so their result is in `changed`.
 
 Live check — mutates the document, so it only runs in a fresh "Untitled" one and undoes everything:
 

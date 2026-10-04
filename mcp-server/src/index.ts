@@ -115,6 +115,27 @@ const RenameBodyArgs = z.object({
   name: z.string().trim().min(1),
 });
 
+const BodyIds = z.array(BodyId).min(1);
+const PositiveFactor = z.number().positive();
+
+const MoveBodiesArgs = z.object({
+  ids: BodyIds,
+  delta: Vec3Mm,
+});
+
+const RotateBodiesArgs = z.object({
+  ids: BodyIds,
+  axis: Vec3Mm.refine((a) => Math.hypot(...a) > 0, "axis must be non-zero"),
+  angle: z.number(),
+  pivot: Vec3Mm.optional(),
+});
+
+const ScaleBodiesArgs = z.object({
+  ids: BodyIds,
+  factor: z.union([PositiveFactor, z.tuple([PositiveFactor, PositiveFactor, PositiveFactor])]),
+  pivot: Vec3Mm.optional(),
+});
+
 // ---------- Tool definitions ----------
 
 const VEC3_SCHEMA = {
@@ -123,6 +144,13 @@ const VEC3_SCHEMA = {
   minItems: 3,
   maxItems: 3,
   description: "[x, y, z] in millimetres",
+};
+
+const BODY_IDS_SCHEMA = {
+  type: "array",
+  items: { type: "number" },
+  minItems: 1,
+  description: "Stable body ids (from list_bodies)",
 };
 
 const tools: Tool[] = [
@@ -377,6 +405,55 @@ const tools: Tool[] = [
       type: "object",
       required: ["id", "name"],
       properties: { id: { type: "number" }, name: { type: "string" } },
+    },
+  },
+  {
+    name: "move_bodies",
+    description:
+      "Translate bodies by `delta` [x, y, z] in millimetres. Undoable. Body ids are preserved; " +
+      "the moved bodies are returned in `changed` with their new bounds.",
+    inputSchema: {
+      type: "object",
+      required: ["ids", "delta"],
+      properties: { ids: BODY_IDS_SCHEMA, delta: VEC3_SCHEMA },
+    },
+  },
+  {
+    name: "rotate_bodies",
+    description:
+      "Rotate bodies by `angle` degrees (right-hand rule) around `axis` passing through `pivot`. " +
+      "`pivot` defaults to the centre of the bodies' combined bounding box, so they turn in " +
+      "place. Undoable. Rotated bodies are returned in `changed`.",
+    inputSchema: {
+      type: "object",
+      required: ["ids", "axis", "angle"],
+      properties: {
+        ids: BODY_IDS_SCHEMA,
+        axis: { ...VEC3_SCHEMA, description: "Rotation axis direction [x, y, z]" },
+        angle: { type: "number", description: "Degrees" },
+        pivot: VEC3_SCHEMA,
+      },
+    },
+  },
+  {
+    name: "scale_bodies",
+    description:
+      "Scale bodies relative to `pivot`. `factor` is one number (uniform) or [x, y, z] per-axis " +
+      "factors, all positive. `pivot` defaults to the centre of the bodies' combined bounding " +
+      "box. Undoable. Scaled bodies are returned in `changed`.",
+    inputSchema: {
+      type: "object",
+      required: ["ids", "factor"],
+      properties: {
+        ids: BODY_IDS_SCHEMA,
+        factor: {
+          anyOf: [
+            { type: "number" },
+            { type: "array", items: { type: "number" }, minItems: 3, maxItems: 3 },
+          ],
+        },
+        pivot: VEC3_SCHEMA,
+      },
     },
   },
 ];
@@ -720,6 +797,23 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "rename_body": {
         const args = RenameBodyArgs.parse(rawArgs ?? {});
         return ok(await native.renameBody(args.id, args.name));
+      }
+
+      case "move_bodies": {
+        const args = MoveBodiesArgs.parse(rawArgs ?? {});
+        return ok(await native.moveBodies(args.ids, args.delta));
+      }
+
+      case "rotate_bodies": {
+        const args = RotateBodiesArgs.parse(rawArgs ?? {});
+        return ok(await native.rotateBodies(args.ids, args.axis, args.angle, args.pivot));
+      }
+
+      case "scale_bodies": {
+        const args = ScaleBodiesArgs.parse(rawArgs ?? {});
+        const factors: [number, number, number] =
+          typeof args.factor === "number" ? [args.factor, args.factor, args.factor] : args.factor;
+        return ok(await native.scaleBodies(args.ids, factors, args.pivot));
       }
 
       default:

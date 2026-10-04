@@ -100,8 +100,37 @@ async function main() {
   check("undo restores the sphere", undeleted.created[0]?.id === sphereId,
     fmt(undeleted.created[0]));
 
+  // --- transforms: move / rotate / scale (box is [10,20,0]..[90,60,8], centre [50,40,4]) ---
+  const transformed = (label: string, result: { changed: BodyInfo[] }, min: Vec3, max: Vec3) => {
+    const body = result.changed.find((b) => b.id === boxId);
+    check(label, boundsMatch(body, min, max), fmt(body));
+  };
+
+  transformed("move", await native.moveBodies([boxId], [5, -5, 10]), [15, 15, 10], [95, 55, 18]);
+  transformed("undo move", await native.undo(), [10, 20, 0], [90, 60, 8]);
+
+  transformed("rotate 90° about Z, default pivot",
+    await native.rotateBodies([boxId], [0, 0, 1], 90), [30, 0, 0], [70, 80, 8]);
+  await native.undo();
+  transformed("rotate 90° about Z, pivot at origin",
+    await native.rotateBodies([boxId], [0, 0, 2], 90, [0, 0, 0]), [-60, 10, 0], [-20, 90, 8]);
+  await native.undo();
+
+  transformed("scale ×2, default pivot",
+    await native.scaleBodies([boxId], [2, 2, 2]), [-30, 0, -4], [130, 80, 12]);
+  await native.undo();
+  transformed("scale [2, 1, 0.5] from the min corner",
+    await native.scaleBodies([boxId], [2, 1, 0.5], [10, 20, 0]), [10, 20, 0], [170, 60, 4]);
+  await native.undo();
+
+  const pair = await native.moveBodies([boxId, sphereId], [0, 0, 100]);
+  check("move two bodies at once", ids(pair.changed) === `${boxId},${sphereId}`, ids(pair.changed));
+  await native.undo();
+  const badMove = await native.moveBodies([999999], [1, 0, 0]).then(() => null, (e: Error) => e);
+  check("transform rejects an unknown id", badMove !== null, badMove?.message ?? "no error");
+
   // Clean up: undo everything this test did and put the selection back.
-  for (let i = 0; i < 30 && (await native.state()).undoDepth > baseline.undoDepth; i++) {
+  for (let i = 0; i < 60 && (await native.state()).undoDepth > baseline.undoDepth; i++) {
     await native.undo();
   }
   await native.selectBodies(baseline.bodies.filter((b) => b.selected).map((b) => b.id));

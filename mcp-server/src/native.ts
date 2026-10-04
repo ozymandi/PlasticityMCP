@@ -37,6 +37,8 @@ export interface NativeState {
 
 export interface MutationResult {
   created: BodyInfo[];
+  /** Bodies that kept their id but changed (bounds, name, topology, visibility, lock). */
+  changed: BodyInfo[];
   removedIds: number[];
   bodyCount: number;
   undoDepth: number;
@@ -48,6 +50,25 @@ const OBJECT_GROUP = "plasticity-mcp";
 const COMMAND_TIMEOUT_MS = 60_000;
 
 const toMeters = (v: Vec3): Vec3 => [v[0] * MM, v[1] * MM, v[2] * MM];
+
+/** Everything about a body except its selection flag, for change detection. */
+const fingerprint = ({ selected: _selected, ...rest }: BodyInfo): string => JSON.stringify(rest);
+
+/** Centre of the combined bounding box of the given bodies, in millimetres. */
+function boundsCentre(state: NativeState, ids: number[]): Vec3 {
+  const min: Vec3 = [Infinity, Infinity, Infinity];
+  const max: Vec3 = [-Infinity, -Infinity, -Infinity];
+  for (const id of ids) {
+    const body = state.bodies.find((b) => b.id === id);
+    if (!body) throw new Error(`Unknown body id: ${id}`);
+    if (!body.boundsMm) throw new Error(`Body ${id} has no bounds; pass pivot explicitly`);
+    for (let i = 0; i < 3; i++) {
+      min[i] = Math.min(min[i]!, body.boundsMm.min[i]!);
+      max[i] = Math.max(max[i]!, body.boundsMm.max[i]!);
+    }
+  }
+  return [(min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2];
+}
 
 // Runs with `this` = editor. Only bodies with a stable id are public: sketching leaves
 // transient fragments without one.
@@ -101,6 +122,7 @@ const FIND_VIEW = `const find = (id) => {
 function commandFunction(commandName: string, extraParams: string[], setup: string): string {
   return `async function (${["Factory", ...extraParams, "args"].join(", ")}) {
     ${BUSY_GUARD}
+    ${FIND_VIEW}
     const editor = this;
     let failure;
     const command = new this.commands.${commandName}(this);
@@ -279,20 +301,28 @@ export class NativeSession {
     return this.enqueue(() => this.call<NativeState>(READ_STATE));
   }
 
-  /** Run a mutation and report what it changed, by diffing stable body ids. */
+  /**
+   * Run a mutation and report what it changed, by diffing the bodies before and after.
+   * `values` may be derived from the state read just before the call.
+   */
   private mutate(
     functionDeclaration: string,
     bindingNames: string[] = [],
-    values: unknown[] = [],
+    values: unknown[] | ((before: NativeState) => unknown[]) = [],
   ): Promise<MutationResult> {
     return this.enqueue(async () => {
       const before = await this.call<NativeState>(READ_STATE);
-      await this.call(functionDeclaration, bindingNames, values);
+      const callValues = typeof values === "function" ? values(before) : values;
+      await this.call(functionDeclaration, bindingNames, callValues);
       const after = await this.call<NativeState>(READ_STATE);
-      const beforeIds = new Set(before.bodies.map((b) => b.id));
+      const beforeById = new Map(before.bodies.map((b) => [b.id, b]));
       const afterIds = new Set(after.bodies.map((b) => b.id));
       return {
-        created: after.bodies.filter((b) => !beforeIds.has(b.id)),
+        created: after.bodies.filter((b) => !beforeById.has(b.id)),
+        changed: after.bodies.filter((b) => {
+          const previous = beforeById.get(b.id);
+          return previous !== undefined && fingerprint(previous) !== fingerprint(b);
+        }),
         removedIds: before.bodies.filter((b) => !afterIds.has(b.id)).map((b) => b.id),
         bodyCount: after.bodies.length,
         undoDepth: after.undoDepth,
@@ -355,6 +385,64 @@ export class NativeSession {
           name: name ?? null,
         },
       ],
+    );
+  }
+
+  moveBodies(ids: number[], deltaMm: Vec3): Promise<MutationResult> {
+    const setup = `
+        factory.items = args.ids.map(find);
+        factory.move.fromArray(args.delta);`;
+    return this.mutate(
+      commandFunction("MoveItemCommand", [], setup),
+      ["MoveItemAndEmptyFactory"],
+      [{ ids, delta: toMeters(deltaMm) }],
+    );
+  }
+
+  /**
+   * Rotate by `angleDeg` (right-hand rule) around `axis` through `pivotMm`.
+   * Default pivot: centre of the bodies' combined bounding box.
+   */
+  rotateBodies(
+    ids: number[],
+    axis: Vec3,
+    angleDeg: number,
+    pivotMm?: Vec3,
+  ): Promise<MutationResult> {
+    // The factory's `axis` proxy does not update reliably; set the quaternion directly.
+    const setup = `
+        factory.items = args.ids.map(find);
+        factory.pivot.fromArray(args.pivot);
+        factory.rotation.copy(
+          new Quaternion().setFromAxisAngle(new Vector3(...args.axis).normalize(), args.radians),
+        );`;
+    return this.mutate(
+      commandFunction("RotateItemCommand", ["Vector3", "Quaternion"], setup),
+      ["RotateItemAndEmptyFactory", "Vector3", "Quaternion"],
+      (before) => [
+        {
+          ids,
+          axis,
+          radians: (angleDeg * Math.PI) / 180,
+          pivot: toMeters(pivotMm ?? boundsCentre(before, ids)),
+        },
+      ],
+    );
+  }
+
+  /**
+   * Scale by per-axis `factors` relative to `pivotMm`.
+   * Default pivot: centre of the bodies' combined bounding box.
+   */
+  scaleBodies(ids: number[], factors: Vec3, pivotMm?: Vec3): Promise<MutationResult> {
+    const setup = `
+        factory.items = args.ids.map(find);
+        factory.pivot.fromArray(args.pivot);
+        factory.scale.fromArray(args.factors);`;
+    return this.mutate(
+      commandFunction("ScaleItemCommand", [], setup),
+      ["ProjectingScaleItemAndEmptyFactory"],
+      (before) => [{ ids, factors, pivot: toMeters(pivotMm ?? boundsCentre(before, ids)) }],
     );
   }
 

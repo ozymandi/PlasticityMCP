@@ -173,11 +173,26 @@ Findings:
 
 `smoke:native` guard relaxed: runs in an "Untitled" document that is either pristine or has no bodies.
 
-Block 1 changes are **not committed**. The MCP client must be restarted to see the 5 new tools.
+Committed as `7d66476` on branch `native-stage-1`.
+
+## Native block 2 — transforms — ✅ Done (2026-10-04, ~1 h)
+
+New tools: `move_bodies`, `rotate_bodies`, `scale_bodies` (25 tools total). Mutation results gained a `changed` list (bodies that kept their id but differ), since transforms preserve stable ids.
+
+Designer's decision: default `pivot` for rotate / scale = **centre of the bodies' combined bounding box** (computed from the state read just before the command).
+
+Verified live on 26.1.3 (Untitled): `smoke:native` extended and passing — move, rotate 90° about Z with default and explicit pivot, uniform ×2 and non-uniform [2, 1, 0.5] scale, Undo after each, two bodies at once, unknown id rejected. Built stdio server exercised end to end incl. validation errors (zero axis, negative factor, empty ids).
+
+Findings:
+- Factories / commands: `MoveItemAndEmptyFactory` + `MoveItemCommand` (`items`, `move`), `RotateItemAndEmptyFactory` + `RotateItemCommand` (`items`, `pivot`, `rotation` quaternion — set it directly, not via `axis`), `ProjectingScaleItemAndEmptyFactory` + `ScaleItemCommand` (`items`, `pivot`, `scale`).
+- Stable ids survive all three transforms and their Undo.
+
+**Not verified:** transforms on Wire / Sheet bodies; cold start of `launcher.ts` (still pending from stage 1).
+
+Block 2 changes are **not committed**. The MCP client must be restarted to see the new tools (scene + transforms).
 
 ### Next blocks (each proposed separately before implementation)
 
-2. Transforms: move, rotate, scale.
 3. Boolean, fillet, extrude.
 4. Curves: polyline, circle, spline.
 5. STEP import/export, save document, screenshot.
@@ -227,4 +242,4 @@ PlasticityMCP/
 ## Next action
 
 1. Designer: close Plasticity and call `native_launch` (or `npm run smoke:native`) once to verify the cold-start path; restart the MCP client so it picks up the new tools.
-2. Commit block 1 (on Designer's word), then propose block 2 (transforms: move / rotate / scale).
+2. Commit block 2 (on Designer's word), then propose block 3 (boolean / fillet / extrude — needs face and edge ids).
