@@ -29,11 +29,11 @@ step of detailing.
 2. **Refining.** The details, and the edges: see "No bare edges" below.
 3. **Merge pass — the last step.** Go through the finished model, find the parts that should
    be one piece, `boolean` union them, and put a chamfer / bevel on the edges where they meet.
-   - One piece: fixed parts that touch and belong to the same real part or casting (a body
-     and its front block, bosses, lugs, sockets, strips, a lever and its hub).
-   - Stay separate: moving parts (dials, buttons, knobs, levers against the body), removable
-     parts, parts that are a different piece on the real object. When in doubt, ask in the
-     brief.
+   - One piece: fixed parts that touch and belong to the same real part or casting (a
+     housing and its bosses, ribs, lugs and sockets).
+   - Stay separate: moving parts (whatever turns, slides or is pressed), removable parts
+     (covers, lids, fasteners), parts that are a different piece on the real object. When in
+     doubt, ask in the brief.
    - The junction edges exist only after the union, on a body that is already detailed.
      Pick them with the filter of `get_body_topology` — `include: "edges"` plus a thin `box`
      around the plane or the line of the junction, and `kinds` when it helps — never with a
@@ -45,7 +45,7 @@ step of detailing.
 
 4. **Fine detail — the very last.** Only when the forms, the edges and the merge pass are
    done:
-   - **Knurling / ribs on knobs, dials and rings.** Real knobs have small ribs; a smooth
+   - **Knurling / ribs on knobs, handwheels and rings.** Real knobs have small ribs; a smooth
      cylinder is not a finished knob. Two ways, both named by the user: with booleans (one
      small cutter on the rim, `array_radial` around the axis, `boolean` difference — or,
      cheaper, one cutter for the whole band: a closed zig-zag polyline around the knob
@@ -55,7 +55,7 @@ step of detailing.
      same radius), or
      through unwrap (flatten the face with `unwrap_faces`, make the pattern flat, wrap it
      back with `deform`) — the second for patterns that do not simply run along the axis.
-   - **Inscriptions and decals** (the maker's name, scales, numbers, "MADE IN …"). On a
+   - **Inscriptions and decals** (markings, scales, numbers, labels). On a
      flat face: text, letter regions extruded, `boolean` difference. On a cylinder:
      `unwrap_faces` of the wall (do it while the body is still simple) gives a flat Sheet
      at the origin; make the letters there as solids that straddle the Sheet (text drawn
@@ -89,22 +89,22 @@ How to keep to it:
 - Do it **before fine detail** (engraved text, small pockets): afterwards the body has
   hundreds of edges and picking the right ones from `get_body_topology` is expensive.
 - Choose by the look of the real object: `fillet` for cast, moulded and pressed shapes,
-  `chamfer` for machined rims, rings, dials and holes. Size by the part — roughly 1–3 % of the
+  `chamfer` for machined rims, rings and holes. Size by the part — roughly 1–3 % of the
   body size for outer edges, smaller (0.3–0.5 mm on a hand-sized object) for rims and holes.
 - Go through a body **face by face, all of its outer edges** — not only the rim of the face
   that looks at the camera. The edges that run back from that face (the top and side edges
   of a block standing on another body) are just as visible. Before reporting, look at the
   body from at least two opposite isometric directions.
-- Edges that meet in one vertex go into **one call with one radius** (walls, roof loop,
-  hips and top of a block together). A loop whose corners are left sharp, or corners first
+- Edges that meet in one vertex go into **one call with one radius** (the side edges, the top
+  loop and the corners of a block together). A loop whose corners are left sharp, or corners first
   and the loop after, is refused by the kernel (`PK_BODY_fix_blends`).
 - A **closed** junction loop takes a chamfer. An **open** junction chain often refuses the
   chamfer at its ends but takes a `fillet` of the same size — try that before giving up.
 - A junction can only be blended where the joined part ends **on** the body it joins. A
-  part that runs past it (a front block taller than the shell it is united with) leaves
+  part that runs past it (a block taller than the body it is united with) leaves
   a junction edge with nothing to cap it, and neither chamfer nor fillet works. Decide the
   split into bodies with that in mind, or say so in the brief.
-- Round parts (dials, knobs, buttons, rings, bosses): draw the half section as one closed
+- Round parts (shafts, knobs, buttons, rings, bosses): draw the half section as one closed
   polyline with the chamfers already in it and `revolve_profile` it about its axis — three
   small calls and no topology read. A profile edge may lie on the axis.
 - A full `get_body_topology` is expensive (about 20 thousand tokens for a body of 70 edges).
