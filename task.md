@@ -342,7 +342,36 @@ Findings:
 
 Block 7 is committed, merged into `main` (fast-forward) and pushed. The MCP client must be restarted to see the new tools.
 
-Ideas beyond the agreed list (not agreed yet): copy / mirror; other exchange formats (IGES, Parasolid, STL, OBJ); opening `.plasticity` files.
+## Native block 8 — copy, mirror, arrays — ✅ Done (2026-10-04, ~3 h)
+
+Work is on branch `native-block-8`. Designer asked for both arrays to be included.
+
+New tools: `copy_bodies`, `mirror_bodies`, `array_rectangular`, `array_radial` — 51 tools total.
+
+Verified live on 26.1.3 (Untitled), `smoke:native` extended and passing (141 checks, 20 s):
+- Copy: a Solid and a curve together with a shift (one undo step), copy in place, the copy keeps the shape.
+- Mirror: reflected copies of a Solid and a curve; a **true reflection** (checked on an L-shaped body through the position of its top face); mirror without the original; Undo / Redo across it.
+- Arrays: row of three, 3 × 2 grid, array of one and parallel directions refused; radial array of six over 360° and of three over 90°.
+- Built stdio server exercised end to end incl. validation errors.
+
+Findings:
+- Copy of Solids / Sheets goes through instances: `CreateInstanceFactory` (`items`) → optional `MoveItemAndEmptyFactory` (`empties`, `move`) → `RealizeInstanceFactory` (`empties`). Curves: `CurveDuplicateFactory` (`curves`), then `MoveItemAndEmptyFactory` (`items`). All inside one carrier command → one undo step. Copies are named `<name>.001`.
+- `MirrorFactory` + `MirrorCommand`: `shells`, `curves`, `origin`, `normal`. **`shouldCut` is true by default** (the body is cut at the mirror plane — symmetry modelling), so a plain mirror sets `shouldCut = false`, `shouldUnion = false`. **`move` is an offset distance, not a "move instead of copy" flag** (setting it to `true` shifted the copy by 1 m), so the factory always produces copies.
+- Arrays: `RectangularArrayFactory` (`items`, `dir1`, `dir2`, `mode = 'spacing'`, `num1`, `num2`, `distance1`, `distance2`) and `RadialArrayFactory` (`items`, `center`, `dir1`, `dir2` = axis, `mode = 'total'`, `num1 = 1`, `num2`, `angle`). Counts include the original. Radial over 360° spaces items 360 / count apart; over a smaller angle the last item sits at the end of the angle. Curves can be arrayed too.
+
+### Incident: removing geometry behind Plasticity's history freezes the editor
+
+First attempt at "mirror without the original" removed the originals with `editor.geo.removeItem(view)` inside the mirror command. The command and its Undo worked, but **Redo threw** ("object … missing from stable model") and left the editor broken: `editor.undoBusy` stayed `true`, and after clearing it `editor.exec` still silently ran nothing. Only restarting Plasticity fixed it (Designer restarted it; the document was an empty Untitled).
+
+Consequences in the code:
+- `mirror_bodies` with `keepOriginal: false` now mirrors and then deletes the originals with the native `DeleteCommand` — **two undo steps**, Undo / Redo verified. Rule: never change geometry outside a native factory or command.
+- Every command wrapper now checks that its body actually ran; a silent no-op is reported as "Plasticity did not run the command: its editor is stuck. Restart Plasticity through native_launch." (verified on the stuck instance).
+
+**Not verified:** copies, mirrors and arrays of Sheets; mirror across a tilted plane; arrays with tilted directions; radial arrays with negative angles; very large arrays.
+
+Block 8 is committed, merged into `main` (fast-forward) and pushed. The MCP client must be restarted to see the new tools.
+
+Ideas beyond the agreed list (not agreed yet): other exchange formats (IGES, Parasolid, STL, OBJ); opening `.plasticity` files.
 
 ## Risks
 
@@ -389,4 +418,4 @@ PlasticityMCP/
 ## Next action
 
 1. Designer: close Plasticity and call `native_launch` (or `npm run smoke:native`) once to verify the cold-start path; restart the MCP client so it picks up the new tools.
-2. Blocks 1–7 are in `main` and published. Designer decides what comes next (see the ideas list).
+2. Blocks 1–8 are in `main` and published. Designer decides what comes next (see the ideas list).

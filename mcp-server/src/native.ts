@@ -249,6 +249,9 @@ const READ_STATE = `function () {
 
 // Snippets shared by the functions below; all run with `this` = editor.
 const BUSY_GUARD = `if (this.executor.isBusy) throw new Error('Plasticity is busy with another command');`;
+// After a failure inside Plasticity's own undo / redo the editor can stop running commands
+// without reporting anything. Each command wrapper sets \`ran\` when its body starts.
+const STUCK_CHECK = `if (!ran) throw new Error('Plasticity did not run the command: its editor is stuck. Restart Plasticity through native_launch.');`;
 const FIND_VIEW = `const findItem = (id) => {
     for (const [versionId, item] of this.geo.geometryModel) {
       if (this.db.lookupStableId(versionId) === id) return item;
@@ -490,9 +493,11 @@ function commandFunction(
     ${PICK_REGIONS}
     const editor = this;
     let failure;
+        let ran = false;
     const command = new ${commandClass}(this);
     command.remember = false;
     command.execute = async function () {
+          ran = true;
       try {
         const factory = new Factory(editor).resource(this);
         ${setup}
@@ -509,6 +514,7 @@ function commandFunction(
     };
     await this.exec(command);
     if (failure) throw failure;
+        ${STUCK_CHECK}
   }`;
 }
 
@@ -1352,9 +1358,11 @@ export class NativeSession {
         ${BUSY_GUARD}
         const editor = this;
         let failure;
+        let ran = false;
         const command = new Command(this);
         command.remember = false;
         command.execute = async function () {
+          ran = true;
           try {
             const factory = new Factory(editor).resource(this);
             factory.filePath = args.path;
@@ -1366,6 +1374,7 @@ export class NativeSession {
         };
         await this.exec(command);
         if (failure) throw failure;
+        ${STUCK_CHECK}
       }`,
       ["ExchangeImportFactory", "ImportCommand"],
       [{ path: input }],
@@ -1539,6 +1548,182 @@ export class NativeSession {
     });
   }
 
+  /**
+   * Independent copies of bodies, optionally shifted by `deltaMm`. One undo step.
+   * The originals are left untouched; the copies come back in `created`.
+   */
+  copyBodies(ids: number[], deltaMm: Vec3 = [0, 0, 0]): Promise<MutationResult> {
+    if (new Set(ids).size !== ids.length) {
+      return Promise.reject(new Error("Bodies to copy must be distinct"));
+    }
+    // Plasticity copies Solids and Sheets through instances (create, move, realize) and curves
+    // through their own factory. All of it runs inside one command so that one Undo reverts it.
+    return this.mutate(
+      `async function (CreateInstance, RealizeInstance, CurveDuplicate, Move, args) {
+        ${BUSY_GUARD}
+        ${FIND_VIEW}
+        const editor = this;
+        const views = args.ids.map(find);
+        const curves = views.filter((view) => view.constructor.name === 'Wire');
+        const shells = views.filter((view) => view.constructor.name !== 'Wire');
+        const shifted = args.delta.some((value) => value !== 0);
+        const list = (result) => (Array.isArray(result) ? result : [result]).filter(Boolean);
+        let failure;
+        let ran = false;
+        const command = new this.commands.GroupSelectedCommand(this);
+        command.remember = false;
+        command.execute = async function () {
+          ran = true;
+          try {
+            if (shells.length > 0) {
+              const create = new CreateInstance(editor).resource(this);
+              create.items = shells;
+              const instances = list(await create.commit());
+              if (instances.length === 0) throw new Error('Plasticity created no copies');
+              if (shifted) {
+                const move = new Move(editor).resource(this);
+                move.empties = instances;
+                move.move.fromArray(args.delta);
+                await move.commit();
+              }
+              const realize = new RealizeInstance(editor).resource(this);
+              realize.empties = instances;
+              await realize.commit();
+            }
+            if (curves.length > 0) {
+              const duplicate = new CurveDuplicate(editor).resource(this);
+              duplicate.curves = curves;
+              const copies = list(await duplicate.commit());
+              if (shifted) {
+                if (copies.length !== curves.length) throw new Error('Plasticity did not return the curve copies');
+                const move = new Move(editor).resource(this);
+                move.items = copies;
+                move.move.fromArray(args.delta);
+                await move.commit();
+              }
+            }
+          } catch (error) {
+            failure = error;
+            throw error;
+          }
+        };
+        await this.exec(command);
+        if (failure) throw failure;
+        ${STUCK_CHECK}
+      }`,
+      ["CreateInstanceFactory", "RealizeInstanceFactory", "CurveDuplicateFactory", "MoveItemAndEmptyFactory"],
+      [{ ids, delta: toMeters(deltaMm) }],
+    );
+  }
+
+  /**
+   * Mirror bodies across the plane through `planeOriginMm` with normal `planeNormal`.
+   * The mirrored bodies are always new bodies (in `created`). Without `keepOriginal` the
+   * originals are then deleted, which is a second undo step.
+   */
+  async mirrorBodies(
+    ids: number[],
+    planeOriginMm: Vec3,
+    planeNormal: Vec3,
+    keepOriginal = true,
+  ): Promise<MutationResult> {
+    // By default Plasticity's mirror also cuts the body at the plane (symmetry modelling);
+    // a plain mirror must switch that off. The factory's `move` is an offset distance, not a
+    // "move instead of copy" flag, so it always makes copies.
+    const setup = `
+        const views = args.ids.map(find);
+        factory.shells = views.filter((view) => view.constructor.name !== 'Wire');
+        factory.curves = views.filter((view) => view.constructor.name === 'Wire');
+        factory.origin.fromArray(args.origin);
+        factory.normal.fromArray(args.normal).normalize();
+        factory.shouldCut = false;
+        factory.shouldUnion = false;`;
+    const mirrored = await this.mutate(
+      commandFunction("MirrorCommand", [], setup),
+      ["MirrorFactory"],
+      [{ ids, origin: toMeters(planeOriginMm), normal: planeNormal }],
+    );
+    if (keepOriginal) return mirrored;
+    // Deleting through the native Delete command keeps the history consistent. Removing the
+    // items directly from inside the mirror command made Redo fail and froze the editor.
+    const deleted = await this.deleteBodies(ids);
+    return { ...deleted, created: mirrored.created };
+  }
+
+  /**
+   * Grid of copies: `count1` items spaced `spacing1Mm` apart along `direction1`, repeated
+   * `count2` times along `direction2`. Counts include the original.
+   */
+  arrayRectangular(
+    ids: number[],
+    direction1: Vec3,
+    count1: number,
+    spacing1Mm: number,
+    direction2: Vec3 = [0, 1, 0],
+    count2 = 1,
+    spacing2Mm = 0,
+  ): Promise<MutationResult> {
+    if (count1 * count2 < 2) {
+      return Promise.reject(new Error("The array needs at least two items in total"));
+    }
+    if (count2 > 1 && norm(cross(unit(direction1), unit(direction2))) < 1e-9) {
+      return Promise.reject(new Error("The two array directions must not be parallel"));
+    }
+    const setup = `
+        factory.items = args.ids.map(find);
+        factory.dir1 = new Vector3(...args.direction1).normalize();
+        factory.dir2 = new Vector3(...args.direction2).normalize();
+        factory.mode = 'spacing';
+        factory.num1 = args.count1;
+        factory.num2 = args.count2;
+        factory.distance1 = args.spacing1;
+        factory.distance2 = args.spacing2;`;
+    return this.mutate(
+      commandFunction("RectangularArrayCommand", ["Vector3"], setup),
+      ["RectangularArrayFactory", "Vector3"],
+      [
+        {
+          ids,
+          direction1,
+          direction2,
+          count1,
+          count2,
+          spacing1: spacing1Mm * MM,
+          spacing2: spacing2Mm * MM,
+        },
+      ],
+    );
+  }
+
+  /**
+   * `count` items (the original included) spread evenly over `angleDeg` around the axis
+   * through `centerMm` along `axis`.
+   */
+  arrayRadial(
+    ids: number[],
+    centerMm: Vec3,
+    axis: Vec3,
+    count: number,
+    angleDeg = 360,
+  ): Promise<MutationResult> {
+    const setup = `
+        const axis = new Vector3(...args.axis).normalize();
+        const reference = Math.abs(axis.z) < 0.9 ? new Vector3(0, 0, 1) : new Vector3(0, 1, 0);
+        factory.items = args.ids.map(find);
+        factory.center = new Vector3(...args.center);
+        factory.dir1 = reference.cross(axis).normalize();
+        factory.dir2 = axis;
+        factory.mode = 'total';
+        factory.num1 = 1;
+        factory.num2 = args.count;
+        factory.angle = args.radians;`;
+    return this.mutate(
+      commandFunction("RadialArrayCommand", ["Vector3"], setup),
+      ["RadialArrayFactory", "Vector3"],
+      [{ ids, center: toMeters(centerMm), axis, count, radians: (angleDeg * Math.PI) / 180 }],
+    );
+  }
+
   /** Bodies currently selected in the window (whole Solids / Sheets / Wires, not faces or edges). */
   async getSelection(): Promise<BodyInfo[]> {
     return (await this.state()).bodies.filter((b) => b.selected);
@@ -1573,15 +1758,18 @@ export class NativeSession {
         this.selection.selected.removeAll();
         for (const view of views) this.selection.selected.add(view);
         let failure;
+        let ran = false;
         const command = new this.commands.DeleteCommand(this);
         command.remember = false;
         const execute = command.execute.bind(command);
         command.execute = async function () {
+          ran = true;
           try { return await execute(); }
           catch (error) { failure = error; throw error; }
         };
         await this.exec(command);
         if (failure) throw failure;
+        ${STUCK_CHECK}
       }`,
       [],
       [{ ids }],
@@ -1600,14 +1788,17 @@ export class NativeSession {
           const editor = this;
           const view = find(args.id);
           let failure;
+        let ran = false;
           const command = new this.commands.GroupSelectedCommand(this);
           command.remember = false;
           command.execute = async function () {
+          ran = true;
             try { editor.db.nodes.setName(editor.db.nodes.item2key(view), args.name); }
             catch (error) { failure = error; throw error; }
           };
           await this.exec(command);
           if (failure) throw failure;
+        ${STUCK_CHECK}
         }`,
         [],
         [{ id, name }],

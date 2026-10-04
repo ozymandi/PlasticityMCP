@@ -2,7 +2,7 @@
 
 MCP server for [Plasticity](https://www.plasticity.xyz/) — lets an LLM read, create and modify real CAD geometry inside a running Plasticity window.
 
-**Status:** working, for internal use. 47 tools, verified live on **Plasticity 26.1.3 / Windows**. Unofficial: it relies on Plasticity's internal APIs and is pinned to that exact version.
+**Status:** working, for internal use. 51 tools, verified live on **Plasticity 26.1.3 / Windows**. Unofficial: it relies on Plasticity's internal APIs and is pinned to that exact version.
 
 ## What it can do
 
@@ -14,6 +14,7 @@ MCP server for [Plasticity](https://www.plasticity.xyz/) — lets an LLM read, c
 | Profiles | `list_regions`, `extrude_profile`, `revolve_profile`, `sweep_profile`, `loft_profiles` |
 | Scene | `list_bodies`, `get_selection`, `select_bodies`, `delete_bodies`, `rename_body` |
 | Transforms | `move_bodies`, `rotate_bodies`, `scale_bodies` |
+| Copies | `copy_bodies`, `mirror_bodies`, `array_rectangular`, `array_radial` |
 | Modelling | `get_body_topology`, `boolean`, `fillet_edges`, `chamfer_edges`, `extrude_faces` |
 | Files | `export_step`, `import_step`, `save_document` |
 | View | `set_view`, `screenshot` |

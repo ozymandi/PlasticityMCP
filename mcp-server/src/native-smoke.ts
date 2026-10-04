@@ -61,7 +61,7 @@ async function main() {
   }
 
   // Clean up, whatever happened above: undo everything this test did and put the selection back.
-  for (let i = 0; i < 400 && (await native.state()).undoDepth > baseline.undoDepth; i++) {
+  for (let i = 0; i < 500 && (await native.state()).undoDepth > baseline.undoDepth; i++) {
     await native.undo();
   }
   await native.selectBodies(baseline.bodies.filter((b) => b.selected).map((b) => b.id));
@@ -514,6 +514,74 @@ async function runChecks(native: NativeSession, title: string): Promise<void> {
     /must touch end to end/.test(apart?.message ?? ""), apart?.message ?? "no error");
   const lonely = await failure(native.joinCurves([leg.id]));
   check("joining needs two curves", /at least two/.test(lonely?.message ?? ""));
+
+  // --- copy, mirror, arrays (an L-shaped body at x >= 2000, so reflections are visible) ---
+  const elbowBody = (await native.createBox([2000, 0, 0], [40, 20, 10])).created[0]!.id;
+  const tabBody = (await native.createBox([2000, 0, 10], [10, 20, 15])).created[0]!.id;
+  await native.boolean("union", [elbowBody], [tabBody]);
+  const topFaceX = async (id: number) =>
+    (await native.topology(id, "faces")).faces!.find((f) => f.centerMm[2] > 24)?.centerMm[0];
+  const pathCurve = wire(await native.createPolyline([[2000, 100, 0], [2030, 100, 0], [2030, 120, 0]]))!;
+
+  const copyDepth = (await native.state()).undoDepth;
+  const copies = await native.copyBodies([elbowBody, pathCurve.id], [100, 0, 0]);
+  check("copy a solid and a curve with a shift", copies.created.length === 2 &&
+    boundsMatch(made(copies, "Solid"), [2100, 0, 0], [2140, 20, 25]) &&
+    boundsMatch(made(copies, "Wire"), [2100, 100, 0], [2130, 120, 0]) &&
+    copies.changed.length === 0, fmt(made(copies, "Solid")));
+  check("a copy is one undo step", copies.undoDepth === copyDepth + 1);
+  check("the copy keeps the shape", (await topFaceX(made(copies, "Solid")!.id)) === 2105);
+  await native.undo();
+  const inPlace = await native.copyBodies([elbowBody]);
+  check("copy without a shift sits on the original",
+    boundsMatch(inPlace.created[0], [2000, 0, 0], [2040, 20, 25]), fmt(inPlace.created[0]));
+  await native.undo();
+
+  const reflected = await native.mirrorBodies([elbowBody, pathCurve.id], [1990, 0, 0], [1, 0, 0]);
+  check("mirror makes reflected copies", reflected.created.length === 2 &&
+    boundsMatch(made(reflected, "Solid"), [1940, 0, 0], [1980, 20, 25]) &&
+    boundsMatch(made(reflected, "Wire"), [1950, 100, 0], [1980, 120, 0]) &&
+    reflected.removedIds.length === 0, fmt(made(reflected, "Solid")));
+  check("the mirror is a true reflection", (await topFaceX(made(reflected, "Solid")!.id)) === 1975);
+  await native.undo();
+  const flipDepth = (await native.state()).undoDepth;
+  const flipped = await native.mirrorBodies([elbowBody], [1990, 0, 0], [1, 0, 0], false);
+  check("mirror without the original", flipped.created.length === 1 &&
+    flipped.removedIds[0] === elbowBody && flipped.undoDepth === flipDepth + 2,
+    JSON.stringify({ created: ids(flipped.created), removed: flipped.removedIds }));
+  await native.undo();
+  await native.undo();
+  await native.redo();
+  await native.redo();
+  check("redo after that mirror works", ids((await native.state()).bodies).includes(String(flipped.created[0]!.id)));
+  await native.undo();
+  await native.undo();
+  check("and undo brings the original back",
+    (await native.state()).bodies.some((b) => b.id === elbowBody));
+
+  const row = await native.arrayRectangular([elbowBody], [1, 0, 0], 3, 60);
+  check("row of three adds two copies", row.created.length === 2 &&
+    row.created.some((b) => boundsMatch(b, [2120, 0, 0], [2160, 20, 25])), ids(row.created));
+  await native.undo();
+  const grid = await native.arrayRectangular([elbowBody], [1, 0, 0], 3, 60, [0, 1, 0], 2, 40);
+  check("3 x 2 grid adds five copies", grid.created.length === 5 &&
+    grid.created.some((b) => boundsMatch(b, [2120, 40, 0], [2160, 60, 25])), ids(grid.created));
+  await native.undo();
+  const lonelyArray = await failure(native.arrayRectangular([elbowBody], [1, 0, 0], 1, 60));
+  check("an array of one is refused", /at least two items/.test(lonelyArray?.message ?? ""));
+  const parallel = await failure(native.arrayRectangular([elbowBody], [1, 0, 0], 2, 60, [2, 0, 0], 2, 40));
+  check("parallel array directions are refused", /must not be parallel/.test(parallel?.message ?? ""));
+
+  const pinBody = (await native.createCylinder([2030, 300, 0], 3, 10)).created[0]!.id;
+  const circleOfPins = await native.arrayRadial([pinBody], [2000, 300, 0], [0, 0, 1], 6);
+  check("radial array of six adds five copies", circleOfPins.created.length === 5 &&
+    circleOfPins.created.some((b) => boundsMatch(b, [1967, 297, 0], [1973, 303, 10])),
+    ids(circleOfPins.created));
+  await native.undo();
+  const fan = await native.arrayRadial([pinBody], [2000, 300, 0], [0, 0, 1], 3, 90);
+  check("radial array over 90° ends at 90°", fan.created.length === 2 &&
+    fan.created.some((b) => boundsMatch(b, [1997, 327, 0], [2003, 333, 10])), ids(fan.created));
+  await native.undo();
 
   // --- files, camera, screenshot (temporary folder, removed afterwards) ---
   const folder = mkdtempSync(join(tmpdir(), "plasticity-mcp-smoke-"));

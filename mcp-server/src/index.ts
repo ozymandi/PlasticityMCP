@@ -271,6 +271,43 @@ const LoftProfilesArgs = z
     "pass exactly one of profileIds or regionIds",
   );
 
+const CopyBodiesArgs = z.object({
+  ids: BodyIds,
+  delta: Vec3Mm.optional(),
+});
+
+const MirrorBodiesArgs = z.object({
+  ids: BodyIds,
+  planeOrigin: Vec3Mm,
+  planeNormal: Vec3Mm.refine((a) => Math.hypot(...a) > 0, "planeNormal must be non-zero"),
+  keepOriginal: z.boolean().optional().default(true),
+});
+
+const Direction = Vec3Mm.refine((a) => Math.hypot(...a) > 0, "direction must be non-zero");
+const ArrayCount = z.number().int().min(1).max(200);
+
+const ArrayRectangularArgs = z.object({
+  ids: BodyIds,
+  direction1: Direction,
+  count1: ArrayCount,
+  spacing1: z.number().positive(),
+  direction2: Direction.optional(),
+  count2: ArrayCount.optional().default(1),
+  spacing2: z.number().positive().optional(),
+});
+
+const ArrayRadialArgs = z.object({
+  ids: BodyIds,
+  center: Vec3Mm,
+  axis: Direction,
+  count: z.number().int().min(2).max(200),
+  angle: z
+    .number()
+    .refine((a) => a !== 0 && Math.abs(a) <= 360, "angle must be non-zero and within ±360")
+    .optional()
+    .default(360),
+});
+
 const ExportStepArgs = z.object({
   path: z.string().min(1),
   ids: BodyIds.optional(),
@@ -932,6 +969,77 @@ const tools: Tool[] = [
     },
   },
   {
+    name: "copy_bodies",
+    description:
+      "Make independent copies of bodies (Solids, Sheets or curves), optionally shifted by " +
+      "`delta` [x, y, z] millimetres. The originals are untouched; the copies are returned in " +
+      "`created` with new ids. One undo step.",
+    inputSchema: {
+      type: "object",
+      required: ["ids"],
+      properties: { ids: BODY_IDS_SCHEMA, delta: VEC3_SCHEMA },
+    },
+  },
+  {
+    name: "mirror_bodies",
+    description:
+      "Mirror bodies (Solids, Sheets or curves) across the plane through `planeOrigin` with " +
+      "normal `planeNormal`. The mirrored bodies are always new bodies, returned in `created`. " +
+      "With keepOriginal: false the originals are then deleted (in `removedIds`) — that " +
+      "variant takes two undo steps. To merge a mirrored half with the original, follow with " +
+      "boolean union. Undoable.",
+    inputSchema: {
+      type: "object",
+      required: ["ids", "planeOrigin", "planeNormal"],
+      properties: {
+        ids: BODY_IDS_SCHEMA,
+        planeOrigin: VEC3_SCHEMA,
+        planeNormal: { ...VEC3_SCHEMA, description: "Plane normal direction [x, y, z]" },
+        keepOriginal: { type: "boolean", default: true },
+      },
+    },
+  },
+  {
+    name: "array_rectangular",
+    description:
+      "Repeat bodies in a row or a grid. `count1` items `spacing1` millimetres apart along " +
+      "`direction1`; optionally repeated `count2` times, `spacing2` apart, along `direction2`. " +
+      "Counts include the original, so count1: 3 adds two copies. The copies are returned in " +
+      "`created`. One undo step.",
+    inputSchema: {
+      type: "object",
+      required: ["ids", "direction1", "count1", "spacing1"],
+      properties: {
+        ids: BODY_IDS_SCHEMA,
+        direction1: { ...VEC3_SCHEMA, description: "Direction of the row [x, y, z]" },
+        count1: { type: "number", description: "Items along direction1, original included" },
+        spacing1: { type: "number", description: "Distance between items, millimetres" },
+        direction2: { ...VEC3_SCHEMA, description: "Second direction [x, y, z]" },
+        count2: { type: "number", default: 1 },
+        spacing2: { type: "number" },
+      },
+    },
+  },
+  {
+    name: "array_radial",
+    description:
+      "Repeat bodies around an axis: `count` items (the original included) spread evenly over " +
+      "`angle` degrees (default 360) around the axis through `center` along `axis`. With 360 " +
+      "the items are 360 / count apart; with a smaller angle the first and last item sit at " +
+      "its two ends. The copies are returned in `created`. One undo step.",
+    inputSchema: {
+      type: "object",
+      required: ["ids", "center", "axis", "count"],
+      properties: {
+        ids: BODY_IDS_SCHEMA,
+        center: VEC3_SCHEMA,
+        axis: { ...VEC3_SCHEMA, description: "Axis direction [x, y, z]" },
+        count: { type: "number", description: "Total items, original included (2 or more)" },
+        angle: { type: "number", default: 360 },
+      },
+    },
+  },
+  {
     name: "export_step",
     description:
       "Export bodies as exact B-Rep geometry to a STEP file (.step / .stp). `path` must be " +
@@ -1480,6 +1588,41 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return ok(
           await native.loftProfiles((args.profileIds ?? args.regionIds)!, args.guideIds, args.closed),
         );
+      }
+
+      case "copy_bodies": {
+        const args = CopyBodiesArgs.parse(rawArgs ?? {});
+        return ok(await native.copyBodies(args.ids, args.delta));
+      }
+
+      case "mirror_bodies": {
+        const args = MirrorBodiesArgs.parse(rawArgs ?? {});
+        return ok(
+          await native.mirrorBodies(args.ids, args.planeOrigin, args.planeNormal, args.keepOriginal),
+        );
+      }
+
+      case "array_rectangular": {
+        const args = ArrayRectangularArgs.parse(rawArgs ?? {});
+        if (args.count2 > 1 && (!args.direction2 || args.spacing2 === undefined)) {
+          throw new Error("count2 > 1 needs direction2 and spacing2");
+        }
+        return ok(
+          await native.arrayRectangular(
+            args.ids,
+            args.direction1,
+            args.count1,
+            args.spacing1,
+            args.direction2,
+            args.count2,
+            args.spacing2,
+          ),
+        );
+      }
+
+      case "array_radial": {
+        const args = ArrayRadialArgs.parse(rawArgs ?? {});
+        return ok(await native.arrayRadial(args.ids, args.center, args.axis, args.count, args.angle));
       }
 
       case "export_step": {

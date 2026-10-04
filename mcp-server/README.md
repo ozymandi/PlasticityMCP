@@ -39,6 +39,10 @@ A second channel, independent of the WebSocket bridge: real B-Rep operations thr
 | `rotate_bodies` | Rotate `angle` degrees around `axis` through `pivot`. |
 | `scale_bodies` | Scale by `factor` (number or `[x, y, z]`) relative to `pivot`. |
 
+| `copy_bodies` | Independent copies of bodies or curves, optional `delta` shift. |
+| `mirror_bodies` | Mirrored copies across a plane (`planeOrigin`, `planeNormal`); `keepOriginal: false` deletes the originals (two undo steps). |
+| `array_rectangular` | Row or grid of copies: `direction1` / `count1` / `spacing1`, optional second direction. Counts include the original. |
+| `array_radial` | `count` items around an axis (`center`, `axis`) over `angle` degrees. |
 | `get_body_topology` | Faces and edges of a body with ids and geometry (`include`: faces / edges / all). |
 | `boolean` | `union` / `difference` / `intersection` of `toolIds` against `targetIds`; `keepTools` optional. |
 | `fillet_edges` | Round edges with `radius`. |
