@@ -138,6 +138,18 @@ export class ViewTools extends ExchangeTools {
             await viewport.navigateToOrientation(args.orientation);
           }
           await settle();
+          if (args.from) {
+            // A hand orbiting the viewport during the turn leaves the camera somewhere else.
+            const wanted = camera.position.clone().set(...args.from).normalize();
+            const reached = camera.position.clone().sub(camera.target).normalize();
+            if (wanted.dot(reached) < 0.9999) {
+              throw new Error(
+                'The camera did not reach the asked direction: it looks from [' +
+                reached.toArray().map((n) => Math.round(n * 1000) / 1000).join(', ') +
+                ']. Was the viewport moved by hand during the call? Retry'
+              );
+            }
+          }
           if (args.fit) {
             if (Number.isFinite(min[0])) {
               const center = camera.target.clone().fromArray(min.map((v, i) => (v + max[i]) / 2));

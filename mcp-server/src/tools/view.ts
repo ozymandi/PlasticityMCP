@@ -27,7 +27,8 @@ const tools: Tool[] = [
       "top, bottom or isometric (Z is up; front looks along +Y) — or, instead of `view`, look " +
       "from any side with `direction`: the vector from the model towards the camera, e.g. " +
       "[1, 1, 1] for a shaded view from behind, right and above (isometric is [1, -1, 1]; a " +
-      "direction along Z is refused — that is top / bottom). `fit` (default true) also " +
+      "direction along Z is refused — that is top / bottom; the call fails when the camera " +
+      "ends elsewhere, e.g. the viewport was moved by hand meanwhile). `fit` (default true) also " +
       "frames all bodies — hidden and isolated-away ones included — or, with `ids`, only " +
       "those bodies: the way to look closely at one part of a scene. The six axis views are " +
       "shown by Plasticity in X-ray. Not an undo step. Use before screenshot to look at the " +
