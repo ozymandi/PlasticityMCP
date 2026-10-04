@@ -1,76 +1,127 @@
 # plasticity-mcp
 
-MCP server for [Plasticity](https://www.plasticity.xyz/) 26.1.x. Talks the existing built-in WebSocket protocol (the one used by the official Blender bridge), no fork required.
+MCP server for [Plasticity](https://www.plasticity.xyz/) 26.1.3: 143 tools over two independent channels.
 
-## Tools (Phase 1 MVP)
+- **Native channel (CDP)** — real B-Rep modelling through Plasticity's own factories and history. Almost all tools; described first.
+- **Bridge channel (WebSocket)** — the built-in protocol of the official Blender bridge: scene listing, change events, retessellation. Read side only on 26.1.x.
 
-| Tool | Description |
-|------|-------------|
-| `connect` | Connect to `ws://localhost:8980` and handshake. |
-| `status` | Report connection state, current filename/version, supported opcodes. |
-| `list_scene` | List all (or only visible) objects. Optional `includeMesh` returns vertex/face counts and bbox. |
-| `get_object` | Fetch a single object by id. |
-| `subscribe_changes` / `unsubscribe_changes` | Live transaction event stream. |
-| `drain_events` | Pull buffered scene events since last drain. |
-| `refacet` | Request retessellation with quality params. Returns counts + bbox. |
-| `push_mesh` | Upload a mesh into Plasticity (`PUT_SOME_1`). Supports n-gons via `sizes`. |
-
-> Raw vertex/index/normal arrays are **never** returned to the LLM (they would blow up context). Only counts and bounding boxes. A future phase will add a binary export tool that writes geometry to disk.
+What is covered compared with Plasticity itself, what is missing and why: [../docs/coverage.md](../docs/coverage.md).
 
 ## Native CAD tools (CDP, Plasticity 26.1.3 only)
 
-A second channel, independent of the WebSocket bridge: real B-Rep operations through Plasticity's own factories and history. Unofficial, against internal APIs, pinned to **26.1.3** — any other version is refused. Units are millimetres.
+Real B-Rep operations through Plasticity's own factories and history. Unofficial, against internal APIs, pinned to **26.1.3** — any other version is refused. Units are millimetres.
+
+### Session
 
 | Tool | Description |
 |------|-------------|
 | `native_launch` | Start Plasticity 26.1.3 with a loopback-only debugging endpoint (`127.0.0.1:9223`). Never closes a running instance — if Plasticity runs without native access, close it yourself first. |
 | `native_connect` | Attach to a window (`targetId` needed only with several windows). |
 | `native_status` | Connected window, busy flag, undo/redo depth, body count. |
+
+### Primitives
+
+| Tool | Description |
+|------|-------------|
 | `create_box` | `origin` (min corner) + `size`. |
 | `create_sphere` | `center` + `radius`. |
 | `create_cylinder` | `base` (bottom cap centre) + `radius` + `height`, optional `axis`. |
+
+### History
+
+| Tool | Description |
+|------|-------------|
 | `undo` / `redo` | Native history. |
+
+### Scene
+
+| Tool | Description |
+|------|-------------|
 | `list_bodies` | All bodies: stable id, type (Solid / Sheet / Wire), name, bounds, face/edge counts, visible / locked / selected, `materialId`. |
 | `get_selection` | What is selected in the window: whole bodies, faces and edges (with their body), regions, groups. |
 | `select_bodies` | Replace the selection; empty list clears it. Not an undo step. |
 | `delete_bodies` | Native Delete by id. Undoable. Clears the selection. |
 | `rename_body` | Rename a body. Undoable. |
 | `select_topology` | Select faces and edges of one body in the window. Not an undo step. |
+
+### Groups
+
+| Tool | Description |
+|------|-------------|
 | `list_groups` | The group tree: id, name, parent and direct members of each group; group 0 is the scene. |
 | `group_bodies` | Put bodies into a new group, optional `name`. |
 | `ungroup` | Dissolve groups; members move up to the parent. |
 | `move_to_group` | Move bodies into a group; 0 is the scene. |
+
+### Visibility and locking
+
+| Tool | Description |
+|------|-------------|
 | `set_visibility` | Hide or show bodies. |
 | `unhide_all` | Show everything hidden. |
 | `isolate` / `unisolate` | Show only the given bodies; return to the full scene. |
 | `set_locked` / `unlock_all` | Lock bodies against picking in the window; unlock everything. |
+
+### Materials
+
+| Tool | Description |
+|------|-------------|
 | `list_materials` | Materials of the document: id, name, colour, roughness, metalness, opacity. |
 | `create_material` | New material: `name`, `color` (#rrggbb), optional `roughness`, `metalness`, `opacity`. |
 | `set_material` / `remove_material` | Give a material to bodies; take it off. |
+
+### Checking and measuring
+
+| Tool | Description |
+|------|-------------|
 | `check_bodies` | Kernel check of bodies: `valid` and fault codes. |
 | `find_boundary_edges` | Open edges of a Solid / Sheet (the rims of its openings); `select` optional. |
 | `add_measurement` | A measurement kept in the document: straight distance between two attachable points (`from`, `to`), or the radius of a circular edge (`id` + `edgeId`). |
 | `list_measurements` / `delete_measurements` | Measurements of the document with their values; delete by id. |
 | `measure_continuity` | Gap, angle and curvature change between the faces along edges, and the continuity (G0 / G1 / G2). |
 | `set_section_view` / `clear_section_view` | Cut the view (not the model) with a plane, for screenshots of the inside. |
+
+### Transforms
+
+| Tool | Description |
+|------|-------------|
 | `move_bodies` | Translate by `delta`. |
 | `rotate_bodies` | Rotate `angle` degrees around `axis` through `pivot`. |
 | `scale_bodies` | Scale by `factor` (number or `[x, y, z]`) relative to `pivot`. |
 
+### Copies
+
+| Tool | Description |
+|------|-------------|
 | `copy_bodies` | Independent copies of bodies or curves, optional `delta` shift. |
 | `mirror_bodies` | Mirrored copies across a plane (`planeOrigin`, `planeNormal`); `keepOriginal: false` deletes the originals (two undo steps). |
 | `array_rectangular` | Row or grid of copies: `direction1` / `count1` / `spacing1`, optional second direction. Counts include the original. `instances` optional. |
 | `array_radial` | `count` items around an axis (`center`, `axis`) over `angle` degrees. `instances` optional. |
 | `array_curve` | `count` items along curve `curveId`; `alignment` normal / parallel / transport, `twist`, `scale`, `extent`. `instances` optional. |
+
+### Instances
+
+| Tool | Description |
+|------|-------------|
 | `list_instances` | Instances: id, name, source body, bounds. |
 | `create_instances` | Linked copies of bodies or curves, optional `delta` shift. |
 | `realize_instances` | Turn instances into independent bodies. |
 | `delete_instances` | Delete instances by id. |
+
+### Modelling
+
+| Tool | Description |
+|------|-------------|
 | `get_body_topology` | What a body is made of, with ids: faces and edges of a Solid / Sheet (`include`: faces / edges / all) plus the control points of its spline faces, or segments, vertices and control points of a curve. |
 | `boolean` | `union` / `difference` / `intersection` of `toolIds` against `targetIds`; `keepTools` optional. |
 | `fillet` | Round with `radius`: edges of a body (`edgeIds`), corner vertices of a curve (`vertexIds`), or every corner of a curve. |
 | `chamfer` | Bevel by `distance`: edges of a body, or corners of a curve, the same way. |
 | `extrude_faces` | Push / pull faces of a Solid by `distance`: positive adds outward, negative cuts in. On a Sheet the extrusion becomes a new Solid. |
+
+### Solids
+
+| Tool | Description |
+|------|-------------|
 | `cut` | Cut Solids / Sheets into pieces with curves (`curveIds`, optional `extend` and sweep `direction`) or with faces of another body (`cutterId` + `faceIds`). Curves as targets are cut where the cutter curves cross them. |
 | `hollow` | Shell a Solid with walls of `thickness`; `faceIds` become the opening, without them the cavity is closed. Inward by default, `outward` optional. |
 | `thicken` | `front` / `back` thickness: a Sheet becomes a Solid; with `faceIds` those faces become a new Solid. |
@@ -81,6 +132,11 @@ A second channel, independent of the WebSocket bridge: real B-Rep operations thr
 | `pipe` | Round tubes along curves: `diameter`, optional `wallThickness` (added outside the bore). |
 | `join` | Curves that touch end to end → one curve; Sheets that share edges → one Sheet, or a Solid when closed (`ids`, keeps the first id). Faces of one body on the same surface → one face (`id` + `faceIds`). |
 | `unjoin` | A curve → its segments, a body → one Sheet per face (`ids`); or detach chosen faces (`id` + `faceIds`). |
+
+### Faces and edges
+
+| Tool | Description |
+|------|-------------|
 | `move_faces` | Move faces by `delta`; neighbours follow. |
 | `rotate_faces` | Rotate faces by `angle` around `axis` through `pivot` (default: the centre of the faces). |
 | `scale_faces` | Scale faces by `factor` about `pivot`; on a cylindrical face this changes the radius in place. |
@@ -98,6 +154,10 @@ A second channel, independent of the WebSocket bridge: real B-Rep operations thr
 | `extend` | Extend by `distance`: a Sheet past boundary edges (`edgeIds`) or a curve past its end vertices (`vertexIds`); `shape`: linear / soft / reflective / natural. |
 | `reverse` | Flip the direction of curves or the normals of Sheets. |
 
+### Curves
+
+| Tool | Description |
+|------|-------------|
 | `create_polyline` | Curve of straight segments through `points`; `closed` makes a profile. |
 | `create_spline` | Smooth curve through `points`, or shaped by them as control points (`controlPoints`). |
 | `create_circle` | Circle from `center`, `radius`, optional plane `normal`; or through two / three `points`. |
@@ -111,6 +171,11 @@ A second channel, independent of the WebSocket bridge: real B-Rep operations thr
 | `create_slot` | Slot outline of `width` around planar curves (not a single straight line). |
 | `create_tangent_arc` | Arc leaving the `start` / `end` of a curve segment tangentially to point `end`. |
 | `create_tangent_circle` | Circle of `radius` touching two curve segments, the one nearest to `near`. |
+
+### Curve editing
+
+| Tool | Description |
+|------|-------------|
 | `trim_curves` | Remove the piece of a curve nearest to `near` (pieces end at corners and crossings). |
 | `bridge` | Smooth connecting curve between two curve vertices or two body edges; `continuity` G0–G3. |
 | `rebuild` | Refit as splines: curves by `tolerance`, `pointCount`, or `degree` + `spans`; one face (`id` + `faceId`) by `tolerance`. |
@@ -123,35 +188,71 @@ A second channel, independent of the WebSocket bridge: real B-Rep operations thr
 | `delete_control_points` | Delete control points of a spline. |
 | `curves_from_edges` | Copy edges of a body as curves. |
 | `deform` | Wrap curves (`curveIds`) or whole bodies (`ids`) from a `source` face onto a `target` face. |
+
+### Surfaces
+
+| Tool | Description |
+|------|-------------|
 | `bridge_surface` | Blend two Sheets into one with a transition `width` wide between a face of each; `shape` g2 / chamfer. |
 | `constrained_surface` | A Sheet through at least four `points`, optional `normals`, `tolerance`, `optimize`. |
 | `remove_nominal_surface` | Reveal the hidden spans of control points of spline faces. |
+
+### Projection
+
+| Tool | Description |
+|------|-------------|
 | `project` | New curves by projection: curves onto a body (`curveIds` + `targetId`, optional `direction`), crossing lines of bodies (`bodyIds`), or two planar curves into one curve in space (two `curveIds`). |
 | `create_outline` | Outline of bodies seen along the normal of a plane (`planeNormal`, `planeOrigin`), by default the window's active construction plane; `flat` projects it onto the plane. |
 | `duplicate_and_project` | Copy curves or body edges and flatten the copies onto a plane (`planeOrigin`, `planeNormal`). |
+
+### Profiles
+
+| Tool | Description |
+|------|-------------|
 | `list_regions` | Regions Plasticity built from closed loops of curves: id, bounds, normal, boundary length, holes. |
 | `extrude_profile` | Closed planar curve → Solid, open curve → Sheet, by `distance` along the plane normal. Takes a curve `id` or `regionIds`. |
-
 | `revolve_profile` | Revolve a curve around an axis (`axisOrigin`, `axis`, `angle`): closed → Solid, open → Sheet. |
 | `sweep_profile` | Sweep a profile curve along a path curve; optional `twist` and end `scale`. |
 | `loft_profiles` | Loft through ordered profiles; optional `guideIds`, `closed`. Closed profiles → Solid, open → Sheet. |
+
+### Export
+
+| Tool | Description |
+|------|-------------|
 | `export_step` | Exact B-Rep export to `.step` / `.stp`; all Solids and Sheets unless `ids` given. |
 | `export_parasolid` | Exact B-Rep export to `.x_t` (text) or `.x_b` (binary). |
 | `export_mesh` | Triangle mesh to `.stl`, `.obj` (millimetres) or `.3mf` (metres, unit declared), Z up; `tolerance` and `angle` control the density. |
 | `export_drawing` | Technical drawing as SVG in millimetres: hidden-line projections of the chosen `views`, laid out left to right. |
+| `save_document` | Save a **copy** as `.plasticity`; the open document stays as it is. |
+
+### Import
+
+| Tool | Description |
+|------|-------------|
 | `import_step` | Add a STEP file's geometry to the document. Undoable. |
 | `import_parasolid` | Add the bodies of a `.x_t` / `.x_b` file. Undoable. |
 | `import_svg` | SVG shapes as editable curves in the XY plane (`unit`, default millimetre; SVG y is flipped). Undoable. |
 | `import_mesh` | `.stl` / `.obj` / `.3mf` as a **reference mesh** — visible, but not a body (`unit` for STL and OBJ). Undoable. |
 | `list_reference_meshes` | Reference meshes: id, name, source file, bounds, triangles. |
 | `delete_reference_meshes` | Delete reference meshes by id. Undoable. |
-| `save_document` | Save a **copy** as `.plasticity`; the open document stays as it is. |
+
+### Environment
+
+| Tool | Description |
+|------|-------------|
 | `get_environment` | Document (title, path, unsaved changes), display units, grid, active construction plane. |
 | `set_construction_plane` | Active construction plane: `preset` xy / yz / xz, `normal` (+ `origin`, `xDirection`), or a planar face. Not an undo step. |
 | `new_document` | A new Untitled document in this window (the startup document). Needs `discardChanges` when there is unsaved work. |
 | `open_document` | Open a `.plasticity` file in this window. Needs `discardChanges` when there is unsaved work. |
+
+### View
+
+| Tool | Description |
+|------|-------------|
 | `set_view` | Camera to front / back / left / right / top / bottom / isometric; `fit` frames all bodies. |
 | `screenshot` | PNG of the 3D viewport (longest side ≤ 1568 px), returned as an image; optional `path`. |
+
+### Notes
 
 `native_launch` adds Chromium switches that keep the window drawing while it is covered by other windows, so everything works at full speed with Plasticity in the background. A **minimized** window does not draw: `set_view` and `screenshot` then fail with a clear message (`native_status` reports `windowVisible`) and modelling tools slow down to about two seconds per operation.
 
@@ -176,6 +277,21 @@ npm run smoke:native
 ```
 
 Plasticity must be started through `native_launch` (or `smoke:native`); a normally started instance has no debugging endpoint. See `../task.md` for how the access works.
+
+## Bridge channel tools (WebSocket)
+
+| Tool | Description |
+|------|-------------|
+| `connect` | Connect to `ws://localhost:8980` and handshake. |
+| `status` | Report connection state, current filename/version, supported opcodes. |
+| `list_scene` | List all (or only visible) objects. Optional `includeMesh` returns vertex/face counts and bbox. |
+| `get_object` | Fetch a single object by id. |
+| `subscribe_changes` / `unsubscribe_changes` | Live transaction event stream. |
+| `drain_events` | Pull buffered scene events since last drain. |
+| `refacet` | Request retessellation with quality params. Returns counts + bbox. |
+| `push_mesh` | Upload a mesh into Plasticity (`PUT_SOME_1`). Supports n-gons via `sizes`. |
+
+> Raw vertex/index/normal arrays are **never** returned to the LLM (they would blow up context). Only counts and bounding boxes.
 
 ## Setup
 

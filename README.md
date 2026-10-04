@@ -35,6 +35,17 @@ MCP server for [Plasticity](https://www.plasticity.xyz/) — lets an LLM read, c
 
 Geometry is native B-Rep made by Plasticity's own factories, so every operation lands in Plasticity's history and can be undone there. Units are millimetres. Details per tool: [mcp-server/README.md](mcp-server/README.md).
 
+## Coverage and limits
+
+The tools cover the command set of Plasticity's Indie edition, grouped the way Plasticity groups it. Which command is behind which tool, and what each cannot do: [docs/coverage.md](docs/coverage.md). In short:
+
+- Nothing uses the pointer, so commands that take their input only from clicks are missing: Split Segment, Insert Knot, Place, Copy / Paste with Placement, Dimension, the freestyle transforms.
+- Units and grid can be read, not set. `save_document` saves a copy; the document cannot be saved under its own name.
+- Studio-only commands (xNURBS, PolySplines, Align, Square, IGES, SAT) are not available.
+- No volume or area: Plasticity has no such command.
+- A tool exposes the main parameters of a command; the remaining options stay at Plasticity's defaults.
+- Distance measurements are straight only; `cut` has no plane cutter (a line with a direction instead); `create_slot` does not take a single straight line.
+
 ## How it works
 
 ```
@@ -83,6 +94,7 @@ npm run smoke:native
 
 - [mcp-server/](mcp-server/) — the server (`src/native/` is the CAD layer and `src/tools/` the MCP tool definitions, one module per tool family in each; `src/launcher.ts` the launch trick, `src/native-smoke.ts` the live test)
 - [task.md](task.md) — scope, decisions, per-block status and findings
+- [docs/coverage.md](docs/coverage.md) — Plasticity command → tool, what is missing and why, where a tool differs from the command
 - [docs/ws-protocol.md](docs/ws-protocol.md) — reverse-engineered bridge protocol
 - [docs/architecture.md](docs/architecture.md), [docs/feature-request.md](docs/feature-request.md) — April 2026 recon, kept for history; the "every path is closed" conclusion there is superseded by the native channel
 
