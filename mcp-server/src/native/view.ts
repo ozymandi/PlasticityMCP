@@ -6,7 +6,7 @@ import { checkOutput } from "../files.js";
 import { ExchangeTools } from "./exchange.js";
 import { delay } from "./math.js";
 import { BUSY_GUARD } from "./snippets.js";
-import { CameraInfo, Screenshot, ViewName } from "./types.js";
+import { CameraInfo, Screenshot, Vec3, ViewName } from "./types.js";
 
 export const SCREENSHOT_TIMEOUT_MS = 15_000;
 
@@ -70,10 +70,19 @@ export class ViewTools extends ExchangeTools {
   }
 
   /**
-   * Point the first viewport's camera at a standard view. `fit` also frames every body, or
-   * only the bodies `ids`. Not an undo step.
+   * Point the first viewport's camera at a standard view, or — with a direction instead of a
+   * name — look at the model from that side (the vector from the model towards the camera),
+   * shaded like the isometric view. `fit` also frames every body, or only the bodies `ids`.
+   * Not an undo step.
    */
-  setView(view: ViewName, fit = true, ids?: number[]): Promise<CameraInfo> {
+  setView(view: ViewName | Vec3, fit = true, ids?: number[]): Promise<CameraInfo> {
+    const custom = Array.isArray(view);
+    // The camera keeps Z up, so it cannot look straight along Z: that is what top / bottom are.
+    if (custom && Math.hypot(view[0], view[1]) < 1e-6 * Math.hypot(...view)) {
+      return Promise.reject(new Error("A direction along Z has no upright view; use the view top or bottom"));
+    }
+    const name = custom ? "custom" : view;
+    const from = custom ? view : view === "isometric" ? [1, -1, 1] : null;
     return this.enqueue(async () => {
       const info = await this.call<Omit<CameraInfo, "view">>(
         `async function (args) {
@@ -117,9 +126,9 @@ export class ViewTools extends ExchangeTools {
               last = pose;
             }
           };
-          if (args.view === 'isometric') {
+          if (args.from) {
             const probe = camera.clone();
-            probe.position.copy(camera.target).add(probe.position.clone().set(1, -1, 1));
+            probe.position.copy(camera.target).add(probe.position.clone().set(...args.from));
             probe.lookAt(camera.target);
             controls.setQuaternion(probe.quaternion);
             // A previous front/top/... view leaves the viewport "aligned" (view label, X-ray,
@@ -163,9 +172,9 @@ export class ViewTools extends ExchangeTools {
           };
         }`,
         [],
-        [{ view, fit, ids: ids ?? null, orientation: VIEW_ORIENTATIONS[view as Exclude<ViewName, "isometric">] ?? null }],
+        [{ from, fit, ids: ids ?? null, orientation: VIEW_ORIENTATIONS[name as Exclude<ViewName, "isometric">] ?? null }],
       );
-      return { view, ...info };
+      return { view: name, ...info };
     });
   }
 }

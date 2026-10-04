@@ -410,7 +410,8 @@ export interface Screenshot {
 }
 
 export interface CameraInfo {
-  view: ViewName;
+  /** "custom" when the camera was pointed with a direction of its own. */
+  view: ViewName | "custom";
   /** Unit vector from the look-at target towards the camera. */
   direction: Vec3;
   targetMm: Vec3;

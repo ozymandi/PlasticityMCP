@@ -249,7 +249,7 @@ Real B-Rep operations through Plasticity's own factories and history. Unofficial
 
 | Tool | Description |
 |------|-------------|
-| `set_view` | Camera to front / back / left / right / top / bottom / isometric; `fit` frames all bodies, or with `ids` only those — a close look at one part. |
+| `set_view` | Camera to a `view` (front / back / left / right / top / bottom / isometric) or, instead, to look from any `direction` (model → camera, e.g. [1, 1, 1] from behind) shaded like the isometric view; `fit` frames all bodies, or with `ids` only those — a close look at one part. |
 | `screenshot` | PNG of the 3D viewport (longest side ≤ 1568 px), returned as an image; optional `path`. |
 
 ### Notes

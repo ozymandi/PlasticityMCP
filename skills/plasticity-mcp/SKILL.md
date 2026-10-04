@@ -137,5 +137,7 @@ How to keep to it:
   `get_body_topology` / `list_regions` before each operation that takes them.
 - After risky steps (booleans, fillets, deleted faces): `check_bodies`, and a `screenshot`
   from `set_view` to see the result. To look closely at one part of a scene pass its
-  bodies as `ids` to `set_view` — without them it frames everything.
+  bodies as `ids` to `set_view` — without them it frames everything. The named axis views
+  are X-ray; for a shaded look from any other side pass `direction` (model → camera, e.g.
+  [1, 1, 1] from behind) instead of `view`.
 - Undo only your own steps: the history may hold the user's work from before.

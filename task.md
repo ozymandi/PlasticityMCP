@@ -938,7 +938,35 @@ Verified over stdio on the open scene (12 checks): framing the four lens bodies 
 
 Checked through the MCP client after its restart (2026-10-05): `native_connect` and `list_bodies` answer in the compact format (33 bodies, one per line); `set_view` front with the four lens `ids` frames the lens, and the side screenshot (`tests/nikon-f2/el-nikkor-side.png`) shows the M39 thread (three turns), the knurled ring, the flats of the front ring and the tail — the silhouette of Nikon's drawing.
 
-Seen in that close screenshot: the aperture scale reads upside down when the lens stands front up (as recorded above); the knurling, the twelve flats, the index dot and the glass look right; the M39 thread is not visible from that side.
+**Scale turned the right way up (2026-10-05, on the Designer's word):** the barrel was rebuilt (new id 469, same profile) and the text was drawn on the unwrapped Sheet already rotated by 180° — `create_text` with `xDirection` [−1, 0, 0], origin at (14, −2.175) — so that after `deform` it lands upright and in place without a move: letters at z −6.55 … −4.2, reading "2.8 4 5.6 8 11 16" left to right for a viewer outside. The mapping of the first run (Sheet +y → −z, Sheet +x → clockwise seen from the front) held for the rebuilt body. Flats, thread and index dot redone; four bodies valid; `move_to_group` with the new return shape and `list_regions` with `box` worked through the client. Committed before that: `688fa2b` (compact results, `set_view` ids).
+
+**Lens put on the camera (2026-10-05, on the Designer's word):** the four lens bodies were turned 90° about their own axis (scale to the top), 90° about X (front towards −Y) and moved so that the flange face sits on the floor of the mount ring's counterbore (y = −42), axis on the camera's lens axis. Three calls (`rotate_bodies` twice, `move_bodies`). The tail (Ø34) and the thread (Ø39) go into the Ø44 throat; nothing overlaps the mount screws. A real M39 enlarging lens does not fit an F mount — this is a placement, not a fit. Copy: `tests/nikon-f2/nikon-f2-lens-mounted.plasticity`, screenshot `camera-with-lens.png`.
+
+**Back of the body — brief given, waiting (2026-10-05):** the drawing has no back view; photos found (jshop.jp items C1981 back view, C1136 open back, C2474 top view). Proposed: Back door as its own body (rear 4 mm of the shell), leatherette pad, memo holder frame, a proper eyepiece (round ocular in the frame), the round contact on the rear of the top cover; all sizes by proportion from the photo — estimates.
+
+### Nikon F2 — back of the body from photos ✅ (2026-10-05, ~0.7 h)
+
+Designer's word: build from the references (there are no drawings), and where expedient and quick correct the differences from the photos. All sizes here are estimates by proportion from the photos (jshop.jp C1981 back view, C1136 open back, C2474 top view). 41 Solids in eight groups; the new and changed ones valid.
+
+- **Back door** (id 511, group Back): the rear 4 mm of the Body shell, split off with `cut` along y = 13.3; its four rim edges chamfered 0.3 as the seam.
+- **Back leatherette** (513): rounded rectangle 115.5 × 47, R4, raised 0.3, rim R0.2.
+- **Memo holder** (515): frame 40 × 39 with clipped and rounded lower corners, 1.5 thick, window 30 × 29 recessed 0.9; both rims chamfered 0.25 in one call (16 edges, two closed loops).
+- **Rear contact** (519): revolved part Ø9 on the rear of the top cover beside the eyepiece, on the rewind side. What it is on the real camera was not established.
+- **Eyepiece** (520) and **Eyepiece glass** (523), group Finder: a rounded frame 27 × 19 standing up above the old eyepiece block, trimmed to the finder with `boolean` difference `keepTools`, with a round ocular recess Ø16 (chamfered mouth built into the revolved cutter, cut into the Finder too) and a glass disc.
+- **Front leatherette** left and right (528, 527, group Body): pads 0.3 high beside the mirror box, rims R0.2, the self-timer, the DOF button and the lens release boss subtracted with `keepTools`.
+
+Findings:
+- `extrude_profile` of a rectangle made with the same `normal` went +Y for a positive distance on the back (y = 17.3) and +Y for a **negative** distance on the front (y = −16.8): the direction is not decided by the sign alone. Corrected with `move_bodies`; the bounds have to be read every time.
+- `boolean` difference with `keepTools` can split the target: the left pad came back as two bodies (the main pad as a new id in `created`, the old id left on a sliver cut off by the DOF ring). The sliver was deleted.
+- There is no shaded view from behind: `set_view` has one isometric direction and the axis views are X-ray, so the back was checked only in X-ray (`tests/nikon-f2/back-view.png`). An idea, not agreed: a `direction` for the isometric view.
+
+**`set_view` takes a `direction` (2026-10-05, on the Designer's word, ~0.3 h):** instead of a view name, the vector from the model towards the camera — any side, shaded like the isometric view (the axis views stay X-ray). Either `view` or `direction`; a direction along Z is refused (that is top / bottom); works together with `ids`. Verified over stdio on the scene (13 checks): [1, 1, 1] gives the returned direction (0.577, 0.577, 0.577) and leaves the X-ray state after an axis view; with the Back door's id the target is its centre; refusals; back to the isometric view; document untouched. First shaded look at the back: `tests/nikon-f2/back-shaded.png` — door, leatherette pad, memo holder, eyepiece with its round ocular and the rear contact are where the photo has them. Build passes. Checked through the MCP client after its restart: `set_view` with `direction` [−0.6, 1, 0.5] alone (no `view`) is accepted and gives a shaded view of the back from the other side (`tests/nikon-f2/back-shaded-left.png`). Not committed.
+
+Differences from the photos seen and **not** changed: the shutter speed dial is low on the photos — the tall column comes from the Designer's drawing and stays; the real finder roof is a peaked prism with leatherette, the model has a hip roof; the rewind knob has a fold-out crank; the advance lever has a plastic tip and another arm shape; the top cover has a step line at the back; the strap lugs carry rings; the memo holder has a slot at the top.
+
+Files: `tests/nikon-f2/nikon-f2-back.plasticity`, `.step`, `back-view.png`, `camera-with-lens.png`.
+
+Seen in the first close screenshot (before the turn): the aperture scale reads upside down when the lens stands front up (as recorded above); the knurling, the twelve flats, the index dot and the glass look right; the M39 thread is not visible from that side.
 
 ## Risks
 

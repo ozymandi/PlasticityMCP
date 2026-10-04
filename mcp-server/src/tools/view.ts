@@ -1,6 +1,6 @@
 import { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
-import { BODY_IDS_SCHEMA, BodyIds, native, ok, type ToolFamily } from "./shared.js";
+import { BODY_IDS_SCHEMA, BodyIds, Direction, native, ok, type ToolFamily, VEC3_SCHEMA } from "./shared.js";
 
 /** Camera and screenshots. */
 
@@ -11,30 +11,35 @@ const ScreenshotArgs = z.object({
 
 const SetViewArgs = z
   .object({
-    view: z.enum(["front", "back", "left", "right", "top", "bottom", "isometric"]),
+    view: z.enum(["front", "back", "left", "right", "top", "bottom", "isometric"]).optional(),
+    direction: Direction.optional(),
     fit: z.boolean().optional().default(true),
     ids: BodyIds.optional(),
   })
+  .refine((a) => (a.view === undefined) !== (a.direction === undefined), "pass either view or direction")
   .refine((a) => a.ids === undefined || a.fit, "ids frame the view: they need fit");
 
 const tools: Tool[] = [
   {
     name: "set_view",
     description:
-      "Point the camera of the first viewport at a standard view: front, back, left, right, " +
-      "top, bottom or isometric (Z is up; front looks along +Y). `fit` (default true) also " +
+      "Point the camera of the first viewport at a standard `view`: front, back, left, right, " +
+      "top, bottom or isometric (Z is up; front looks along +Y) — or, instead of `view`, look " +
+      "from any side with `direction`: the vector from the model towards the camera, e.g. " +
+      "[1, 1, 1] for a shaded view from behind, right and above (isometric is [1, -1, 1]; a " +
+      "direction along Z is refused — that is top / bottom). `fit` (default true) also " +
       "frames all bodies — hidden and isolated-away ones included — or, with `ids`, only " +
       "those bodies: the way to look closely at one part of a scene. The six axis views are " +
       "shown by Plasticity in X-ray. Not an undo step. Use before screenshot to look at the " +
       "model from a chosen side.",
     inputSchema: {
       type: "object",
-      required: ["view"],
       properties: {
         view: {
           type: "string",
           enum: ["front", "back", "left", "right", "top", "bottom", "isometric"],
         },
+        direction: { ...VEC3_SCHEMA, description: "From the model towards the camera [x, y, z]; instead of view" },
         fit: { type: "boolean", default: true },
         ids: { ...BODY_IDS_SCHEMA, description: "Frame only these bodies" },
       },
@@ -59,7 +64,7 @@ const tools: Tool[] = [
 const handlers: ToolFamily["handlers"] = {
   set_view: async (rawArgs) => {
     const args = SetViewArgs.parse(rawArgs ?? {});
-    return ok(await native.setView(args.view, args.fit, args.ids));
+    return ok(await native.setView(args.direction ?? args.view!, args.fit, args.ids));
   },
 
   screenshot: async (rawArgs) => {
