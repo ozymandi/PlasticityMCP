@@ -81,6 +81,90 @@ LLM (Claude) ──stdio──> MCP server (Node/TS) ──WS──> Plasticity
 
 **Phases 4–7 are parked** until a write path opens.
 
+## Re-check 2026-10-04 — write path is OPEN (unofficially)
+
+**Status:** recon + spike passed; native stage 1 implemented and verified live (see "Native stage 1" below).
+
+### Official side — nothing changed
+
+| Probe | Result |
+|-------|--------|
+| Newest release | **26.1.4** (2026-08-14), empty release notes. Installed here: 26.1.3. |
+| Official scripting / API / MCP / `EXEC_COMMAND` opcode | ❌ None. Docs "What's new" still ends at 2026.1. |
+| OSS repo `nkallen/plasticity` | ❌ Still the frozen 2023 snapshot, tags only. |
+| Blender addon | No commits since 2026-04-10. |
+
+### Third-party side — Path D (CDP) was solved by others in September 2026
+
+| Repo | Target | Notes |
+|------|--------|-------|
+| `te9no/plasticity-mcp` (2026-09-09) | Windows, Plasticity **25.3.0** | **Fork of this repo** (carries our task.md / docs). 37 native CAD tools. On 25.3.0 the plain `--remote-debugging-port` flag still works. |
+| `Mesteriis/plasticity-mcp` v0.2.1 (2026-09-28, MIT) | macOS arm64, Plasticity **26.1.3** | 116 tools (box/sphere/cylinder, boolean, fillet, extrude, move/rotate/scale, STEP import/export, screenshots, undo/redo). |
+| `Sparrow51/PlasiticityMCP_Mac2Win_Port` (2026-09-28) | **Windows, 26.1.3** | Port of Mesteriis. 0 stars, 2 commits — unverified by us. |
+
+### The two things our April recon missed
+
+1. **CDP port:** 26.x strips `--remote-debugging-port`, but does NOT block the Node main-process inspector. Launch with `--inspect-brk=127.0.0.1:9229`, attach, and before app code runs evaluate: neutralise `app.commandLine.removeSwitch` for `remote-debugging-port` + `appendSwitch('remote-debugging-port', '9223')`, then resume. Renderer CDP comes up on loopback. No files patched, nothing re-signed.
+2. **Editor handle:** `window.editor` is indeed stripped, but the editor and Factory classes are reachable through **closure scopes**: evaluate the `command-log.handleCommandStarted` callback, walk `[[Scopes]]` via `Runtime.getProperties`, then `Runtime.callFunctionOn`. Commands run via `editor.exec` + `factory.commit()` → native B-Rep, native Undo/Redo.
+
+Version notes: on 26.1.3 geometry lives in `editor.geo.geometryModel` (not `editor.db.items` as on 25.3); `FaceExtrudeFactory` is gone, use `ExtrudeFactory`. Internal units are metres.
+
+### Caveats
+
+- Unofficial, against internal APIs — pinned per version; any update can break it or close the inspector hole. **Do not update to 26.1.4 until verified.**
+- Plasticity must be started through the launcher (a running instance has to be closed and relaunched).
+- Dev clearly strips debug access on purpose → ToS / goodwill risk if published; fine for internal use.
+
+### Spike result — ✅ PASSED on this machine (2026-10-04, Windows, 26.1.3, Electron 26.6.9)
+
+Read-only probe, no scene mutation, no files patched.
+
+| Step | Result |
+|------|--------|
+| Launch `app-26.1.3\Plasticity.exe --inspect-brk=127.0.0.1:9229` | ✅ Main inspector up, paused at `electron/js2c/browser_init` |
+| Startup hook (neutralise `removeSwitch`, append `remote-debugging-port=9223`) | ✅ Accepted |
+| Renderer CDP on `127.0.0.1:9223` | ✅ Target `…/renderer/app_window/index.html` |
+| `document.querySelector('command-log').handleCommandStarted` → `[[Scopes]]` | ✅ Scope 0 holds `editor` (class `Editor`) |
+| `editor` surface | ✅ `exec`, `undo`, `geo.geometryModel`, `db`, `history`, `selection`, `executor`; **176 commands** in `editor.commands` |
+| App-module closure (scope 1) | ✅ 5123 bindings, **182 `*Factory` classes** by name (Boolean, Extrude, Fillet*, Curve, ExportCad, ExchangeImport, …) |
+
+Gotchas found:
+- Function source is hidden (bytecode) — `description` is zero-width chars, so classes must be found by **binding name**, not by source text.
+- Scope 1 `Runtime.getProperties` response is large: Node's built-in `WebSocket` drops the connection (1006); the `ws` package handles it.
+- Never enumerate the `Global` scope.
+
+### Decision (Designer, 2026-10-04)
+
+**Path (b):** port the technique into our own `mcp-server` and grow the tool set block by block. Server is **pinned to 26.1.3** — any other version is refused.
+
+## Native stage 1 — ✅ Done (2026-10-04, ~3 h)
+
+New in `mcp-server/src/`: `cdp.ts` (CDP client on `ws`), `launcher.ts` (`--inspect-brk` launch, never closes a running instance), `native.ts` (editor/Factory discovery, serialized command execution), `native-smoke.ts` (`npm run smoke:native`).
+
+New MCP tools (the 9 WS tools are untouched): `native_launch`, `native_connect`, `native_status`, `create_box`, `create_sphere`, `create_cylinder`, `undo`, `redo`. Input units are mm; mutating tools return created bodies (stable id, type, name, bounds) and removed ids.
+
+Verified live on 26.1.3 in an Untitled document:
+- `smoke:native` passes: box / sphere / cylinder (+Z and +X axis) bounds exact, Undo/Redo, document returned to baseline.
+- Built stdio server exercised end to end (tool list, not-connected error, zod validation errors, create → undo → redo → undo).
+
+Findings:
+- A new document is **not empty** — it holds a default 1000 mm cube (stable id 1).
+- Command pattern: `new editor.commands.XCommand(editor)`, override `execute`, `new Factory(editor).resource(command)`, `factory.commit()`, run via `editor.exec`. Errors inside `execute` are swallowed by the executor and must be captured manually.
+- Factories used: `ThreePointBoxFactory` (p1–p4), `PossiblyBooleanSphereFactory` (center, radius), `PossiblyBooleanCylinderFactory` (`center` = **base** cap centre, orientation quaternion, radius, height).
+- Bodies: `editor.geo.geometryModel` → `db.lookupStableId(versionId)`, bounds via `item.model.FindBox()` (metres).
+
+**Not verified:** the cold-start path of `launcher.ts` (Plasticity closed → `native_launch`). The same logic passed in the spike script, but the TypeScript version has only run against an already-launched instance.
+
+Changes are **not committed**.
+
+### Next blocks (each proposed separately before implementation)
+
+1. Scene: list bodies with stable ids, select, delete, rename.
+2. Transforms: move, rotate, scale.
+3. Boolean, fillet, extrude.
+4. Curves: polyline, circle, spline.
+5. STEP import/export, save document, screenshot.
+
 ## Risks
 
 - **Binary protocol details**: WS payloads are likely binary (efficient mesh transfer). Recon must decode framing exactly. Mitigation: addon source is Python and readable.
@@ -125,4 +209,5 @@ PlasticityMCP/
 
 ## Next action
 
-**Phase 0 kickoff:** read `plasticity-blender-addon` source (`client.py`, `handler.py`) and document the WS protocol in `docs/ws-protocol.md` — port, framing, opcode payloads, scene-graph schema. No code yet.
+1. Designer: close Plasticity and call `native_launch` (or `npm run smoke:native`) once to verify the cold-start path; restart the MCP client so it picks up the new tools.
+2. Propose block 1 (scene: list / select / delete / rename).

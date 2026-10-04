@@ -8,11 +8,16 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { PlasticityClient } from "./client.js";
+import { SUPPORTED_VERSION, launchPlasticity } from "./launcher.js";
+import { NativeSession } from "./native.js";
 import { FacetShapeType, MessageType, ObjectType } from "./protocol.js";
 
 const client = new PlasticityClient({
   server: process.env.PLASTICITY_SERVER ?? "localhost:8980",
 });
+
+// Native CAD access over CDP (separate channel from the WS bridge above).
+const native = new NativeSession();
 
 // ---------- Tool argument schemas ----------
 
@@ -65,7 +70,45 @@ const PushMeshArgs = z.object({
   asSubd: z.boolean().optional().default(false),
 });
 
+const Vec3Mm = z.tuple([z.number(), z.number(), z.number()]);
+
+const NativeLaunchArgs = z.object({
+  executable: z.string().optional(),
+});
+
+const NativeConnectArgs = z.object({
+  targetId: z.string().optional(),
+});
+
+const CreateBoxArgs = z.object({
+  origin: Vec3Mm,
+  size: z.tuple([z.number().positive(), z.number().positive(), z.number().positive()]),
+  name: z.string().optional(),
+});
+
+const CreateSphereArgs = z.object({
+  center: Vec3Mm,
+  radius: z.number().positive(),
+  name: z.string().optional(),
+});
+
+const CreateCylinderArgs = z.object({
+  base: Vec3Mm,
+  radius: z.number().positive(),
+  height: z.number().positive(),
+  axis: Vec3Mm.optional().refine((a) => !a || Math.hypot(...a) > 0, "axis must be non-zero"),
+  name: z.string().optional(),
+});
+
 // ---------- Tool definitions ----------
+
+const VEC3_SCHEMA = {
+  type: "array",
+  items: { type: "number" },
+  minItems: 3,
+  maxItems: 3,
+  description: "[x, y, z] in millimetres",
+};
 
 const tools: Tool[] = [
   {
@@ -179,6 +222,102 @@ const tools: Tool[] = [
         asSubd: { type: "boolean", default: false },
       },
     },
+  },
+  {
+    name: "native_launch",
+    description:
+      `Start Plasticity ${SUPPORTED_VERSION} with native CAD access (loopback-only debugging endpoint). ` +
+      "If a window with native access is already available, returns it. Never closes a running " +
+      "Plasticity: if it runs without native access, the user must close it first. " +
+      "Returns the reachable windows; follow with native_connect.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        executable: {
+          type: "string",
+          description: `Full path to the Plasticity ${SUPPORTED_VERSION} executable (default: auto-detected)`,
+        },
+      },
+    },
+  },
+  {
+    name: "native_connect",
+    description:
+      "Attach to a Plasticity window for native CAD operations (create_*, undo, redo). " +
+      "With several windows open, pass targetId from native_launch. " +
+      `Only Plasticity ${SUPPORTED_VERSION} is supported.`,
+    inputSchema: {
+      type: "object",
+      properties: { targetId: { type: "string" } },
+    },
+  },
+  {
+    name: "native_status",
+    description:
+      "Native connection state: connected window, whether Plasticity is busy with a command, " +
+      "undo/redo depth and body count.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "create_box",
+    description:
+      "Create a native B-Rep box (Solid), axis-aligned. Units: millimetres. `origin` is the " +
+      "minimum corner, `size` is [x, y, z] extents. Returns the created body with its stable id " +
+      "and bounds. Undoable.",
+    inputSchema: {
+      type: "object",
+      required: ["origin", "size"],
+      properties: {
+        origin: VEC3_SCHEMA,
+        size: VEC3_SCHEMA,
+        name: { type: "string" },
+      },
+    },
+  },
+  {
+    name: "create_sphere",
+    description:
+      "Create a native B-Rep sphere (Solid). Units: millimetres. Returns the created body with " +
+      "its stable id and bounds. Undoable.",
+    inputSchema: {
+      type: "object",
+      required: ["center", "radius"],
+      properties: {
+        center: VEC3_SCHEMA,
+        radius: { type: "number" },
+        name: { type: "string" },
+      },
+    },
+  },
+  {
+    name: "create_cylinder",
+    description:
+      "Create a native B-Rep cylinder (Solid). Units: millimetres. `base` is the centre of the " +
+      "bottom cap; the cylinder extends `height` along `axis` (default [0, 0, 1]). Returns the " +
+      "created body with its stable id and bounds. Undoable.",
+    inputSchema: {
+      type: "object",
+      required: ["base", "radius", "height"],
+      properties: {
+        base: VEC3_SCHEMA,
+        radius: { type: "number" },
+        height: { type: "number" },
+        axis: VEC3_SCHEMA,
+        name: { type: "string" },
+      },
+    },
+  },
+  {
+    name: "undo",
+    description:
+      "Undo the last operation in the connected Plasticity window (native history, same as " +
+      "Ctrl+Z). Returns which bodies appeared/disappeared.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "redo",
+    description: "Redo the last undone operation in the connected Plasticity window.",
+    inputSchema: { type: "object", properties: {} },
   },
 ];
 
@@ -435,6 +574,67 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           item: resp.items[0] ?? null,
         });
       }
+
+      case "native_launch": {
+        const args = NativeLaunchArgs.parse(rawArgs ?? {});
+        const result = await launchPlasticity(args.executable);
+        return ok({
+          alreadyAvailable: result.alreadyAvailable,
+          windows: result.targets.map((t) => ({ targetId: t.id, title: t.title })),
+        });
+      }
+
+      case "native_connect": {
+        const args = NativeConnectArgs.parse(rawArgs ?? {});
+        const target = await native.connect(args.targetId);
+        const state = await native.state();
+        return ok({
+          connected: true,
+          window: { targetId: target.id, title: target.title },
+          version: SUPPORTED_VERSION,
+          bodyCount: state.bodies.length,
+          undoDepth: state.undoDepth,
+          redoDepth: state.redoDepth,
+        });
+      }
+
+      case "native_status": {
+        const target = native.getTarget();
+        if (!target) return ok({ connected: false, supportedVersion: SUPPORTED_VERSION });
+        const state = await native.state();
+        return ok({
+          connected: true,
+          window: { targetId: target.id, title: target.title },
+          version: SUPPORTED_VERSION,
+          busy: state.busy,
+          bodyCount: state.bodies.length,
+          undoDepth: state.undoDepth,
+          redoDepth: state.redoDepth,
+        });
+      }
+
+      case "create_box": {
+        const args = CreateBoxArgs.parse(rawArgs ?? {});
+        return ok(await native.createBox(args.origin, args.size, args.name));
+      }
+
+      case "create_sphere": {
+        const args = CreateSphereArgs.parse(rawArgs ?? {});
+        return ok(await native.createSphere(args.center, args.radius, args.name));
+      }
+
+      case "create_cylinder": {
+        const args = CreateCylinderArgs.parse(rawArgs ?? {});
+        return ok(
+          await native.createCylinder(args.base, args.radius, args.height, args.axis, args.name),
+        );
+      }
+
+      case "undo":
+        return ok(await native.undo());
+
+      case "redo":
+        return ok(await native.redo());
 
       default:
         throw new Error(`Unknown tool: ${name}`);

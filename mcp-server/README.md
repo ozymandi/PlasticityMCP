@@ -17,6 +17,30 @@ MCP server for [Plasticity](https://www.plasticity.xyz/) 26.1.x. Talks the exist
 
 > Raw vertex/index/normal arrays are **never** returned to the LLM (they would blow up context). Only counts and bounding boxes. A future phase will add a binary export tool that writes geometry to disk.
 
+## Native CAD tools (CDP, Plasticity 26.1.3 only)
+
+A second channel, independent of the WebSocket bridge: real B-Rep operations through Plasticity's own factories and history. Unofficial, against internal APIs, pinned to **26.1.3** — any other version is refused. Units are millimetres.
+
+| Tool | Description |
+|------|-------------|
+| `native_launch` | Start Plasticity 26.1.3 with a loopback-only debugging endpoint (`127.0.0.1:9223`). Never closes a running instance — if Plasticity runs without native access, close it yourself first. |
+| `native_connect` | Attach to a window (`targetId` needed only with several windows). |
+| `native_status` | Connected window, busy flag, undo/redo depth, body count. |
+| `create_box` | `origin` (min corner) + `size`. |
+| `create_sphere` | `center` + `radius`. |
+| `create_cylinder` | `base` (bottom cap centre) + `radius` + `height`, optional `axis`. |
+| `undo` / `redo` | Native history. |
+
+Mutating tools return the created bodies (stable id, type, name, bounds) and removed ids.
+
+Live check — mutates the document, so it only runs in a fresh "Untitled" one and undoes everything:
+
+```bash
+npm run smoke:native
+```
+
+Plasticity must be started through `native_launch` (or `smoke:native`); a normally started instance has no debugging endpoint. See `../task.md` for how the access works.
+
 ## Setup
 
 ```bash
