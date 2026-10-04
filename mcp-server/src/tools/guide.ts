@@ -29,12 +29,20 @@ Order of work — finish a stage for the whole model before the next one
 Rules
 - Take sizes from the drawing or the description. Where there is none, estimate and say that it is an estimate.
 - Before building anything of more than a few parts, tell the user the plan: the parts, their sizes and where the sizes come from, what will be left out.
+- Choose the way to build a form by its kind: straight walls - extrude a profile; round - revolve; sections that change along the length - loft; one section along a path - sweep. Boxes and cylinders are only for boxy and round parts.
 - No sharp edges on a finished model: fillet for cast and moulded shapes, chamfer for machined rims and holes. About 1-3 % of the part size; 0.3-0.5 mm on small rims.
 - Face, edge and region ids change after every change of a body: read get_body_topology / list_regions again before each call that takes them.
 - After every boolean, fillet or chamfer read the returned bounds and face count, then call check_bodies. An operation that succeeded can still give a wrong shape.
 - Look at the result after each stage: set_view, then screenshot, from at least two sides. Compare with the drawing and correct before going on.
 - Name the bodies (rename_body) and keep the parts of one assembly in a group.
 - Undo only your own steps.
+
+Before saying it is done
+- Every stage is finished for the whole model, or you say which one is not.
+- All outer edges are treated; all bodies pass check_bodies.
+- Helper curves and sheets are deleted.
+- Screenshots from the same sides as the reference were compared with it, and the differences are corrected or named.
+- What is estimated or left out is said, not left for the user to find.
 
 More: modelling_guide with topic "drawing", "blocking", "edges", "merge" or "detail" — read the topic before that stage.`;
 
@@ -49,6 +57,10 @@ const TOPICS = {
 
   blocking: `Blocking
 - One simple body per main volume: create_box, create_cylinder, or a closed create_polyline + extrude_profile for an outline that is not a rectangle.
+- A plate or a wall of any outline: draw the closed outline, extrude_profile by the thickness.
+- A form whose section changes along its length: draw closed sections at several stations (create_polyline, create_spline, create_ellipse, create_circle on parallel planes) and loft_profiles through them in order.
+- A constant section along a path: draw the path curve and the closed section, sweep_profile.
+- A symmetric form: build one half, mirror_bodies, boolean union.
 - Right sizes and places first, no details and no rounded edges yet.
 - Round parts (shafts, knobs, rings, bosses): draw half of the section as a closed polyline and revolve_profile it around the axis; chamfers can be drawn into the section.
 - extrude_profile does not always go the way the sign suggests: read the returned bounds and correct with move_bodies.

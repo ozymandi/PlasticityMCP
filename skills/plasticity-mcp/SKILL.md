@@ -26,6 +26,12 @@ step of detailing.
 
 1. **Blocking.** The main volumes in the right proportions and places, as simple bodies.
    Check them against the drawing (front, top, side screenshots) before going further.
+   Choose the way to build each form by its kind, not by what is quickest to call: straight
+   walls — a closed outline and `extrude_profile`; round — a half section and
+   `revolve_profile`; sections that change along the length — closed sections at several
+   stations and `loft_profiles`; one section along a path — `sweep_profile`; a symmetric
+   form — one half, `mirror_bodies`, union. Boxes and cylinders are only for boxy and round
+   parts.
 2. **Refining.** The details, and the edges: see "No bare edges" below.
 3. **Merge pass — the last step.** Go through the finished model, find the parts that should
    be one piece, `boolean` union them, and put a chamfer / bevel on the edges where they meet.
@@ -130,6 +136,15 @@ How to keep to it:
   edge treatment planned (see "No bare edges"); what will be left out.
 - Anything still estimated after the research is listed in the brief, not discovered by the
   user afterwards.
+
+### Before saying it is done
+
+- Every stage is finished for the whole model — or the report says which one is not.
+- All outer edges are treated; every body passes `check_bodies`.
+- Helper curves and sheets are deleted.
+- Screenshots from the same sides as the reference were compared with it; the differences
+  are corrected or named.
+- What is estimated or left out is in the report, not left for the user to find.
 
 ## Working facts
 
