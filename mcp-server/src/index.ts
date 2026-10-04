@@ -8,6 +8,7 @@ import { curves } from "./tools/curves.js";
 import { exchange } from "./tools/exchange.js";
 import { faces } from "./tools/faces.js";
 import { instances } from "./tools/instances.js";
+import { measure } from "./tools/measure.js";
 import { primitives } from "./tools/primitives.js";
 import { profiles } from "./tools/profiles.js";
 import { projection } from "./tools/projection.js";
@@ -27,6 +28,7 @@ const families: ToolFamily[] = [
   scene,
   transforms,
   instances,
+  measure,
   solids,
   faces,
   curves,

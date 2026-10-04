@@ -72,6 +72,7 @@ async function main() {
     await surfaceChecks(native);
     await instanceChecks(native);
     await sceneChecks(native);
+    await measureChecks(native);
   } catch (err) {
     console.error("SMOKE ERROR:", (err as Error).message);
     process.exitCode = 1;
@@ -1735,6 +1736,84 @@ async function sceneChecks(native: NativeSession): Promise<void> {
   check("the selection reports whole bodies too", whole.bodyIds.join() === String(b.id) && whole.faces.length === 0,
     JSON.stringify(whole));
   await native.selectBodies([]);
+}
+
+// Check, open edges, measurements, continuity, section view — drawn around x = 10000.
+async function measureChecks(native: NativeSession): Promise<void> {
+  const X = 10000;
+  const box = (await native.createBox([X, 0, 0], [40, 30, 20])).created[0]!;
+  const rod = (await native.createCylinder([X + 100, 0, 0], 10, 30)).created[0]!;
+  let t = await native.topology(box.id);
+
+  const sound = await native.checkBodies([box.id, rod.id]);
+  check("check_bodies finds a box and a cylinder valid", sound.length === 2 && sound.every((b) => b.valid && b.faultCodes.length === 0),
+    JSON.stringify(sound));
+  check("a Solid has no boundary edges", (await native.findBoundaryEdges(box.id)).count === 0);
+  await native.deleteFaces(box.id, [faceBy(t, [0, 0, 1])], false);
+  const rim = await native.findBoundaryEdges(box.id, true);
+  const rimSelected = await native.getSelectionDetail();
+  check("find_boundary_edges finds the rim of an opening and selects it", rim.count === 4 && rim.type === "Sheet" &&
+    rimSelected.edges.length === 4 && rimSelected.edges.every((e) => rim.edgeIds.includes(e.edgeId)), JSON.stringify(rim));
+  await native.selectBodies([]);
+  await native.undo();
+  const notShell = await failure(native.findBoundaryEdges((await native.createPolyline([[X, 200, 0], [X + 10, 200, 0]])).created[0]!.id));
+  check("find_boundary_edges refuses a curve", /not a Solid or Sheet/.test(notShell?.message ?? ""), notShell?.message);
+
+  // --- measurements kept in the document ---
+  const measuresBefore = (await native.listMeasurements()).length;
+  const diagonal = await native.addDistanceMeasurement(
+    { id: box.id, pointMm: [X, 0, 20] }, { id: box.id, pointMm: [X + 40, 30, 20] }, "mcp-smoke-diagonal");
+  const straight = diagonal.created[0];
+  check("add_measurement: the straight distance between two vertices", straight?.kind === "distance" &&
+    straight.name === "mcp-smoke-diagonal" && Math.abs(straight.valueMm! - 50) < 1e-3 &&
+    straight.bodyIds.join() === String(box.id) && straight.axis === undefined, JSON.stringify(straight));
+  const between = await native.addDistanceMeasurement(
+    { id: box.id, pointMm: [X + 40, 15, 20] }, { id: rod.id, pointMm: [X + 100, 0, 30] });
+  check("a measurement between two bodies: an edge middle and a circle centre",
+    Math.abs(between.created[0]!.valueMm! - Math.hypot(60, 15, 10)) < 1e-3 &&
+      between.created[0]!.bodyIds.length === 2, JSON.stringify(between.created[0]));
+  const rt = await native.topology(rod.id, "edges");
+  const topCircle = rt.edges!.find((e) => e.kind === "circle" && e.midMm[2] === 30)!.id;
+  const radius = await native.addRadiusMeasurement(rod.id, topCircle);
+  check("add_measurement: the radius of a circular edge", radius.created[0]?.kind === "radius" &&
+    Math.abs(radius.created[0].valueMm! - 10) < 1e-6, JSON.stringify(radius.created[0]));
+  check("list_measurements lists them", (await native.listMeasurements()).length === measuresBefore + 3);
+  const dropped = await native.deleteMeasurements([straight!.id]);
+  check("delete_measurements removes one", dropped.removedIds.join() === String(straight!.id) &&
+    dropped.measurementCount === measuresBefore + 2);
+  await native.undo();
+  const nowhere = await failure(native.addDistanceMeasurement(
+    { id: box.id, pointMm: [X + 7, 3, 20] }, { id: box.id, pointMm: [X + 40, 30, 20] }));
+  check("a point that is not a landmark is refused with a hint", /no measurable point/.test(nowhere?.message ?? ""),
+    nowhere?.message);
+  const straightEdge = t.edges!.find((e) => e.kind === "line")!.id;
+  const notRound = await failure(native.addRadiusMeasurement(box.id, straightEdge));
+  check("a radius needs a circular edge", /not circular/.test(notRound?.message ?? ""), notRound?.message);
+  const ghost = await failure(native.deleteMeasurements([424242]));
+  check("unknown measurement id is refused", /Unknown measurement id/.test(ghost?.message ?? ""), ghost?.message);
+  for (let i = 0; i < 3; i += 1) await native.undo();
+  check("undo removes the measurements", (await native.listMeasurements()).length === measuresBefore);
+
+  // --- continuity ---
+  const upright = t.edges!.find((e) => e.kind === "line" && Math.abs(e.lengthMm - 20) < 1e-6)!.id;
+  await native.filletEdges(box.id, [upright], 4);
+  t = await native.topology(box.id);
+  const round = t.faces!.find((f) => !f.planar)!.id;
+  const seam = t.edges!.find((e) => e.kind === "line" && e.faceIds.includes(round))!.id;
+  const corner = t.edges!.find((e) => e.kind === "line" && !e.faceIds.includes(round) && Math.abs(e.lengthMm - 20) < 1e-6)!.id;
+  const depthBefore = (await native.state()).undoDepth;
+  const smooth = await native.measureContinuity(box.id, [seam, corner]);
+  check("measure_continuity: a fillet meets its neighbour tangent, a corner does not",
+    smooth[0]?.continuity === "G1" && Math.abs(smooth[0].angleDeg!) < 0.01 &&
+      smooth[1]?.continuity === "G0" && Math.abs(smooth[1].angleDeg! - 90) < 0.01 &&
+      (await native.state()).undoDepth === depthBefore, JSON.stringify(smooth));
+  await native.undo();
+
+  // --- section view ---
+  const cutaway = await native.setSectionView([X + 20, 0, 0], [1, 0, 0]);
+  const plain = await native.clearSectionView();
+  check("section view switches on and off without touching the history", cutaway.active === true &&
+    plain.active === false && (await native.state()).undoDepth === depthBefore - 1);
 }
 
 main().catch((err) => {

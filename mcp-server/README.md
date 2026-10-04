@@ -47,6 +47,12 @@ A second channel, independent of the WebSocket bridge: real B-Rep operations thr
 | `list_materials` | Materials of the document: id, name, colour, roughness, metalness, opacity. |
 | `create_material` | New material: `name`, `color` (#rrggbb), optional `roughness`, `metalness`, `opacity`. |
 | `set_material` / `remove_material` | Give a material to bodies; take it off. |
+| `check_bodies` | Kernel check of bodies: `valid` and fault codes. |
+| `find_boundary_edges` | Open edges of a Solid / Sheet (the rims of its openings); `select` optional. |
+| `add_measurement` | A measurement kept in the document: straight distance between two attachable points (`from`, `to`), or the radius of a circular edge (`id` + `edgeId`). |
+| `list_measurements` / `delete_measurements` | Measurements of the document with their values; delete by id. |
+| `measure_continuity` | Gap, angle and curvature change between the faces along edges, and the continuity (G0 / G1 / G2). |
+| `set_section_view` / `clear_section_view` | Cut the view (not the model) with a plane, for screenshots of the inside. |
 | `move_bodies` | Translate by `delta`. |
 | `rotate_bodies` | Rotate `angle` degrees around `axis` through `pivot`. |
 | `scale_bodies` | Scale by `factor` (number or `[x, y, z]`) relative to `pivot`. |

@@ -3,13 +3,13 @@
 import { boundsCentre } from "./core.js";
 import { MM, cross, norm, toMeters, unit } from "./math.js";
 import { BUSY_GUARD, FIND_VIEW, STUCK_CHECK, commandFunction } from "./snippets.js";
-import { InstanceTools } from "./instances.js";
+import { MeasureTools } from "./measure.js";
 import { CurveArrayAlignment, MutationResult, Vec3 } from "./types.js";
 
 // Native codes, read from the running 26.1.3 app.
 const ALIGNMENT_CODES: Record<CurveArrayAlignment, number> = { normal: 21560, parallel: 21561, transport: 21564 };
 
-export class TransformTools extends InstanceTools {
+export class TransformTools extends MeasureTools {
   moveBodies(ids: number[], deltaMm: Vec3): Promise<MutationResult> {
     const setup = `
         factory.items = args.ids.map(find);

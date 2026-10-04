@@ -449,8 +449,8 @@ Excluded: Studio-only commands (Align, PolySplines, xNURBS, Square, Rebuild Face
 | 15 | Surfaces: Bridge Surface, Constrained Surface, Raise Surface Degree, Slide CV, Deform, Rebuild Face, Remove Nominal Surface (Loft Guide is part of Loft) | 7 | 3 | ✅ done |
 | 16 | Copies and placement: Curve Array, Place, Copy / Paste with Placement, instances | 6 | 2.5 | ✅ done (Place and Copy / Paste with Placement deferred) |
 | 17 | Scene: groups, hide / show / isolate, lock, materials, extended selection | 15 | 4.5 | ✅ done |
-| 18 | Measuring: distance, radius, continuity, Dimension, Section Analysis, Check | 7 | 3 | next |
-| 19 | Environment: construction planes, new / open / save document, units and grid | 5 | 2.5 | |
+| 18 | Measuring: distance, radius, continuity, Dimension, Section Analysis, Check | 7 | 3 | ✅ done (Dimension deferred) |
+| 19 | Environment: construction planes, new / open / save document, units and grid | 5 | 2.5 | next |
 
 Each block: its own proposal, live verification, `smoke:native` checks, commit on Designer's word. Work is on branch `native-full-spectrum`.
 
@@ -690,6 +690,32 @@ Verified live in Untitled (fresh Plasticity): `smoke:native` passes with **346 c
 
 **Not verified / not exposed:** materials on individual faces (the risk named in the proposal — not attempted; materials are per body); editing or renaming an existing material, Fork Material, deleting a material; groups of groups created through the tools (`group_bodies` takes bodies only), renaming or deleting a group, the active group; visibility and locking of groups, instances and reference meshes; selecting curves' vertices, control points or regions through a tool (they are reported by `get_selection` only as far as regions and groups).
 
+Committed (`3a27d3b`), merged into `main` and published.
+
+### Block 18 — checking and measuring — ✅ Done (2026-10-04, ~3 h)
+
+Eight new tools, **139 in total** (`src/native/measure.ts`, `src/tools/measure.ts`):
+
+| Tool | How it works | Notes |
+|------|--------------|-------|
+| `check_bodies` | kernel `body.Check()` | Empty list of fault codes = valid. Read-only. |
+| `find_boundary_edges` | kernel edges with one face | With `select` they are selected in the window (what Find Boundary Edges does). |
+| `add_measurement` | `PointToPointMeasurementFactory` / `RadialMeasurementFactory` + `measurements.update` inside the native command | A measurement is attached to a **snap point** of a body: vertex, edge end / quarter / middle, circle centre, face centre. The tool finds the snap in `snaps.cache` by body and position (within a micron). Undoable. |
+| `list_measurements`, `delete_measurements` | `measurements.snapshot()`; native Delete | |
+| `measure_continuity` | `MeasureContinuityFactory.calculate()` + `evalSurfaceContinuityMeasurements` | Per edge: `g0max` (gap), `g1max` (angle), `g2max` (relative curvature change), judged against the factory's own tolerances (0.01 mm, 0.1°, 0.05). Nothing is added to the document. |
+| `set_section_view`, `clear_section_view` | `editor.shading.section`, with the `Section` object of `SectionAnalysisFactory` | A display state: not a command, not in the undo history. Checked with a screenshot: a hollow box cut open, the side the normal points to removed. |
+
+How a measurement stores its points: `target { bodyId (kernel id), topologyId, landmark }`, with landmark 0 = vertex, 1 = edge end, 2 = quarter, 3 = middle, 4 = three quarters, 5 = circle centre, 6 = face centre, 7 = radius. `list_measurements` resolves them back to coordinates through the same snap cache; the value is computed from the two points (or along the stored axis for a measurement made by hand that way).
+
+**Differences from the proposal:**
+- **`set_dimension` is deferred** (Designer agreed on 2026-10-04 to leave it out). Dimension builds its "dimension collection" inside the UI command from the selection; the only known way to get it is to replace a property setter on the factory's prototype while a throw-away command runs. That is the kind of workaround I said I would not do without asking. What it would change is covered by `refillet`, `scale_faces`, `offset` and `move_faces`.
+- **Distance measurements are straight only.** Plasticity's default is a distance along one world axis, but the axis is picked by the pointer; setting `direction` on the factory has no effect.
+- **No volume or area** — as said in the proposal, the kernel binding gives only the centroid.
+
+Verified live in Untitled: `smoke:native` passes with **361 checks** (15 new); the end-to-end script over stdio passes (139 tools, argument validation, document restored); the section view was checked by eye on a screenshot; build and protocol tests pass.
+
+**Not verified / not exposed:** measurements attached to curves (their snaps are in the same cache and resolve the same way, but only bodies were run); measurements when the Plasticity window is minimized (the snap cache may not be filled); renaming or moving the label of a measurement; continuity tolerances as parameters; the section view's `distance`, flip and the "previous plane" options; what a section view does to `export_drawing` and `screenshot` of other views.
+
 Committed, merged into `main` and published. The MCP client must be restarted to see the new tools.
 
 Other ideas (not agreed yet): transforming and hiding reference meshes; opening `.plasticity` files is in block 19.
@@ -739,4 +765,4 @@ PlasticityMCP/
 ## Next action
 
 1. Designer: close Plasticity and call `native_launch` (or `npm run smoke:native`) once to verify the cold-start path; restart the MCP client so it picks up the new tools.
-2. Full command coverage: blocks 0, 0b (split of `index.ts`) and 11 (solids) are in `main` and published — 69 tools. Blocks 0, 0b, 11 and 12 are in `main` and published — 84 tools. Blocks 0, 0b, 11, 12 and 13 are in `main` and published — 105 tools. Blocks 0, 0b and 11–14 are in `main` and published — 108 tools. Blocks 0, 0b and 11–15 are in `main` and published — 111 tools. Blocks 0, 0b and 11–16 are in `main` and published — 116 tools. Blocks 0, 0b and 11–17 are in `main` and published — 131 tools. Next: the proposal for block 18 (measuring); the Designer asked for it on 2026-10-04. Work continues on branch `native-full-spectrum`.
+2. Full command coverage: blocks 0, 0b (split of `index.ts`) and 11 (solids) are in `main` and published — 69 tools. Blocks 0, 0b, 11 and 12 are in `main` and published — 84 tools. Blocks 0, 0b, 11, 12 and 13 are in `main` and published — 105 tools. Blocks 0, 0b and 11–14 are in `main` and published — 108 tools. Blocks 0, 0b and 11–15 are in `main` and published — 111 tools. Blocks 0, 0b and 11–16 are in `main` and published — 116 tools. Blocks 0, 0b and 11–17 are in `main` and published — 131 tools. Blocks 0, 0b and 11–18 are in `main` and published — 139 tools. Next: the proposal for block 19 (environment), the last of the plan; the Designer asked for it on 2026-10-04. Work continues on branch `native-full-spectrum`.

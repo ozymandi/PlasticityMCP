@@ -246,6 +246,55 @@ export type ImprintSource =
   | { curveIds: number[]; direction?: Vec3 }
   | { toolIds: number[]; imprintTools?: boolean };
 
+export interface BodyCheck {
+  id: number;
+  type: string;
+  valid: boolean;
+  /** Fault codes of the kernel; empty for a valid body. */
+  faultCodes: number[];
+}
+
+export interface BoundaryEdges {
+  id: number;
+  type: string;
+  count: number;
+  edgeIds: string[];
+}
+
+/** A measurement kept in the document. It has an id of its own. */
+export interface MeasurementInfo {
+  id: number;
+  kind: "distance" | "radius";
+  name: string | null;
+  bodyIds: number[];
+  /** Null when the points it is attached to cannot be resolved. */
+  valueMm: number | null;
+  pointsMm: Vec3[];
+  /** Present when the distance is taken along a direction rather than straight. */
+  axis?: Vec3;
+}
+
+export interface MeasurementMutation {
+  created: MeasurementInfo[];
+  removedIds: number[];
+  measurementCount: number;
+  undoDepth: number;
+  redoDepth: number;
+}
+
+export interface ContinuityReport {
+  edgeId: string;
+  /** Null when the edge does not lie between two faces. */
+  continuity: "G2" | "G1" | "G0" | "none" | null;
+  gapMm?: number;
+  angleDeg?: number;
+  curvatureChange?: number;
+}
+
+export interface SectionView {
+  active: boolean;
+}
+
 /** A linked copy of a body. It has an id of its own and is not in the list of bodies. */
 export interface InstanceInfo {
   id: number;

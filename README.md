@@ -2,7 +2,7 @@
 
 MCP server for [Plasticity](https://www.plasticity.xyz/) — lets an LLM read, create and modify real CAD geometry inside a running Plasticity window.
 
-**Status:** working, for internal use. 131 tools, verified live on **Plasticity 26.1.3 / Windows**. Unofficial: it relies on Plasticity's internal APIs and is pinned to that exact version.
+**Status:** working, for internal use. 139 tools, verified live on **Plasticity 26.1.3 / Windows**. Unofficial: it relies on Plasticity's internal APIs and is pinned to that exact version.
 
 ## What it can do
 
@@ -19,6 +19,7 @@ MCP server for [Plasticity](https://www.plasticity.xyz/) — lets an LLM read, c
 | Groups | `list_groups`, `group_bodies`, `ungroup`, `move_to_group` |
 | Visibility and locking | `set_visibility`, `unhide_all`, `isolate`, `unisolate`, `set_locked`, `unlock_all` |
 | Materials | `list_materials`, `create_material`, `set_material`, `remove_material` |
+| Checking and measuring | `check_bodies`, `find_boundary_edges`, `add_measurement`, `list_measurements`, `delete_measurements`, `measure_continuity`, `set_section_view`, `clear_section_view` |
 | Transforms | `move_bodies`, `rotate_bodies`, `scale_bodies` |
 | Copies | `copy_bodies`, `mirror_bodies`, `array_rectangular`, `array_radial`, `array_curve` |
 | Instances | `list_instances`, `create_instances`, `realize_instances`, `delete_instances` |
