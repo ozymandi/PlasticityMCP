@@ -234,10 +234,31 @@ Wire / Sheet checks were one-off probes (the public tools cannot create curves o
 
 Block 3 and the debt-closure fixes are committed on branch `native-stage-1`. The MCP client must be restarted to see the new tools.
 
+## Native block 4 — curves and profile extrusion — ✅ Done (2026-10-04, ~2 h)
+
+New tools: `create_polyline`, `create_spline`, `create_circle`, `extrude_profile` (34 tools total).
+
+Verified live on 26.1.3 (Untitled): `smoke:native` extended and passing — open / closed polyline, spline, circle (default and +X normal), rectangle profile → 6-face Solid, circle → cylinder, open polyline → 2-face Sheet, nested profile refused, non-planar closed curve refused, Solid refused as a profile, Undo throughout. Built stdio server exercised end to end (triangle → prism, circle → rod → fillet) incl. validation errors.
+
+The one-off Wire / Sheet probes from the debt closure are now permanent `smoke:native` checks: move and delete a curve, topology rejects a curve, fillet on a Sheet, `extrude_faces` on a Sheet, delete a Sheet.
+
+Findings:
+- Curves: `CurveFactory` + `CurveCommand` (`points`, `type` = `CurveType.Polyline | NURBS`, `closed`); circle: `CenterCircleFactory` + `CenterCircleCommand` (`center`, `orientation` quaternion, `point` on the circle). A spline interpolates its points.
+- Plasticity builds `SketchIsland` items with `Region`s automatically from the closed curves of a plane; nested / overlapping curves share one island. A Region does not say which curve it came from, and its bounding box comes from the display mesh (≈0.01 mm off for a circle).
+- `extrude_profile` matches by bounding box: exactly one Region of the curve's plane may lie inside the curve's box and it must fill it (tolerance 1 % of the box diagonal). So a curve with another closed curve nested in it is refused, while the inner curve still extrudes.
+- Closed planar curve → `factory.regions`; open curve → `factory.curves` (gives a Sheet). A closed non-planar curve fails `editor.curves.lookup` and is refused.
+- Direction: positive distance follows the plane normal — +Z for XY-plane curves regardless of winding, +X for a circle created with normal +X. Not checked for curves in arbitrary planes built from points only; the tool description tells the caller to check the returned bounds.
+- The profile curve is kept after extrusion.
+
+**Not verified:** closed spline as a profile; direction for curves in arbitrary point-defined planes; the refusal path of `native_launch` when Plasticity runs without native access.
+
+Block 4 is committed on branch `native-stage-1`. The MCP client must be restarted to see the new tools.
+
 ### Next blocks (each proposed separately before implementation)
 
-4. Curves: polyline, circle, spline; extrude a profile from a closed curve.
 5. STEP import/export, save document, screenshot.
+
+Ideas beyond the agreed list (not agreed yet): arcs and ellipse; selecting individual Regions for extrusion (plate-with-hole profiles); revolve, sweep, loft; copy / mirror.
 
 ## Risks
 
@@ -284,4 +305,4 @@ PlasticityMCP/
 ## Next action
 
 1. Designer: close Plasticity and call `native_launch` (or `npm run smoke:native`) once to verify the cold-start path; restart the MCP client so it picks up the new tools.
-2. Propose block 4 (curves + profile extrude).
+2. Propose block 5 (STEP import/export, save, screenshot).

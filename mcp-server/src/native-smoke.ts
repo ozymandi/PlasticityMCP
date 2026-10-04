@@ -210,8 +210,94 @@ async function main() {
     boundsMatch(changedBody(pushed, plateId), [200, 0, 0], [240, 30, 6]), fmt(changedBody(pushed, plateId)));
   await native.undo();
 
+  // --- curves and profile extrusion (drawn around x = 400) ---
+  const wire = (result: { created: BodyInfo[] }) => result.created.find((b) => b.type === "Wire");
+  const failure = (p: Promise<unknown>) => p.then(() => null, (e: Error) => e);
+
+  const rect = wire(await native.createPolyline(
+    [[400, 0, 0], [440, 0, 0], [440, 30, 0], [400, 30, 0]], true, "mcp-smoke-rect"));
+  check("closed polyline", rect?.name === "mcp-smoke-rect" &&
+    boundsMatch(rect, [400, 0, 0], [440, 30, 0]), fmt(rect));
+  const spline = wire(await native.createSpline([[400, 100, 0], [420, 110, 0], [440, 100, 0], [460, 110, 0]]));
+  check("spline passes its end points",
+    spline?.boundsMm?.min[0] === 400 && spline.boundsMm.max[0] === 460, fmt(spline));
+  const tiltedCircle = wire(await native.createCircle([400, 200, 50], 10, [1, 0, 0]));
+  check("circle with normal +X", boundsMatch(tiltedCircle, [400, 190, 40], [400, 210, 60]), fmt(tiltedCircle));
+  const disc = wire(await native.createCircle([500, 0, 0], 10));
+  check("circle", boundsMatch(disc, [490, -10, 0], [510, 10, 0]), fmt(disc));
+  const corner = wire(await native.createPolyline([[400, 300, 0], [440, 300, 0], [440, 330, 0]]));
+  check("open polyline", boundsMatch(corner, [400, 300, 0], [440, 330, 0]), fmt(corner));
+
+  // Wires go through the scene and transform tools like any body.
+  const movedWire = await native.moveBodies([corner!.id], [0, 0, 5]);
+  check("move a curve", boundsMatch(changedBody(movedWire, corner!.id), [400, 300, 5], [440, 330, 5]));
+  await native.undo();
+  check("topology rejects a curve", (await failure(native.topology(corner!.id))) !== null);
+
+  const prism = await native.extrudeProfile(rect!.id, 10);
+  const prismBody = prism.created.find((b) => b.type === "Solid");
+  check("closed profile becomes a Solid", prismBody?.faceCount === 6 &&
+    boundsMatch(prismBody, [400, 0, 0], [440, 30, 10]), fmt(prismBody));
+  check("the profile curve is kept", prism.removedIds.length === 0,
+    JSON.stringify(prism.removedIds));
+  await native.undo();
+  const sunk = (await native.extrudeProfile(rect!.id, -10)).created.find((b) => b.type === "Solid");
+  check("negative distance goes the other way", boundsMatch(sunk, [400, 0, -10], [440, 30, 0]), fmt(sunk));
+  await native.undo();
+  const rod = (await native.extrudeProfile(disc!.id, 20)).created.find((b) => b.type === "Solid");
+  check("circle profile becomes a cylinder", rod?.faceCount === 3 &&
+    boundsMatch(rod, [490, -10, 0], [510, 10, 20]), fmt(rod));
+  await native.undo();
+
+  const sideways = (await native.extrudeProfile(tiltedCircle!.id, 10)).created.find((b) => b.type === "Solid");
+  check("direction follows the plane normal (+X circle)", boundsMatch(sideways, [400, 190, 40], [410, 210, 60]),
+    fmt(sideways));
+  await native.undo();
+  const clockwise = wire(await native.createPolyline(
+    [[400, 500, 0], [400, 530, 0], [440, 530, 0], [440, 500, 0]], true));
+  const cwPrism = (await native.extrudeProfile(clockwise!.id, 10)).created.find((b) => b.type === "Solid");
+  check("direction does not depend on winding", boundsMatch(cwPrism, [400, 500, 0], [440, 530, 10]), fmt(cwPrism));
+  await native.undo();
+  await native.undo(); // the clockwise rectangle
+
+  const wallResult = await native.extrudeProfile(corner!.id, 10);
+  const wall = wallResult.created.find((b) => b.type === "Sheet");
+  check("open curve becomes a Sheet", wall?.faceCount === 2 &&
+    boundsMatch(wall, [400, 300, 0], [440, 330, 10]), fmt(wall));
+  const wallTopo = await native.topology(wall!.id);
+  const sharedEdge = wallTopo.edges!.find((e) => e.faceIds.length === 2)!;
+  const rounded = await native.filletEdges(wall!.id, [sharedEdge.id], 5);
+  check("fillet on a Sheet", changedBody(rounded, wall!.id)?.faceCount === 3);
+  await native.undo();
+  const thick = await native.extrudeFaces(wall!.id, [wallTopo.faces![0]!.id], 3);
+  check("extruding a Sheet face makes a new Solid",
+    thick.created.length === 1 && thick.created[0]?.type === "Solid" && thick.changed.length === 0);
+  await native.undo();
+  const noWall = await native.deleteBodies([wall!.id]);
+  check("delete a Sheet", noWall.removedIds[0] === wall!.id);
+  await native.undo();
+  await native.undo(); // the Sheet itself
+
+  // Ambiguous and invalid profiles.
+  const inner = wire(await native.createCircle([420, 15, 0], 5));
+  const nested = await failure(native.extrudeProfile(rect!.id, 10));
+  check("nested profile is refused", /ambiguous/.test(nested?.message ?? ""), nested?.message ?? "no error");
+  const innerRod = (await native.extrudeProfile(inner!.id, 10)).created.find((b) => b.type === "Solid");
+  check("the inner curve still extrudes", boundsMatch(innerRod, [415, 10, 0], [425, 20, 10]), fmt(innerRod));
+  await native.undo();
+  await native.undo(); // the inner circle
+  const bent = wire(await native.createPolyline(
+    [[400, 400, 0], [440, 400, 0], [440, 430, 20], [400, 430, 0]], true));
+  const nonPlanar = await failure(native.extrudeProfile(bent!.id, 10));
+  check("non-planar closed curve is refused", /not planar/.test(nonPlanar?.message ?? ""),
+    nonPlanar?.message ?? "no error");
+  const notACurve = await failure(native.extrudeProfile(boxId, 10));
+  check("extrude_profile refuses a Solid", /not a curve/.test(notACurve?.message ?? ""));
+  const noCurve = await native.deleteBodies([bent!.id]);
+  check("delete a curve", noCurve.removedIds[0] === bent!.id);
+
   // Clean up: undo everything this test did and put the selection back.
-  for (let i = 0; i < 100 && (await native.state()).undoDepth > baseline.undoDepth; i++) {
+  for (let i = 0; i < 150 && (await native.state()).undoDepth > baseline.undoDepth; i++) {
     await native.undo();
   }
   await native.selectBodies(baseline.bodies.filter((b) => b.selected).map((b) => b.id));

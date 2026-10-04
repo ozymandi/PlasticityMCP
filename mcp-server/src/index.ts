@@ -168,6 +168,30 @@ const ExtrudeFacesArgs = z.object({
   distance: z.number().refine((d) => d !== 0, "distance must be non-zero"),
 });
 
+const CreatePolylineArgs = z.object({
+  points: z.array(Vec3Mm).min(2),
+  closed: z.boolean().optional().default(false),
+  name: z.string().optional(),
+});
+
+const CreateSplineArgs = z.object({
+  points: z.array(Vec3Mm).min(3),
+  closed: z.boolean().optional().default(false),
+  name: z.string().optional(),
+});
+
+const CreateCircleArgs = z.object({
+  center: Vec3Mm,
+  radius: z.number().positive(),
+  normal: Vec3Mm.optional().refine((a) => !a || Math.hypot(...a) > 0, "normal must be non-zero"),
+  name: z.string().optional(),
+});
+
+const ExtrudeProfileArgs = z.object({
+  id: BodyId,
+  distance: z.number().refine((d) => d !== 0, "distance must be non-zero"),
+});
+
 // ---------- Tool definitions ----------
 
 const VEC3_SCHEMA = {
@@ -183,6 +207,12 @@ const BODY_IDS_SCHEMA = {
   items: { type: "number" },
   minItems: 1,
   description: "Stable body ids (from list_bodies)",
+};
+
+const POINTS_SCHEMA = {
+  type: "array",
+  items: { type: "array", items: { type: "number" }, minItems: 3, maxItems: 3 },
+  description: "Points [[x, y, z], ...] in millimetres",
 };
 
 const TOPOLOGY_IDS_SCHEMA = {
@@ -565,6 +595,71 @@ const tools: Tool[] = [
       type: "object",
       required: ["id", "faceIds", "distance"],
       properties: { id: { type: "number" }, faceIds: TOPOLOGY_IDS_SCHEMA, distance: { type: "number" } },
+    },
+  },
+  {
+    name: "create_polyline",
+    description:
+      "Create a curve (Wire) of straight segments through `points` (at least 2, millimetres). " +
+      "`closed` joins the last point back to the first — a closed planar polyline is a profile " +
+      "for extrude_profile (a rectangle or polygon is just a closed polyline). Undoable.",
+    inputSchema: {
+      type: "object",
+      required: ["points"],
+      properties: {
+        points: POINTS_SCHEMA,
+        closed: { type: "boolean", default: false },
+        name: { type: "string" },
+      },
+    },
+  },
+  {
+    name: "create_spline",
+    description:
+      "Create a smooth curve (Wire) that passes through `points` (at least 3, millimetres). " +
+      "`closed` makes it a loop. Undoable.",
+    inputSchema: {
+      type: "object",
+      required: ["points"],
+      properties: {
+        points: POINTS_SCHEMA,
+        closed: { type: "boolean", default: false },
+        name: { type: "string" },
+      },
+    },
+  },
+  {
+    name: "create_circle",
+    description:
+      "Create a circle (Wire) with `center` and `radius` in millimetres, lying in the plane " +
+      "perpendicular to `normal` (default [0, 0, 1]). Undoable.",
+    inputSchema: {
+      type: "object",
+      required: ["center", "radius"],
+      properties: {
+        center: VEC3_SCHEMA,
+        radius: { type: "number" },
+        normal: { ...VEC3_SCHEMA, description: "Plane normal direction [x, y, z]" },
+        name: { type: "string" },
+      },
+    },
+  },
+  {
+    name: "extrude_profile",
+    description:
+      "Extrude a curve by `distance` millimetres along the normal of its plane. A closed planar " +
+      "curve becomes a Solid, an open curve becomes a Sheet; the new body is in `created` and " +
+      "the curve is kept. Positive distance follows the plane normal (+Z for curves in the XY " +
+      "plane, the `normal` given to create_circle), negative goes the other way — check the " +
+      "returned bounds. Refused when the profile is ambiguous: other closed curves in the same " +
+      "plane nested in or overlapping this one. Undoable.",
+    inputSchema: {
+      type: "object",
+      required: ["id", "distance"],
+      properties: {
+        id: { type: "number", description: "Stable id of the curve (Wire)" },
+        distance: { type: "number" },
+      },
     },
   },
 ];
@@ -952,6 +1047,26 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "extrude_faces": {
         const args = ExtrudeFacesArgs.parse(rawArgs ?? {});
         return ok(await native.extrudeFaces(args.id, args.faceIds, args.distance));
+      }
+
+      case "create_polyline": {
+        const args = CreatePolylineArgs.parse(rawArgs ?? {});
+        return ok(await native.createPolyline(args.points, args.closed, args.name));
+      }
+
+      case "create_spline": {
+        const args = CreateSplineArgs.parse(rawArgs ?? {});
+        return ok(await native.createSpline(args.points, args.closed, args.name));
+      }
+
+      case "create_circle": {
+        const args = CreateCircleArgs.parse(rawArgs ?? {});
+        return ok(await native.createCircle(args.center, args.radius, args.normal, args.name));
+      }
+
+      case "extrude_profile": {
+        const args = ExtrudeProfileArgs.parse(rawArgs ?? {});
+        return ok(await native.extrudeProfile(args.id, args.distance));
       }
 
       default:

@@ -733,6 +733,108 @@ export class NativeSession {
     }`);
   }
 
+  /** Straight segments through `pointsMm`; `closed` joins the last point back to the first. */
+  createPolyline(pointsMm: Vec3[], closed = false, name?: string): Promise<MutationResult> {
+    return this.createCurve("Polyline", pointsMm, closed, name);
+  }
+
+  /** Smooth curve interpolated through `pointsMm`. */
+  createSpline(pointsMm: Vec3[], closed = false, name?: string): Promise<MutationResult> {
+    return this.createCurve("NURBS", pointsMm, closed, name);
+  }
+
+  private createCurve(
+    type: "Polyline" | "NURBS",
+    pointsMm: Vec3[],
+    closed: boolean,
+    name?: string,
+  ): Promise<MutationResult> {
+    const setup = `
+        factory.points = args.points.map((p) => new Vector3(...p));
+        factory.type = CurveType[args.type];
+        factory.closed = args.closed;`;
+    return this.mutate(
+      commandFunction("CurveCommand", ["Vector3", "CurveType"], setup),
+      ["CurveFactory", "Vector3", "CurveType"],
+      [{ type, points: pointsMm.map(toMeters), closed, name: name ?? null }],
+    );
+  }
+
+  /** Circle in the plane perpendicular to `normal` (default +Z). */
+  createCircle(
+    centerMm: Vec3,
+    radiusMm: number,
+    normal: Vec3 = [0, 0, 1],
+    name?: string,
+  ): Promise<MutationResult> {
+    // The factory takes a centre, a plane orientation and one point on the circle.
+    const setup = `
+        factory.center.fromArray(args.center);
+        factory.orientation.copy(
+          new Quaternion().setFromUnitVectors(new Vector3(0, 0, 1), new Vector3(...args.normal).normalize()),
+        );
+        factory.point.copy(factory.center).add(
+          new Vector3(args.radius, 0, 0).applyQuaternion(factory.orientation),
+        );`;
+    return this.mutate(
+      commandFunction("CenterCircleCommand", ["Vector3", "Quaternion"], setup),
+      ["CenterCircleFactory", "Vector3", "Quaternion"],
+      [{ center: toMeters(centerMm), radius: radiusMm * MM, normal, name: name ?? null }],
+    );
+  }
+
+  /**
+   * Extrude a curve by `distanceMm`. A closed planar curve gives a Solid, an open curve a Sheet.
+   * Refuses a closed curve whose profile is ambiguous (nested or overlapping closed curves in
+   * the same plane).
+   */
+  extrudeProfile(id: number, distanceMm: number): Promise<MutationResult> {
+    // Plasticity builds Regions automatically from the closed curves of a plane, but a Region
+    // does not say which curve it came from. Match by bounding box instead: exactly one Region
+    // of that plane may lie inside the curve's box, and it must fill it. Region boxes come
+    // from the display mesh, hence the tolerance.
+    const setup = `
+        const item = findItem(args.id);
+        const view = item.view;
+        const type = view.constructor.name;
+        if (type !== 'Wire') throw new Error('Body ' + args.id + ' is a ' + type + ', not a curve');
+        if (item.model?.IsClosed?.()) {
+          let basis;
+          try { basis = editor.curves.lookup(view); }
+          catch { throw new Error('Closed curve ' + args.id + ' is not planar, so it has no profile to extrude'); }
+          const sketch = Array.from(editor.curves.read.sketch2basis ?? []).find(([, b]) => b === basis)?.[0];
+          const box = item.model.FindBox();
+          const axes = ['x', 'y', 'z'];
+          const tol = Math.max(1e-5, 0.01 * Math.hypot(...axes.map((k) => box.max[k] - box.min[k])));
+          const inside = (b) => axes.every((k) => b.min[k] >= box.min[k] - tol && b.max[k] <= box.max[k] + tol);
+          const fills = (b) => axes.every((k) => Math.abs(b.min[k] - box.min[k]) <= tol && Math.abs(b.max[k] - box.max[k]) <= tol);
+          const regions = [];
+          for (const [, candidate] of editor.geo.geometryModel) {
+            if (candidate.view?.constructor?.name !== 'SketchIsland') continue;
+            let candidateSketch;
+            try { candidateSketch = editor.sketches.getSketchId(candidate.view); } catch { continue; }
+            if (String(candidateSketch) !== String(sketch)) continue;
+            for (let i = 0; i < (candidate.view.regions?.length ?? 0); i += 1) {
+              const region = candidate.view.regions.get(i);
+              if (region && inside(region.getBoundingBox())) regions.push(region);
+            }
+          }
+          if (regions.length === 0) throw new Error('Plasticity built no region for closed curve ' + args.id);
+          if (regions.length > 1 || !fills(regions[0].getBoundingBox())) {
+            throw new Error('The profile of curve ' + args.id + ' is ambiguous: other closed curves in the same plane are nested in it or overlap it. Move or delete them, or build the shape with boolean.');
+          }
+          factory.regions = regions;
+        } else {
+          factory.curves = [view];
+        }
+        factory.distance1 = args.distance;`;
+    return this.mutate(
+      commandFunction("ExtrudeCommand", [], setup),
+      ["ExtrudeFactory"],
+      [{ id, distance: distanceMm * MM }],
+    );
+  }
+
   /** Bodies currently selected in the window (whole Solids / Sheets / Wires, not faces or edges). */
   async getSelection(): Promise<BodyInfo[]> {
     return (await this.state()).bodies.filter((b) => b.selected);
