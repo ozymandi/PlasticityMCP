@@ -9,7 +9,7 @@
  */
 import { execFile, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { CdpClient, CdpTarget, EvaluateResult, listTargets } from "./cdp.js";
 
@@ -79,6 +79,43 @@ async function isPlasticityRunning(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * Start a program as a process of its own, not a child of this server. A client that stops the
+ * server takes the server's children down with it — LM Studio does, and the Plasticity window
+ * closed with the work in it. On Windows the process is created by the system's process service
+ * (WMI), so it belongs neither to our process tree nor to a job the client put us in.
+ */
+async function startOnItsOwn(exe: string, args: string[]): Promise<void> {
+  if (process.platform === "win32") {
+    const quote = (text: string) => `'${text.replace(/'/g, "''")}'`;
+    const commandLine = [`"${exe}"`, ...args].join(" ");
+    const script =
+      "$ErrorActionPreference = 'Stop'; " +
+      "$r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ " +
+      `CommandLine = ${quote(commandLine)}; CurrentDirectory = ${quote(dirname(exe))} }; ` +
+      "if ($r.ReturnValue -ne 0) { exit 1 }";
+    try {
+      await execFileAsync(
+        join(process.env.SystemRoot ?? "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
+        ["-NoProfile", "-NonInteractive", "-EncodedCommand", Buffer.from(script, "utf16le").toString("base64")],
+        { timeout: 20_000, windowsHide: true },
+      );
+      return;
+    } catch (err) {
+      const why = (err as Error).message;
+      console.error(`[plasticity-mcp] could not start Plasticity on its own (${why}); starting it as a child`);
+    }
+  }
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(exe, args, { detached: true, stdio: "ignore" });
+    child.once("error", reject);
+    child.once("spawn", () => {
+      child.unref();
+      resolve();
+    });
+  });
 }
 
 function delay(ms: number): Promise<void> {
@@ -170,17 +207,7 @@ export async function launchPlasticity(executable?: string): Promise<LaunchResul
 
   const exe = executable ?? defaultExecutable();
   if (!existsSync(exe)) throw new Error(`Plasticity executable not found: ${exe}`);
-  await new Promise<void>((resolve, reject) => {
-    const child = spawn(exe, [`--inspect-brk=127.0.0.1:${INSPECTOR_PORT}`], {
-      detached: true,
-      stdio: "ignore",
-    });
-    child.once("error", reject);
-    child.once("spawn", () => {
-      child.unref();
-      resolve();
-    });
-  });
+  await startOnItsOwn(exe, [`--inspect-brk=127.0.0.1:${INSPECTOR_PORT}`]);
 
   const inspectorTarget = await waitFor(
     async () => {

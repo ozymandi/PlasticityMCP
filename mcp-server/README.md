@@ -256,6 +256,8 @@ Real B-Rep operations through Plasticity's own factories and history. Unofficial
 
 `native_launch` adds Chromium switches that keep the window drawing while it is covered by other windows, so everything works at full speed with Plasticity in the background. A **minimized** window does not draw: `set_view` and `screenshot` then fail with a clear message (`native_status` reports `windowVisible`) and modelling tools slow down to about two seconds per operation.
 
+Plasticity is started as a process of its own, not as a child of the server (on Windows through the system's process service), so a client that stops or restarts the server — LM Studio does that often — does not take the Plasticity window down with it.
+
 Reference meshes and instances are separate families of objects with ids of their own: `list_bodies`, the transform tools and the modelling tools do not see them. An instance becomes a body through `realize_instances`.
 
 IGES and SAT are not available: they need the Studio edition of Plasticity (this server is developed against an Indie licence).
