@@ -189,10 +189,33 @@ export type ImprintSource =
   | { curveIds: number[]; direction?: Vec3 }
   | { toolIds: number[]; imprintTools?: boolean };
 
+/** A linked copy of a body. It has an id of its own and is not in the list of bodies. */
+export interface InstanceInfo {
+  id: number;
+  name: string | null;
+  /** Stable id of the body it is an instance of. */
+  sourceId: number | null;
+  boundsMm: { min: Vec3; max: Vec3 } | null;
+  visible: boolean;
+}
+
+export interface InstanceMutation {
+  created: InstanceInfo[];
+  removedIds: number[];
+  instanceCount: number;
+  undoDepth: number;
+  redoDepth: number;
+}
+
+/** How items of an array along a curve are turned as they follow it. */
+export type CurveArrayAlignment = "normal" | "parallel" | "transport";
+
 export interface MutationResult {
   created: BodyInfo[];
   /** Bodies that kept their id but changed (bounds, name, topology, visibility, lock). */
   changed: BodyInfo[];
+  /** Instances made instead of bodies, by the tools that can make them. */
+  createdInstances?: InstanceInfo[];
   removedIds: number[];
   bodyCount: number;
   undoDepth: number;

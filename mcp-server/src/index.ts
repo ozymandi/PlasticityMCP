@@ -7,6 +7,7 @@ import { curveEdit } from "./tools/curve-edit.js";
 import { curves } from "./tools/curves.js";
 import { exchange } from "./tools/exchange.js";
 import { faces } from "./tools/faces.js";
+import { instances } from "./tools/instances.js";
 import { primitives } from "./tools/primitives.js";
 import { profiles } from "./tools/profiles.js";
 import { projection } from "./tools/projection.js";
@@ -25,6 +26,7 @@ const families: ToolFamily[] = [
   primitives,
   scene,
   transforms,
+  instances,
   solids,
   faces,
   curves,

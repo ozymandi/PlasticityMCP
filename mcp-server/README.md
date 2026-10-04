@@ -41,8 +41,13 @@ A second channel, independent of the WebSocket bridge: real B-Rep operations thr
 
 | `copy_bodies` | Independent copies of bodies or curves, optional `delta` shift. |
 | `mirror_bodies` | Mirrored copies across a plane (`planeOrigin`, `planeNormal`); `keepOriginal: false` deletes the originals (two undo steps). |
-| `array_rectangular` | Row or grid of copies: `direction1` / `count1` / `spacing1`, optional second direction. Counts include the original. |
-| `array_radial` | `count` items around an axis (`center`, `axis`) over `angle` degrees. |
+| `array_rectangular` | Row or grid of copies: `direction1` / `count1` / `spacing1`, optional second direction. Counts include the original. `instances` optional. |
+| `array_radial` | `count` items around an axis (`center`, `axis`) over `angle` degrees. `instances` optional. |
+| `array_curve` | `count` items along curve `curveId`; `alignment` normal / parallel / transport, `twist`, `scale`, `extent`. `instances` optional. |
+| `list_instances` | Instances: id, name, source body, bounds. |
+| `create_instances` | Linked copies of bodies or curves, optional `delta` shift. |
+| `realize_instances` | Turn instances into independent bodies. |
+| `delete_instances` | Delete instances by id. |
 | `get_body_topology` | What a body is made of, with ids: faces and edges of a Solid / Sheet (`include`: faces / edges / all) plus the control points of its spline faces, or segments, vertices and control points of a curve. |
 | `boolean` | `union` / `difference` / `intersection` of `toolIds` against `targetIds`; `keepTools` optional. |
 | `fillet` | Round with `radius`: edges of a body (`edgeIds`), corner vertices of a curve (`vertexIds`), or every corner of a curve. |
@@ -128,7 +133,7 @@ A second channel, independent of the WebSocket bridge: real B-Rep operations thr
 
 `native_launch` adds Chromium switches that keep the window drawing while it is covered by other windows, so everything works at full speed with Plasticity in the background. A **minimized** window does not draw: `set_view` and `screenshot` then fail with a clear message (`native_status` reports `windowVisible`) and modelling tools slow down to about two seconds per operation.
 
-Reference meshes are a separate family of objects with ids of their own: `list_bodies`, the transform tools and the modelling tools do not see them.
+Reference meshes and instances are separate families of objects with ids of their own: `list_bodies`, the transform tools and the modelling tools do not see them. An instance becomes a body through `realize_instances`.
 
 IGES and SAT are not available: they need the Studio edition of Plasticity (this server is developed against an Indie licence).
 

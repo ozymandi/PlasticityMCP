@@ -447,8 +447,8 @@ Excluded: Studio-only commands (Align, PolySplines, xNURBS, Square, Rebuild Face
 | 13 | Curves: Offset, Fillet Curve / Vertex, Trim, Cut, Split, Extend, Bridge, Rebuild, Raise Degree, Slot, Text, Spiral, Polygon, rectangles, tangent arcs and circles, control points | ~30 | 10 | ✅ done (Split Segment and Insert Knot deferred) |
 | 14 | Projection: Project (three kinds), Project Outline, Create Outline, Duplicate and Project | 7 | 3 | ✅ done |
 | 15 | Surfaces: Bridge Surface, Constrained Surface, Raise Surface Degree, Slide CV, Deform, Rebuild Face, Remove Nominal Surface (Loft Guide is part of Loft) | 7 | 3 | ✅ done |
-| 16 | Copies and placement: Curve Array, Place, Copy / Paste with Placement, instances | 6 | 2.5 | next |
-| 17 | Scene: groups, hide / show / isolate, lock, materials, extended selection | 12 | 4 | |
+| 16 | Copies and placement: Curve Array, Place, Copy / Paste with Placement, instances | 6 | 2.5 | ✅ done (Place and Copy / Paste with Placement deferred) |
+| 17 | Scene: groups, hide / show / isolate, lock, materials, extended selection | 12 | 4 | next |
 | 18 | Measuring: distance, radius, continuity, Dimension, Section Analysis, Check | 7 | 3 | |
 | 19 | Environment: construction planes, new / open / save document, units and grid | 5 | 2.5 | |
 
@@ -637,6 +637,30 @@ Verified live in Untitled: `smoke:native` passes with **309 checks** (14 new); t
 
 **Not verified / not exposed:** the Bridge Surface options `trimWalls`, `trimBlend`, `propagate` and the senses (native defaults; the senses made no difference in the test); constrained surface `angularTolerance`; Deform options Scale / Offset / Flip / Reblend; `rotate_control_points` on a surface (same factory family as move and scale, which were run); surface control points of imported or lofted spline surfaces with many control points; `rebuild` of several faces in one call (one face per call). Found but not in the manual, left out: `SweepToolCommand`, `PushFaceCommand`.
 
+Committed (`68e6b66`), merged into `main` and published.
+
+### Block 16 — copies and placement — ✅ Done in part (2026-10-04, ~2 h)
+
+Five new tools, **116 in total** (`src/native/instances.ts`, `src/tools/instances.ts`; `array_curve` in the transforms family):
+
+| Tool | Native factory | Notes |
+|------|----------------|-------|
+| `array_curve` | `CurveArrayFactory` | `items`, `curve`, `num`, `alignment` (`SweepAlignmentType` normal 21560 / parallel 21561 / transport 21564), `twistDegrees`, `scale`, `distance` as a ratio 0..1. Each copy keeps the offset the original has from the start of the curve; twist and scale act about the curve, so an original far from the curve start lands far away. |
+| `create_instances` | `CreateInstanceFactory` (+ `MoveItemAndEmptyFactory`) | Bodies and curves. Create and shift inside one command. |
+| `realize_instances` | `RealizeInstanceFactory` | |
+| `list_instances`, `delete_instances` | — / native Delete | |
+| `array_rectangular`, `array_radial`, `array_curve` (option) | `shouldMakeInstances` | `instances: true` → the result carries `createdInstances` instead of bodies. |
+
+How instances are stored: they are "empties" like reference meshes (`db.empties`, class `InstanceEmpty`, info tag `Instance`), with small integer ids (`0`, `1`, …) that are reused after undo. An instance has no geometry: `targetKey` points to the source body (`db.nodes.key2item`), and its place is its own `matrixWorld`. Bounds in `list_instances` are the source's box carried by that matrix.
+
+**Deferred, as warned in the proposal — both need the pointer:**
+- **Place.** `PlaceFactory` computes its placement only from `configureSteps(…)` with seven arguments that the UI builds from the clicked snap points; setting its matrices directly fails inside the factory. Without the source there is no telling what the seven arguments are. What Place does without a pointer is already covered: `copy_bodies` (or `create_instances`) followed by `move_bodies` / `rotate_bodies` / `scale_bodies`.
+- **Copy with Placement / Paste with Placement.** Copy with Placement waits for a click on the reference point. Plain copy and paste do work without a click (`editor.clipboard.copy()` on the selection writes to the system clipboard; `PasteCommand` pastes at the same coordinates and then waits in a move gizmo until confirmed) — that would move objects between two Plasticity windows. Not built: it was not what was proposed, it overwrites the user's clipboard, and the paste has to be confirmed programmatically. Designer's decision (2026-10-04): leave it out until there is a real need to move objects between documents.
+
+Verified live in Untitled: `smoke:native` passes with **322 checks** (13 new); the end-to-end script over stdio passes (116 tools, argument validation, document restored); build and protocol tests pass.
+
+**Not verified / not exposed:** `array_curve` extent as a metric distance (only the ratio); moving, rotating or hiding existing instances (no tools — an instance is placed when it is made); instances of instances; what happens to instances when their source is deleted.
+
 Committed, merged into `main` and published. The MCP client must be restarted to see the new tools.
 
 Other ideas (not agreed yet): transforming and hiding reference meshes; opening `.plasticity` files is in block 19.
@@ -686,4 +710,4 @@ PlasticityMCP/
 ## Next action
 
 1. Designer: close Plasticity and call `native_launch` (or `npm run smoke:native`) once to verify the cold-start path; restart the MCP client so it picks up the new tools.
-2. Full command coverage: blocks 0, 0b (split of `index.ts`) and 11 (solids) are in `main` and published — 69 tools. Blocks 0, 0b, 11 and 12 are in `main` and published — 84 tools. Blocks 0, 0b, 11, 12 and 13 are in `main` and published — 105 tools. Blocks 0, 0b and 11–14 are in `main` and published — 108 tools. Blocks 0, 0b and 11–15 are in `main` and published — 111 tools. Next: the proposal for block 16 (copies and placement); the Designer asked for it on 2026-10-04. Work continues on branch `native-full-spectrum`.
+2. Full command coverage: blocks 0, 0b (split of `index.ts`) and 11 (solids) are in `main` and published — 69 tools. Blocks 0, 0b, 11 and 12 are in `main` and published — 84 tools. Blocks 0, 0b, 11, 12 and 13 are in `main` and published — 105 tools. Blocks 0, 0b and 11–14 are in `main` and published — 108 tools. Blocks 0, 0b and 11–15 are in `main` and published — 111 tools. Blocks 0, 0b and 11–16 are in `main` and published — 116 tools. Next: the proposal for block 17 (scene); the Designer asked for it on 2026-10-04. Before the next live work ask the Designer to restart Plasticity (renderer at 617 MB after six smoke runs). Work continues on branch `native-full-spectrum`.

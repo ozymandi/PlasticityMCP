@@ -3,10 +3,13 @@
 import { boundsCentre } from "./core.js";
 import { MM, cross, norm, toMeters, unit } from "./math.js";
 import { BUSY_GUARD, FIND_VIEW, STUCK_CHECK, commandFunction } from "./snippets.js";
-import { SurfaceTools } from "./surfaces.js";
-import { MutationResult, Vec3 } from "./types.js";
+import { InstanceTools } from "./instances.js";
+import { CurveArrayAlignment, MutationResult, Vec3 } from "./types.js";
 
-export class TransformTools extends SurfaceTools {
+// Native codes, read from the running 26.1.3 app.
+const ALIGNMENT_CODES: Record<CurveArrayAlignment, number> = { normal: 21560, parallel: 21561, transport: 21564 };
+
+export class TransformTools extends InstanceTools {
   moveBodies(ids: number[], deltaMm: Vec3): Promise<MutationResult> {
     const setup = `
         factory.items = args.ids.map(find);
@@ -179,6 +182,7 @@ export class TransformTools extends SurfaceTools {
     direction2: Vec3 = [0, 1, 0],
     count2 = 1,
     spacing2Mm = 0,
+    instances = false,
   ): Promise<MutationResult> {
     if (count1 * count2 < 2) {
       return Promise.reject(new Error("The array needs at least two items in total"));
@@ -194,22 +198,26 @@ export class TransformTools extends SurfaceTools {
         factory.num1 = args.count1;
         factory.num2 = args.count2;
         factory.distance1 = args.spacing1;
-        factory.distance2 = args.spacing2;`;
-    return this.mutate(
-      commandFunction("RectangularArrayCommand", ["Vector3"], setup),
-      ["RectangularArrayFactory", "Vector3"],
-      [
-        {
-          ids,
-          direction1,
-          direction2,
-          count1,
-          count2,
-          spacing1: spacing1Mm * MM,
-          spacing2: spacing2Mm * MM,
-        },
-      ],
-    );
+        factory.distance2 = args.spacing2;
+        factory.shouldMakeInstances = args.instances;`;
+    const run = () =>
+      this.mutate(
+        commandFunction("RectangularArrayCommand", ["Vector3"], setup),
+        ["RectangularArrayFactory", "Vector3"],
+        [
+          {
+            ids,
+            direction1,
+            direction2,
+            count1,
+            count2,
+            spacing1: spacing1Mm * MM,
+            spacing2: spacing2Mm * MM,
+            instances,
+          },
+        ],
+      );
+    return instances ? this.withInstances(run) : run();
   }
 
   /**
@@ -222,6 +230,7 @@ export class TransformTools extends SurfaceTools {
     axis: Vec3,
     count: number,
     angleDeg = 360,
+    instances = false,
   ): Promise<MutationResult> {
     const setup = `
         const axis = new Vector3(...args.axis).normalize();
@@ -233,11 +242,50 @@ export class TransformTools extends SurfaceTools {
         factory.mode = 'total';
         factory.num1 = 1;
         factory.num2 = args.count;
-        factory.angle = args.radians;`;
-    return this.mutate(
-      commandFunction("RadialArrayCommand", ["Vector3"], setup),
-      ["RadialArrayFactory", "Vector3"],
-      [{ ids, center: toMeters(centerMm), axis, count, radians: (angleDeg * Math.PI) / 180 }],
-    );
+        factory.angle = args.radians;
+        factory.shouldMakeInstances = args.instances;`;
+    const run = () =>
+      this.mutate(
+        commandFunction("RadialArrayCommand", ["Vector3"], setup),
+        ["RadialArrayFactory", "Vector3"],
+        [{ ids, center: toMeters(centerMm), axis, count, radians: (angleDeg * Math.PI) / 180, instances }],
+      );
+    return instances ? this.withInstances(run) : run();
+  }
+
+  /**
+   * `count` items (the original included) spread along a curve. Each copy keeps the offset
+   * the original has from the start of the curve. `extent` (0..1) is the part of the curve
+   * that is used.
+   */
+  arrayCurve(
+    ids: number[],
+    curveId: number,
+    count: number,
+    alignment: CurveArrayAlignment = "normal",
+    twistDeg = 0,
+    scale = 1,
+    extent = 1,
+    instances = false,
+  ): Promise<MutationResult> {
+    const setup = `
+        factory.items = args.ids.map((id) => typed(id, 'Solid', 'Sheet', 'Wire'));
+        factory.curve = typed(args.curveId, 'Wire');
+        factory.num = args.count;
+        factory.alignment = args.alignment;
+        factory.twistDegrees = args.twist;
+        factory.scale = args.scale;
+        factory.distance = args.extent;
+        factory.shouldMakeInstances = args.instances;`;
+    if (ids.includes(curveId)) {
+      return Promise.reject(new Error("The path curve cannot be one of the arrayed bodies"));
+    }
+    const run = () =>
+      this.mutate(
+        commandFunction("CurveArrayCommand", [], setup),
+        ["CurveArrayFactory"],
+        [{ ids, curveId, count, alignment: ALIGNMENT_CODES[alignment], twist: twistDeg, scale, extent, instances }],
+      );
+    return instances ? this.withInstances(run) : run();
   }
 }

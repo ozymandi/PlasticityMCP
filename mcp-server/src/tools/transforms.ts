@@ -2,6 +2,7 @@ import { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import {
   BODY_IDS_SCHEMA,
+  BodyId,
   BodyIds,
   Direction,
   native,
@@ -55,6 +56,7 @@ const ArrayRectangularArgs = z.object({
   direction2: Direction.optional(),
   count2: ArrayCount.optional().default(1),
   spacing2: z.number().positive().optional(),
+  instances: z.boolean().optional().default(false),
 });
 
 const ArrayRadialArgs = z.object({
@@ -67,7 +69,25 @@ const ArrayRadialArgs = z.object({
     .refine((a) => a !== 0 && Math.abs(a) <= 360, "angle must be non-zero and within ±360")
     .optional()
     .default(360),
+  instances: z.boolean().optional().default(false),
 });
+
+const ArrayCurveArgs = z.object({
+  ids: BodyIds,
+  curveId: BodyId,
+  count: z.number().int().min(2).max(200),
+  alignment: z.enum(["normal", "parallel", "transport"]).optional().default("normal"),
+  twist: z.number().optional().default(0),
+  scale: z.number().positive().optional().default(1),
+  extent: z.number().gt(0).max(1).optional().default(1),
+  instances: z.boolean().optional().default(false),
+});
+
+const INSTANCES_SCHEMA = {
+  type: "boolean",
+  default: false,
+  description: "Make instances (linked copies, returned in `createdInstances`) instead of bodies",
+};
 
 const tools: Tool[] = [
   {
@@ -156,7 +176,8 @@ const tools: Tool[] = [
       "Repeat bodies in a row or a grid. `count1` items `spacing1` millimetres apart along " +
       "`direction1`; optionally repeated `count2` times, `spacing2` apart, along `direction2`. " +
       "Counts include the original, so count1: 3 adds two copies. The copies are returned in " +
-      "`created`. One undo step.",
+      "`created`; with `instances: true` they are instances, returned in `createdInstances`. " +
+      "One undo step.",
     inputSchema: {
       type: "object",
       required: ["ids", "direction1", "count1", "spacing1"],
@@ -168,6 +189,7 @@ const tools: Tool[] = [
         direction2: { ...VEC3_SCHEMA, description: "Second direction [x, y, z]" },
         count2: { type: "number", default: 1 },
         spacing2: { type: "number" },
+        instances: INSTANCES_SCHEMA,
       },
     },
   },
@@ -177,7 +199,8 @@ const tools: Tool[] = [
       "Repeat bodies around an axis: `count` items (the original included) spread evenly over " +
       "`angle` degrees (default 360) around the axis through `center` along `axis`. With 360 " +
       "the items are 360 / count apart; with a smaller angle the first and last item sit at " +
-      "its two ends. The copies are returned in `created`. One undo step.",
+      "its two ends. The copies are returned in `created`; with `instances: true` they are " +
+      "instances, returned in `createdInstances`. One undo step.",
     inputSchema: {
       type: "object",
       required: ["ids", "center", "axis", "count"],
@@ -187,6 +210,34 @@ const tools: Tool[] = [
         axis: { ...VEC3_SCHEMA, description: "Axis direction [x, y, z]" },
         count: { type: "number", description: "Total items, original included (2 or more)" },
         angle: { type: "number", default: 360 },
+        instances: INSTANCES_SCHEMA,
+      },
+    },
+  },
+  {
+    name: "array_curve",
+    description:
+      "Repeat bodies along a curve: `count` items (the original included) spread evenly over " +
+      "curve `curveId`. Each copy keeps the offset the original has from the start of the " +
+      "curve, so put the original at (or relative to) the curve's start. `alignment`: " +
+      "`normal` turns the copies with the curve, `parallel` keeps the original orientation, " +
+      "`transport` follows the curve without twisting — best for curves in space. `twist` " +
+      "(degrees) and `scale` grow gradually to their value at the last copy; `extent` " +
+      "(0..1, default 1) is the part of the curve that is used. The copies are returned in " +
+      "`created`; with `instances: true` they are instances, returned in `createdInstances`. " +
+      "One undo step.",
+    inputSchema: {
+      type: "object",
+      required: ["ids", "curveId", "count"],
+      properties: {
+        ids: BODY_IDS_SCHEMA,
+        curveId: { type: "number", description: "The path curve" },
+        count: { type: "number", description: "Total items, original included (2 or more)" },
+        alignment: { type: "string", enum: ["normal", "parallel", "transport"], default: "normal" },
+        twist: { type: "number", default: 0 },
+        scale: { type: "number", default: 1 },
+        extent: { type: "number", default: 1 },
+        instances: INSTANCES_SCHEMA,
       },
     },
   },
@@ -236,13 +287,32 @@ const handlers: ToolFamily["handlers"] = {
         args.direction2,
         args.count2,
         args.spacing2,
+        args.instances,
       ),
     );
   },
 
   array_radial: async (rawArgs) => {
     const args = ArrayRadialArgs.parse(rawArgs ?? {});
-    return ok(await native.arrayRadial(args.ids, args.center, args.axis, args.count, args.angle));
+    return ok(
+      await native.arrayRadial(args.ids, args.center, args.axis, args.count, args.angle, args.instances),
+    );
+  },
+
+  array_curve: async (rawArgs) => {
+    const args = ArrayCurveArgs.parse(rawArgs ?? {});
+    return ok(
+      await native.arrayCurve(
+        args.ids,
+        args.curveId,
+        args.count,
+        args.alignment,
+        args.twist,
+        args.scale,
+        args.extent,
+        args.instances,
+      ),
+    );
   },
 };
 

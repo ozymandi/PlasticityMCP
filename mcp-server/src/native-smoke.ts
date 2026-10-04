@@ -70,6 +70,7 @@ async function main() {
     await curveEditChecks(native);
     await projectionChecks(native);
     await surfaceChecks(native);
+    await instanceChecks(native);
   } catch (err) {
     console.error("SMOKE ERROR:", (err as Error).message);
     process.exitCode = 1;
@@ -1570,6 +1571,69 @@ async function surfaceChecks(native: NativeSession): Promise<void> {
   await native.undo();
   const uneven = await failure(native.constrainedSurface(cloud, [[0, 0, 1]]));
   check("constrained_surface wants one normal per point", /one normal per point/.test(uneven?.message ?? ""), uneven?.message);
+}
+
+// Instances and the array along a curve — drawn around x = 8000.
+async function instanceChecks(native: NativeSession): Promise<void> {
+  const X = 8000;
+  const cube = (await native.createBox([X, 0, 0], [10, 10, 10])).created[0]!;
+  const instancesBefore = (await native.listInstances()).length;
+  const depth = (await native.state()).undoDepth;
+
+  const linked = await native.createInstances([cube.id], [30, 0, 0]);
+  const instance = linked.created[0];
+  check("create_instances: a linked copy, shifted, one undo step", linked.created.length === 1 &&
+    instance?.sourceId === cube.id && linked.undoDepth === depth + 1 && instance.boundsMm !== null &&
+    instance.boundsMm.min.every((v, i) => Math.abs(v - [X + 30, 0, 0][i]!) < 1e-3) &&
+    instance.boundsMm.max.every((v, i) => Math.abs(v - [X + 40, 10, 10][i]!) < 1e-3), JSON.stringify(instance));
+  check("an instance is not a body", (await native.state()).bodies.filter((b) => b.boundsMm?.min[0] === X + 30).length === 0 &&
+    (await native.listInstances()).length === instancesBefore + 1);
+  const real = await native.realizeInstances([instance!.id]);
+  check("realize_instances turns it into a body", real.created.length === 1 && real.created[0]?.type === "Solid" &&
+    boundsMatch(real.created[0], [X + 30, 0, 0], [X + 40, 10, 10]) &&
+    (await native.listInstances()).length === instancesBefore, fmt(real.created[0]));
+  await native.undo();
+  const gone = await native.deleteInstances([instance!.id]);
+  check("delete_instances removes it", gone.removedIds.length === 1 && gone.instanceCount === instancesBefore,
+    JSON.stringify(gone.removedIds));
+  await native.undo();
+  await native.undo(); // the instance
+  check("undo removes the instance", (await native.listInstances()).length === instancesBefore);
+  const unknown = await failure(native.realizeInstances([424242]));
+  check("unknown instance id is refused", /Unknown instance id/.test(unknown?.message ?? ""), unknown?.message);
+  const wire = (await native.createPolyline([[X, 50, 0], [X + 10, 50, 0], [X + 10, 60, 0]])).created[0]!;
+  const curveLink = await native.createInstances([wire.id]);
+  check("a curve can be instanced too", curveLink.created[0]?.sourceId === wire.id, JSON.stringify(curveLink.created));
+  await native.undo();
+
+  const row = await native.arrayRectangular([cube.id], [1, 0, 0], 3, 20, undefined, 1, 0, true);
+  check("array_rectangular with instances makes instances, not bodies", row.created.length === 0 &&
+    row.createdInstances?.length === 2 && row.createdInstances.every((i) => i.sourceId === cube.id) &&
+    row.createdInstances.some((i) => Math.abs(i.boundsMm!.min[0]! - (X + 40)) < 1e-3), JSON.stringify(row.createdInstances));
+  await native.undo();
+  const ring = await native.arrayRadial([cube.id], [X + 50, 0, 0], [0, 0, 1], 4, 360, true);
+  check("array_radial with instances", ring.created.length === 0 && ring.createdInstances?.length === 3,
+    JSON.stringify(ring.createdInstances?.length));
+  await native.undo();
+
+  // --- along a curve ---
+  const path = (await native.createSpline([[X, 100, 0], [X + 40, 120, 0], [X + 80, 100, 0], [X + 120, 120, 0]])).created[0]!;
+  const strung = await native.arrayCurve([cube.id], path.id, 5, "parallel");
+  check("array_curve: copies along the curve, original included in the count", strung.created.length === 4 &&
+    strung.created.every((b) => b.type === "Solid") &&
+    strung.created.some((b) => boundsMatch(b, [X + 120, 20, 0], [X + 130, 30, 10], 0.01)) && strung.removedIds.length === 0,
+    JSON.stringify(strung.created.map((b) => b.boundsMm?.min)));
+  await native.undo();
+  const half = await native.arrayCurve([cube.id], path.id, 4, "transport", 0, 1, 0.5);
+  check("array_curve over a part of the curve", half.created.length === 3 &&
+    half.created.every((b) => b.boundsMm!.max[0]! < X + 90), JSON.stringify(half.created.map((b) => b.boundsMm?.max)));
+  await native.undo();
+  const beads = await native.arrayCurve([cube.id], path.id, 3, "normal", 0, 1, 1, true);
+  check("array_curve with instances", beads.created.length === 0 && beads.createdInstances?.length === 2,
+    JSON.stringify(beads.createdInstances?.length));
+  await native.undo();
+  const selfPath = await failure(native.arrayCurve([path.id], path.id, 3));
+  check("array_curve refuses its own path as an item", /path curve/.test(selfPath?.message ?? ""), selfPath?.message);
 }
 
 main().catch((err) => {
