@@ -93,6 +93,7 @@ npm run smoke:native
 ## Repository
 
 - [mcp-server/](mcp-server/) — the server (`src/native/` is the CAD layer and `src/tools/` the MCP tool definitions, one module per tool family in each; `src/launcher.ts` the launch trick, `src/native-smoke.ts` the live test)
+- [skills/plasticity-mcp/](skills/plasticity-mcp/SKILL.md) — a Claude skill with the modelling rules for working through this server (order of work, edge treatment, research and brief, how to pick edges); copy the folder into `~/.claude/skills/` to use it
 - [task.md](task.md) — scope, decisions, per-block status and findings
 - [docs/coverage.md](docs/coverage.md) — Plasticity command → tool, what is missing and why, where a tool differs from the command
 - [docs/ws-protocol.md](docs/ws-protocol.md) — reverse-engineered bridge protocol
