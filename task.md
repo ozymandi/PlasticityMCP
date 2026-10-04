@@ -153,7 +153,7 @@ Findings:
 - Factories used: `ThreePointBoxFactory` (p1–p4), `PossiblyBooleanSphereFactory` (center, radius), `PossiblyBooleanCylinderFactory` (`center` = **base** cap centre, orientation quaternion, radius, height).
 - Bodies: `editor.geo.geometryModel` → `db.lookupStableId(versionId)`, bounds via `item.model.FindBox()` (metres).
 
-**Not verified:** the cold-start path of `launcher.ts` (Plasticity closed → `native_launch`). The same logic passed in the spike script, but the TypeScript version has only run against an already-launched instance.
+**Not verified:** the cold-start path of `launcher.ts` (Plasticity closed → `native_launch`). The same logic passed in the spike script, but the TypeScript version has only run against an already-launched instance. *(closed 2026-10-04 — see "Verification debt closed")*
 
 Committed as `f9642f0` on branch `native-stage-1`.
 
@@ -169,7 +169,7 @@ Findings:
 - Sketch curves produce extra Wire fragments without a stable id — they are filtered out of all listings.
 - Renderer errors carry a stack trace; only the first line is returned to the client.
 
-**Not verified:** delete / rename on a Wire or Sheet (only selection of a Wire was probed); cold start of `launcher.ts` (still pending from stage 1).
+**Not verified:** delete / rename on a Wire or Sheet (only selection of a Wire was probed); cold start of `launcher.ts` (still pending from stage 1). *(closed 2026-10-04 — see "Verification debt closed")*
 
 `smoke:native` guard relaxed: runs in an "Untitled" document that is either pristine or has no bodies.
 
@@ -187,14 +187,56 @@ Findings:
 - Factories / commands: `MoveItemAndEmptyFactory` + `MoveItemCommand` (`items`, `move`), `RotateItemAndEmptyFactory` + `RotateItemCommand` (`items`, `pivot`, `rotation` quaternion — set it directly, not via `axis`), `ProjectingScaleItemAndEmptyFactory` + `ScaleItemCommand` (`items`, `pivot`, `scale`).
 - Stable ids survive all three transforms and their Undo.
 
-**Not verified:** transforms on Wire / Sheet bodies; cold start of `launcher.ts` (still pending from stage 1).
+**Not verified:** transforms on Wire / Sheet bodies; cold start of `launcher.ts` (still pending from stage 1). *(closed 2026-10-04 — see "Verification debt closed")*
 
-Block 2 changes are **not committed**. The MCP client must be restarted to see the new tools (scene + transforms).
+Committed as `34e1f15` on branch `native-stage-1`.
+
+## Native block 3 — topology, boolean, fillet, chamfer, extrude — ✅ Done (2026-10-04, ~2.5 h)
+
+New tools: `get_body_topology`, `boolean`, `fillet_edges`, `chamfer_edges` (added on Designer's request), `extrude_faces` (30 tools total).
+
+Verified live on 26.1.3 (Untitled): `smoke:native` extended and passing — box / cylinder topology, difference / union / intersection (incl. `keepTools`), fillet (4 cylinder faces r = 2), chamfer (4 planar faces), extrude +5 / −4, stale ids rejected, Undo after each. Built stdio server exercised end to end as a chain (drill hole → fillet → extrude top) incl. validation errors.
+
+Findings:
+- Face / edge ids look like `39f1775` / `39e1771` (prefix = body version). **Every change to a body renames all of them**; Undo brings the old ids back. Stale ids are rejected with an explicit message.
+- Topology: `item.model.GetFaces()` / `GetEdges()` joined to `view.high.faces|edges` by `entityId`.
+- Boolean codes confirmed live: 15901 intersection, 15902 difference, 15903 union (`BooleanFactory`: `targets`, `tools`, `operationType`, `keepTools`). Target keeps its id.
+- Fillet and chamfer share `FilletShellFactory` (`shell`, `edges`, `distance`): positive = fillet, negative = chamfer.
+- `ExtrudeFactory` with only `faces` creates a **separate new Solid**. Setting `factory.targets = [view]` makes it a true push / pull: positive distance unions outward, negative cuts in; the body keeps its id.
+- **An oversized fillet does not fail** — radius 30 on a 40 × 30 plate silently produced a different, smaller shape. The tool cannot detect this; the caller has to check the returned bounds.
+
+Scope decisions: extrude covers faces of a body only; extruding a profile from a curve moves to block 4.
+
+**Not verified:** these operations on Sheet bodies; multi-target booleans; cold start of `launcher.ts` (still pending from stage 1). *(closed 2026-10-04 — see "Verification debt closed")*
+
+## Verification debt closed (2026-10-04, ~1.5 h)
+
+All "Not verified" items from stage 1 and blocks 1–3 were checked live on 26.1.3.
+
+| Item | Result |
+|------|--------|
+| Cold start (`launcher.ts`, Plasticity closed → launch → full `smoke:native`) | ✅ Passes — after one fix (below) |
+| Wire: select, rename, move, rotate, scale, delete (+ Undo) | ✅ All work; `get_body_topology` rejects a Wire with a clear message |
+| Sheet: topology, rename, move, rotate, scale, fillet, chamfer, delete | ✅ All work |
+| Sheet: `extrude_faces` | ❌ → ✅ Failed with `PK_ERROR_boolean_failure`; fixed (below) |
+| Boolean with Sheets | Solid target / Sheet tool `difference` **splits** the solid (one body changed + one created). Sheet target / Solid tool: `difference` and `intersection` work, `union` fails with a native error (propagated as is) |
+| Boolean with two targets and two tools | ✅ Works; now in `smoke:native` |
+
+Fixes made:
+- **Connect during load.** After a cold start the CDP target appears before the app has loaded (title still `index.html`). `native_connect` now waits (up to 40 s) for the command log, `editor.windowLoaded`, and a real document title.
+- **`extrude_faces` on a Sheet.** A Sheet cannot be the boolean target of an extrusion. For a Sheet the tool now extrudes without a target: the result is a **new Solid** (in `created`), the Sheet stays.
+- **Stale crash-recovery backup.** Plasticity rewrites `%TEMP%\plasticityackup.production.plasticity` after each history change but **skips the write while the previous one is still running**. Rapid back-to-back operations (as an MCP client issues them) left a stale backup, and Plasticity restores that backup into "Untitled" on the next start — the cold-start run came up with three bodies from an earlier smoke run. Every mutation now waits for `editor.backup.isBusy` to clear first. Verified: backup file matches the final state after `smoke:native` and after the stdio chain.
+- **`smoke:native` guard.** An Untitled document can hold restored unsaved work, so "untitled with no history" was not a safe test for disposability. The smoke now runs only if the document is empty or holds just the default 1 m cube.
+
+Wire / Sheet checks were one-off probes (the public tools cannot create curves or sheets yet); permanent `smoke:native` coverage for them comes with block 4.
+
+**Still not verified:** the refusal path of `native_launch` when Plasticity is running *without* native access (needs a normally started instance).
+
+Block 3 and the debt-closure fixes are committed on branch `native-stage-1`. The MCP client must be restarted to see the new tools.
 
 ### Next blocks (each proposed separately before implementation)
 
-3. Boolean, fillet, extrude.
-4. Curves: polyline, circle, spline.
+4. Curves: polyline, circle, spline; extrude a profile from a closed curve.
 5. STEP import/export, save document, screenshot.
 
 ## Risks
@@ -242,4 +284,4 @@ PlasticityMCP/
 ## Next action
 
 1. Designer: close Plasticity and call `native_launch` (or `npm run smoke:native`) once to verify the cold-start path; restart the MCP client so it picks up the new tools.
-2. Commit block 2 (on Designer's word), then propose block 3 (boolean / fillet / extrude — needs face and edge ids).
+2. Propose block 4 (curves + profile extrude).

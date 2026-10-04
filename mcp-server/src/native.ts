@@ -35,6 +35,47 @@ export interface NativeState {
   bodies: BodyInfo[];
 }
 
+export interface FaceInfo {
+  id: string;
+  /** Native surface class, e.g. "Plane", "Cylinder". */
+  surface: string;
+  planar: boolean;
+  centerMm: Vec3;
+  /** Outward normal at the face centre. */
+  normal: Vec3;
+  radiusMm?: number;
+  edgeIds: string[];
+}
+
+export interface EdgeInfo {
+  id: string;
+  kind: "line" | "circle" | "curve";
+  lengthMm: number;
+  startMm: Vec3;
+  midMm: Vec3;
+  endMm: Vec3;
+  radiusMm?: number;
+  faceIds: string[];
+}
+
+export interface BodyTopology {
+  id: number;
+  type: string;
+  faceCount: number;
+  edgeCount: number;
+  faces?: FaceInfo[];
+  edges?: EdgeInfo[];
+}
+
+export type BooleanOperation = "union" | "difference" | "intersection";
+
+// Native operation codes, read from the running 26.1.3 app.
+const BOOLEAN_CODES: Record<BooleanOperation, number> = {
+  intersection: 15901,
+  difference: 15902,
+  union: 15903,
+};
+
 export interface MutationResult {
   created: BodyInfo[];
   /** Bodies that kept their id but changed (bounds, name, topology, visibility, lock). */
@@ -49,7 +90,17 @@ const MM = 0.001;
 const OBJECT_GROUP = "plasticity-mcp";
 const COMMAND_TIMEOUT_MS = 60_000;
 
+const LOAD_TIMEOUT_MS = 40_000;
+
 const toMeters = (v: Vec3): Vec3 => [v[0] * MM, v[1] * MM, v[2] * MM];
+const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/** The window exists but the app inside it has not built its UI yet. */
+class NotReadyError extends Error {
+  constructor() {
+    super("Plasticity command log is not ready yet (window still loading)");
+  }
+}
 
 /** Everything about a body except its selection flag, for change detection. */
 const fingerprint = ({ selected: _selected, ...rest }: BodyInfo): string => JSON.stringify(rest);
@@ -107,12 +158,114 @@ const READ_STATE = `function () {
 
 // Snippets shared by the functions below; all run with `this` = editor.
 const BUSY_GUARD = `if (this.executor.isBusy) throw new Error('Plasticity is busy with another command');`;
-const FIND_VIEW = `const find = (id) => {
+const FIND_VIEW = `const findItem = (id) => {
     for (const [versionId, item] of this.geo.geometryModel) {
-      if (this.db.lookupStableId(versionId) === id) return item.view;
+      if (this.db.lookupStableId(versionId) === id) return item;
     }
     throw new Error('Unknown body id: ' + id);
+  };
+  const find = (id) => findItem(id).view;`;
+
+// Resolves face / edge ids of one body to their views. Ids are version-specific: any change
+// to the body invalidates them, so a miss is reported as stale rather than guessed at.
+const PICK_TOPOLOGY = `const pick = (collection, ids, kind) => {
+    const all = Array.from(collection?.versionIds ?? []).map(String);
+    return ids.map((id) => {
+      const index = all.indexOf(String(id));
+      if (index < 0) {
+        throw new Error('Stale or unknown ' + kind + ' id: ' + id + ' (re-read get_body_topology)');
+      }
+      return collection.get(index);
+    });
   };`;
+
+// Runs with `this` = editor. Faces and edges of one Solid / Sheet, in millimetres.
+const READ_TOPOLOGY = `function (args) {
+  ${FIND_VIEW}
+  const round = (n) => Math.round(n * 1e9) / 1e9 + 0;
+  const mm = (v) => [v.x, v.y, v.z].map((n) => Math.round(n * 1e9) / 1e6 + 0);
+  const dir = (v) => [v.x, v.y, v.z].map(round);
+  const len = (n) => Math.round(n * 1e9) / 1e6;
+  const item = findItem(args.id);
+  const view = item.view;
+  const type = view?.constructor?.name ?? 'Unknown';
+  if (type !== 'Solid' && type !== 'Sheet') {
+    throw new Error('Body ' + args.id + ' is a ' + type + ' and has no faces or edges');
+  }
+  const idsByEntity = (views) => {
+    const map = new Map();
+    const versionIds = views?.versionIds ?? [];
+    for (let i = 0; i < versionIds.length; i += 1) {
+      const v = views.get(i);
+      if (v) map.set(v.entityId, String(versionIds[i]));
+    }
+    return map;
+  };
+  const faceIds = idsByEntity(view.high.faces);
+  const edgeIds = idsByEntity(view.high.edges);
+  const adjacent = (collection, ids) => {
+    const out = [];
+    for (let i = 0; i < (collection?.Size?.() ?? 0); i += 1) {
+      const id = ids.get(collection.Get(i).Id());
+      if (id) out.push(id);
+    }
+    return out;
+  };
+  const result = { id: args.id, type, faceCount: faceIds.size, edgeCount: edgeIds.size };
+
+  if (args.include !== 'edges') {
+    const faces = [];
+    const modelFaces = item.model.GetFaces();
+    for (let i = 0; i < modelFaces.Size(); i += 1) {
+      const face = modelFaces.Get(i);
+      const id = faceIds.get(face.Id());
+      if (!id) continue;
+      const midpoint = face.FindMidpoint();
+      const radius = face.GetRadius();
+      faces.push({
+        id,
+        surface: face.GetSurface()?.surface?.constructor?.name ?? 'Unknown',
+        planar: Boolean(face.IsPlanar()),
+        centerMm: mm(midpoint.position),
+        normal: dir(midpoint.normal),
+        ...(Number.isFinite(radius) && radius > 0 ? { radiusMm: len(radius) } : {}),
+        edgeIds: adjacent(face.GetEdges(), edgeIds),
+      });
+    }
+    result.faces = faces;
+  }
+
+  if (args.include !== 'faces') {
+    const edges = [];
+    const modelEdges = item.model.GetEdges();
+    for (let i = 0; i < modelEdges.Size(); i += 1) {
+      const edge = modelEdges.Get(i);
+      const id = edgeIds.get(edge.Id());
+      if (!id) continue;
+      const circle = Boolean(edge.IsCircle());
+      let radiusMm;
+      if (circle) {
+        try {
+          const curve = edge.GetCurve();
+          const radius = (curve?.curve ?? curve)?.GetInfo?.()?.radius;
+          if (Number.isFinite(radius) && radius > 0) radiusMm = len(radius);
+        } catch {}
+      }
+      edges.push({
+        id,
+        kind: edge.IsLine() ? 'line' : circle ? 'circle' : 'curve',
+        lengthMm: len(edge.FindLength().length),
+        startMm: mm(edge.GetPointAndTangent(0).position),
+        midMm: mm(edge.GetPointAndTangent(0.5).position),
+        endMm: mm(edge.GetPointAndTangent(1).position),
+        ...(radiusMm === undefined ? {} : { radiusMm }),
+        faceIds: adjacent(edge.GetFaces(), faceIds),
+      });
+    }
+    result.edges = edges;
+  }
+  return result;
+}`;
 
 /**
  * Wraps a factory setup snippet into a native command. The snippet sees `factory`, `editor`,
@@ -123,6 +276,7 @@ function commandFunction(commandName: string, extraParams: string[], setup: stri
   return `async function (${["Factory", ...extraParams, "args"].join(", ")}) {
     ${BUSY_GUARD}
     ${FIND_VIEW}
+    ${PICK_TOPOLOGY}
     const editor = this;
     let failure;
     const command = new this.commands.${commandName}(this);
@@ -195,14 +349,60 @@ export class NativeSession {
     const client = await CdpClient.connect(target!.webSocketDebuggerUrl);
     try {
       await client.send("Runtime.enable");
-      await this.discover(client);
+      // Right after a launch the CDP target exists before the app has loaded: wait for it,
+      // and take the title from the page (the target list still says "index.html" then).
+      target = { ...target!, title: await this.waitUntilLoaded(client) };
     } catch (err) {
       client.close();
       throw err;
     }
     this.client = client;
-    this.target = target!;
-    return target!;
+    this.target = target;
+    return target;
+  }
+
+  private async waitUntilLoaded(client: CdpClient): Promise<string> {
+    const deadline = Date.now() + LOAD_TIMEOUT_MS;
+    const expired = () => {
+      if (Date.now() > deadline) throw new Error("Plasticity window did not finish loading in time");
+    };
+    for (;;) {
+      try {
+        await this.discover(client);
+        break;
+      } catch (err) {
+        if (!(err instanceof NotReadyError)) throw err;
+        expired();
+        await delay(300);
+      }
+    }
+    for (;;) {
+      const loaded = await client.send<EvaluateResult>("Runtime.callFunctionOn", {
+        objectId: this.editorId,
+        functionDeclaration: `function () {
+          const ready = this.windowLoaded === true && document.readyState === 'complete' &&
+            document.title !== 'index.html';
+          return ready ? document.title : null;
+        }`,
+        returnByValue: true,
+      });
+      if (typeof loaded.result?.value === "string") return loaded.result.value;
+      expired();
+      await delay(300);
+    }
+  }
+
+  /**
+   * Plasticity writes its crash-recovery backup after each history change, but skips the write
+   * while a previous one is still running. Back-to-back operations would leave a stale backup
+   * (restored into the next session's Untitled document), so let each write finish first.
+   */
+  private async waitForBackup(): Promise<void> {
+    for (let i = 0; i < 100; i++) {
+      const busy = await this.call<boolean>(`function () { return Boolean(this.backup?.isBusy); }`);
+      if (!busy) return;
+      await delay(50);
+    }
   }
 
   disconnect(): void {
@@ -222,9 +422,7 @@ export class NativeSession {
       objectGroup: OBJECT_GROUP,
     });
     const handlerId = handler.result?.objectId;
-    if (!handlerId) {
-      throw new Error("Plasticity command log is not ready yet (window still loading?)");
-    }
+    if (!handlerId) throw new NotReadyError();
     const props = (id: string) =>
       client.send<GetPropertiesResult>("Runtime.getProperties", { objectId: id });
 
@@ -311,6 +509,7 @@ export class NativeSession {
     values: unknown[] | ((before: NativeState) => unknown[]) = [],
   ): Promise<MutationResult> {
     return this.enqueue(async () => {
+      await this.waitForBackup();
       const before = await this.call<NativeState>(READ_STATE);
       const callValues = typeof values === "function" ? values(before) : values;
       await this.call(functionDeclaration, bindingNames, callValues);
@@ -446,6 +645,80 @@ export class NativeSession {
     );
   }
 
+  /**
+   * Faces and edges of a Solid / Sheet. Their ids are valid only until the body changes:
+   * re-read after every operation on it.
+   */
+  topology(id: number, include: "faces" | "edges" | "all" = "all"): Promise<BodyTopology> {
+    return this.enqueue(() => this.call<BodyTopology>(READ_TOPOLOGY, [], [{ id, include }]));
+  }
+
+  /** Boolean of `toolIds` against `targetIds`. Tools are consumed unless `keepTools`. */
+  boolean(
+    operation: BooleanOperation,
+    targetIds: number[],
+    toolIds: number[],
+    keepTools = false,
+  ): Promise<MutationResult> {
+    if (targetIds.some((id) => toolIds.includes(id))) {
+      return Promise.reject(new Error("A body cannot be both a target and a tool"));
+    }
+    const setup = `
+        factory.targets = args.targetIds.map(find);
+        factory.tools = args.toolIds.map(find);
+        factory.operationType = args.code;
+        factory.keepTools = args.keepTools;`;
+    return this.mutate(
+      commandFunction("BooleanCommand", [], setup),
+      ["BooleanFactory"],
+      [{ targetIds, toolIds, code: BOOLEAN_CODES[operation], keepTools }],
+    );
+  }
+
+  /** Round the given edges of one body with `radiusMm`. */
+  filletEdges(id: number, edgeIds: string[], radiusMm: number): Promise<MutationResult> {
+    return this.blendEdges(id, edgeIds, radiusMm * MM);
+  }
+
+  /** Bevel the given edges of one body by `distanceMm`. */
+  chamferEdges(id: number, edgeIds: string[], distanceMm: number): Promise<MutationResult> {
+    // Same native factory as fillet: a negative distance makes a chamfer.
+    return this.blendEdges(id, edgeIds, -distanceMm * MM);
+  }
+
+  private blendEdges(id: number, edgeIds: string[], distance: number): Promise<MutationResult> {
+    const setup = `
+        const view = find(args.id);
+        factory.shell = view;
+        factory.edges = pick(view.high?.edges, args.edgeIds, 'edge');
+        factory.distance = args.distance;`;
+    return this.mutate(
+      commandFunction("FilletShellCommand", [], setup),
+      ["FilletShellFactory"],
+      [{ id, edgeIds, distance }],
+    );
+  }
+
+  /**
+   * Extrude faces of one body along their normals. On a Solid this is a push / pull: positive
+   * `distanceMm` adds material outward, negative cuts into the body, and the body keeps its id.
+   * On a Sheet the extrusion becomes a new Solid and the Sheet is left as it is.
+   */
+  extrudeFaces(id: number, faceIds: string[], distanceMm: number): Promise<MutationResult> {
+    // `targets` turns the extrusion into a boolean against the body; without it the result is
+    // a separate Solid. A Sheet cannot be a boolean target here (PK_ERROR_boolean_failure).
+    const setup = `
+        const view = find(args.id);
+        factory.faces = pick(view.high?.faces, args.faceIds, 'face');
+        if (view.constructor.name === 'Solid') factory.targets = [view];
+        factory.distance1 = args.distance;`;
+    return this.mutate(
+      commandFunction("ExtrudeCommand", [], setup),
+      ["ExtrudeFactory"],
+      [{ id, faceIds, distance: distanceMm * MM }],
+    );
+  }
+
   undo(): Promise<MutationResult> {
     return this.mutate(`async function () {
       ${BUSY_GUARD}
@@ -513,6 +786,7 @@ export class NativeSession {
     return this.enqueue(async () => {
       // Renaming has no command of its own; run it inside a native command so that it
       // becomes an undo step. GroupSelectedCommand is only the carrier, its body is replaced.
+      await this.waitForBackup();
       await this.call(
         `async function (args) {
           ${BUSY_GUARD}

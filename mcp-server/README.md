@@ -39,6 +39,14 @@ A second channel, independent of the WebSocket bridge: real B-Rep operations thr
 | `rotate_bodies` | Rotate `angle` degrees around `axis` through `pivot`. |
 | `scale_bodies` | Scale by `factor` (number or `[x, y, z]`) relative to `pivot`. |
 
+| `get_body_topology` | Faces and edges of a body with ids and geometry (`include`: faces / edges / all). |
+| `boolean` | `union` / `difference` / `intersection` of `toolIds` against `targetIds`; `keepTools` optional. |
+| `fillet_edges` | Round edges with `radius`. |
+| `chamfer_edges` | Bevel edges by `distance`. |
+| `extrude_faces` | Push / pull faces of a Solid by `distance`: positive adds outward, negative cuts in. On a Sheet the extrusion becomes a new Solid. |
+
+Face and edge ids are valid only until the body changes — re-read `get_body_topology` after every operation on it. Stale ids are rejected.
+
 `pivot` is optional for rotate and scale; it defaults to the centre of the bodies' combined bounding box.
 
 Mutating tools return `created` and `changed` bodies (stable id, type, name, bounds, …) and `removedIds`. Transforms keep body ids, so their result is in `changed`.
