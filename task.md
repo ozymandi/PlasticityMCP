@@ -427,7 +427,45 @@ Findings:
 
 Block 10 is committed, merged into `main` (fast-forward) and pushed. The MCP client must be restarted to see the new tools.
 
-Ideas beyond the agreed list (not agreed yet): transforming and hiding reference meshes; PolySplines (mesh → NURBS); opening `.plasticity` files.
+## Full command coverage — plan agreed 2026-10-04
+
+Designer wants **the whole command set of Plasticity** available through the server, using the manual (https://doc.plasticity.xyz/) as the reference for what each command does. About 100 meaningful commands are still missing; estimate 38–42 h in total.
+
+Decisions (Designer):
+1. **Tool surface grouped the way Plasticity groups its commands.** The manual's "unified commands" (Fillet, Offset, Project, Join, Unjoin, Extend, Rebuild, …) become one tool each, which picks the variant from what it is given. Expected total: 110–120 tools.
+2. `native.ts` is split into modules per family (block 0).
+3. Order of blocks as proposed, by value for modelling.
+
+Excluded: Studio-only commands (Align, PolySplines, xNURBS, Square, Rebuild Face with explicit control; IGES / SAT), **Publish to Plasticity Share** (uploads the document to the web), display-only toggles (curvature, points), and the interactive "freestyle" variants of move / rotate / scale.
+
+| # | Block | Commands | Est. h | Status |
+|---|-------|----------|--------|--------|
+| 0 | Split `native.ts` into modules; curve topology (segments, vertices, control points) | — | 3.5 | ✅ done |
+| 11 | Solids: Cut, Hollow, Thicken, Thicken Face, Offset Face, Draft Face, Delete Face, Patch, Pipe, Join / Unjoin, Remove Fillets | 13 | 5 | next |
+| 12 | Faces and edges: Move / Rotate / Scale Face, Offset Edge, Offset Face Loop, Match Face, Extend Sheet, Untrim, Reverse, Unwrap, Isoparam, Complete Edge, Imprint | 14 | 5.5 | |
+| 13 | Curves: Offset, Fillet Curve / Vertex, Trim, Cut, Split, Extend, Bridge, Rebuild, Raise Degree, Slot, Text, Spiral, Polygon, rectangles, tangent arcs and circles, control points | ~30 | 10 | |
+| 14 | Projection: Project (three kinds), Project Outline, Create Outline, Duplicate and Project | 7 | 3 | |
+| 15 | Surfaces: Bridge Surface, Constrained Surface, Raise Surface Degree, Slide CV, Deform, Loft Guide | 6 | 3 | |
+| 16 | Copies and placement: Curve Array, Place, Copy / Paste with Placement, instances | 6 | 2.5 | |
+| 17 | Scene: groups, hide / show / isolate, lock, materials, extended selection | 12 | 4 | |
+| 18 | Measuring: distance, radius, continuity, Dimension, Section Analysis, Check | 7 | 3 | |
+| 19 | Environment: construction planes, new / open / save document, units and grid | 5 | 2.5 | |
+
+Each block: its own proposal, live verification, `smoke:native` checks, commit on Designer's word. Work is on branch `native-full-spectrum`.
+
+### Block 0 — ✅ Done (2026-10-04, ~1.5 h)
+
+- `mcp-server/src/native.ts` (2231 lines) is now a thin facade; the code lives in `mcp-server/src/native/`: `types.ts`, `math.ts`, `snippets.ts`, `core.ts` (connection, command execution, history) and one class per family — `scene.ts`, `primitives.ts`, `curves.ts`, `profiles.ts`, `solids.ts`, `transforms.ts`, `exchange.ts`, `view.ts` — chained by inheritance so `NativeSession` still has every method. The split was done by script as a pure move (checked line by line: nothing lost or added except class wrappers); core members went from `private` to `protected`. `index.ts` and the smoke test are untouched by the split.
+- `get_body_topology` now also describes **curves**: `closed`, segments (id, kind, length, start / mid / end), vertices (id, position) and control points (id, position). Earlier it refused curves. Segment ids look like `1278s106702`, vertex ids like `106699`, control point ids like `1`.
+- Finding: a Wire view has `segments`, `vertices`, `cvs` collections (`versionIds` on segments, `ids` on the other two); vertex and control point positions come from the view in single precision, so they are rounded to a micron. Selection has matching `addSegment`, `addVertex`, `addCurveCV`, and `addShellCV` for surface control points (`view.high.cvs`, left for block 15).
+
+Verified: `smoke:native` passes before and after (173 checks, 20 s), build and protocol tests pass, and the block 7 end-to-end script over stdio passes against the rebuilt server (document restored to empty).
+
+**Open question for the Designer:** `index.ts` (tool descriptions, argument schemas, dispatch — 1920 lines for 59 tools) will roughly double. Splitting it the same way, with each family's tool definitions next to its code, was not part of the approved block 0.
+
+Committed, merged into `main` and published.
+
+Other ideas (not agreed yet): transforming and hiding reference meshes; opening `.plasticity` files is in block 19.
 
 ## Risks
 
@@ -474,4 +512,4 @@ PlasticityMCP/
 ## Next action
 
 1. Designer: close Plasticity and call `native_launch` (or `npm run smoke:native`) once to verify the cold-start path; restart the MCP client so it picks up the new tools.
-2. Blocks 1–10 are in `main` and published. Designer decides what comes next (see the ideas list).
+2. Full command coverage: block 0 is in `main` and published. Approved 2026-10-04: split `index.ts` per family, then block 11 (solids) as proposed, including the rename `join_curves` → `join`. Work continues on branch `native-full-spectrum`.

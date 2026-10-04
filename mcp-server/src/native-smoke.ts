@@ -265,7 +265,20 @@ async function runChecks(native: NativeSession, title: string): Promise<void> {
   const movedWire = await native.moveBodies([corner!.id], [0, 0, 5]);
   check("move a curve", boundsMatch(changedBody(movedWire, corner!.id), [400, 300, 5], [440, 330, 5]));
   await native.undo();
-  check("topology rejects a curve", (await failure(native.topology(corner!.id))) !== null);
+  const cornerTopo = await native.topology(corner!.id);
+  check("topology of a curve: segments and vertices", cornerTopo.closed === false &&
+    cornerTopo.segments?.length === 2 && cornerTopo.vertices?.length === 3 &&
+    cornerTopo.segments.every((s) => s.kind === "line") &&
+    cornerTopo.segments.map((s) => s.lengthMm).sort((a, b) => a - b).join() === "30,40" &&
+    cornerTopo.vertices.some((v) => v.positionMm.join() === "440,300,0"),
+    JSON.stringify({ lengths: cornerTopo.segments?.map((s) => s.lengthMm), vertices: cornerTopo.vertices?.map((v) => v.positionMm) }));
+  const splineTopo = await native.topology(spline!.id);
+  check("topology of a spline has control points", (splineTopo.controlPoints?.length ?? 0) > 0 &&
+    splineTopo.segments?.[0]?.kind === "curve", JSON.stringify(splineTopo.controlPoints?.length));
+  const discTopo = await native.topology(disc!.id);
+  check("topology of a circle: closed, one segment, no vertices", discTopo.closed === true &&
+    discTopo.segments?.length === 1 && discTopo.segments[0]?.kind === "circle" &&
+    discTopo.vertices?.length === 0, JSON.stringify(discTopo.segments?.[0]));
 
   const prism = await native.extrudeProfile(rect!.id, 10);
   const prismBody = prism.created.find((b) => b.type === "Solid");

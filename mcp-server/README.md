@@ -43,7 +43,7 @@ A second channel, independent of the WebSocket bridge: real B-Rep operations thr
 | `mirror_bodies` | Mirrored copies across a plane (`planeOrigin`, `planeNormal`); `keepOriginal: false` deletes the originals (two undo steps). |
 | `array_rectangular` | Row or grid of copies: `direction1` / `count1` / `spacing1`, optional second direction. Counts include the original. |
 | `array_radial` | `count` items around an axis (`center`, `axis`) over `angle` degrees. |
-| `get_body_topology` | Faces and edges of a body with ids and geometry (`include`: faces / edges / all). |
+| `get_body_topology` | What a body is made of, with ids: faces and edges of a Solid / Sheet (`include`: faces / edges / all), or segments, vertices and control points of a curve. |
 | `boolean` | `union` / `difference` / `intersection` of `toolIds` against `targetIds`; `keepTools` optional. |
 | `fillet_edges` | Round edges with `radius`. |
 | `chamfer_edges` | Bevel edges by `distance`. |

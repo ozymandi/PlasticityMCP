@@ -70,7 +70,7 @@ npm run smoke:native
 
 ## Repository
 
-- [mcp-server/](mcp-server/) — the server (`src/native.ts` is the CAD layer, `src/launcher.ts` the launch trick, `src/native-smoke.ts` the live test)
+- [mcp-server/](mcp-server/) — the server (`src/native/` is the CAD layer, one module per tool family; `src/launcher.ts` the launch trick, `src/native-smoke.ts` the live test)
 - [task.md](task.md) — scope, decisions, per-block status and findings
 - [docs/ws-protocol.md](docs/ws-protocol.md) — reverse-engineered bridge protocol
 - [docs/architecture.md](docs/architecture.md), [docs/feature-request.md](docs/feature-request.md) — April 2026 recon, kept for history; the "every path is closed" conclusion there is superseded by the native channel

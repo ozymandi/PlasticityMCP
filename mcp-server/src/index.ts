@@ -722,12 +722,14 @@ const tools: Tool[] = [
   {
     name: "get_body_topology",
     description:
-      "Faces and edges of one Solid / Sheet, for use with fillet_edges, chamfer_edges and " +
-      "extrude_faces. Face: id, surface type, planar, centre, outward normal, radius (if round), " +
-      "edge ids. Edge: id, kind (line / circle / curve), length, start / mid / end points, " +
-      "radius (circles), adjacent face ids. Millimetres. IMPORTANT: these ids are valid only " +
-      "until the body changes — re-read after every operation on it. `include` limits the " +
-      "output for bodies with many faces.",
+      "What one body is made of, with the ids that the editing tools take. For a Solid / Sheet: " +
+      "faces (id, surface type, planar, centre, outward normal, radius if round, edge ids) and " +
+      "edges (id, kind line / circle / curve, length, start / mid / end points, radius for " +
+      "circles, adjacent face ids). For a curve: whether it is closed, its segments (id, kind, " +
+      "length, start / mid / end), its vertices (id, position — where segments meet or the " +
+      "curve ends) and its control points (id, position). Millimetres. IMPORTANT: these ids " +
+      "are valid only until the body changes — re-read after every operation on it. `include` " +
+      "limits the output for Solids and Sheets with many faces.",
     inputSchema: {
       type: "object",
       required: ["id"],
