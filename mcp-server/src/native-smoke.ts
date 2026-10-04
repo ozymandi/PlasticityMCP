@@ -9,7 +9,7 @@ import { copyFileSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchPlasticity } from "./launcher.js";
-import { BodyInfo, NativeSession, Vec3, ViewName } from "./native.js";
+import { BodyInfo, NativeSession, RegionInfo, Vec3, ViewName } from "./native.js";
 
 const TOLERANCE_MM = 1e-3;
 
@@ -61,7 +61,7 @@ async function main() {
   }
 
   // Clean up, whatever happened above: undo everything this test did and put the selection back.
-  for (let i = 0; i < 250 && (await native.state()).undoDepth > baseline.undoDepth; i++) {
+  for (let i = 0; i < 400 && (await native.state()).undoDepth > baseline.undoDepth; i++) {
     await native.undo();
   }
   await native.selectBodies(baseline.bodies.filter((b) => b.selected).map((b) => b.id));
@@ -416,6 +416,104 @@ async function runChecks(native: NativeSession, title: string): Promise<void> {
   check("loft refuses mixed closed and open profiles", /all closed .* or all open/.test(mixed?.message ?? ""));
   const single = await failure(native.loftProfiles([loftBase.id]));
   check("loft refuses a single profile", /at least two/.test(single?.message ?? ""));
+
+  // --- arcs, ellipse, join, regions (drawn at y >= 1000, clear of everything above) ---
+  const REGION_TOLERANCE_MM = 0.05; // region bounds come from the display mesh
+  const regionAt = (regions: RegionInfo[], min: Vec3, max: Vec3) =>
+    regions.find((r) =>
+      r.boundsMm.min.every((v, i) => Math.abs(v - min[i]!) < REGION_TOLERANCE_MM) &&
+      r.boundsMm.max.every((v, i) => Math.abs(v - max[i]!) < REGION_TOLERANCE_MM));
+
+  const quarterArc = wire(await native.createArcCenter([0, 1000, 0], [10, 1000, 0], 90));
+  check("arc +90° turns counter-clockwise", boundsMatch(quarterArc, [0, 1000, 0], [10, 1010, 0]), fmt(quarterArc));
+  const backArc = wire(await native.createArcCenter([0, 1000, 0], [10, 1000, 0], -90));
+  check("arc -90° turns clockwise", boundsMatch(backArc, [0, 990, 0], [10, 1000, 0]), fmt(backArc));
+  const wideArc = wire(await native.createArcCenter([0, 1000, 0], [10, 1000, 0], 270));
+  check("arc 270°", boundsMatch(wideArc, [-10, 990, 0], [10, 1010, 0]), fmt(wideArc));
+  const uprightArc = wire(await native.createArcCenter([0, 1000, 0], [0, 1010, 0], 90, [1, 0, 0]));
+  check("arc about the X axis", boundsMatch(uprightArc, [0, 1000, 0], [0, 1010, 10]), fmt(uprightArc));
+  const threePoint = wire(await native.createArc([10, 1000, 0], [-10, 1000, 0], [0, 990, 0]));
+  check("three-point arc takes the long way through its middle point",
+    boundsMatch(threePoint, [-10, 990, 0], [10, 1010, 0]), fmt(threePoint));
+  const collinear = await failure(native.createArc([0, 1000, 0], [5, 1000, 0], [10, 1000, 0]));
+  check("collinear arc points are refused", /collinear/.test(collinear?.message ?? ""));
+  const offPlane = await failure(native.createArcCenter([0, 1000, 0], [10, 1000, 5], 90));
+  check("arc start off the plane is refused", /must lie in the plane/.test(offPlane?.message ?? ""));
+  for (let i = 0; i < 5; i++) await native.undo(); // the five arcs
+
+  const oval = wire(await native.createEllipse([0, 1100, 0], 20, 10));
+  check("ellipse, major axis along X", boundsMatch(oval, [-20, 1090, 0], [20, 1110, 0]), fmt(oval));
+  await native.undo();
+  const tallOval = wire(await native.createEllipse([0, 1100, 0], 20, 10, [0, 0, 1], [0, 1, 0]));
+  check("ellipse, major axis along Y", boundsMatch(tallOval, [-10, 1080, 0], [10, 1120, 0]), fmt(tallOval));
+  await native.undo();
+
+  // A slot drawn as two lines and two arcs: no single curve, but one region.
+  const slotTop = wire(await native.createPolyline([[0, 1210, 0], [40, 1210, 0]]))!;
+  const slotBottom = wire(await native.createPolyline([[40, 1190, 0], [0, 1190, 0]]))!;
+  const slotRight = wire(await native.createArcCenter([40, 1200, 0], [40, 1190, 0], 180))!;
+  const slotLeft = wire(await native.createArcCenter([0, 1200, 0], [0, 1210, 0], 180))!;
+  const slotRegion = regionAt(await native.listRegions(), [-10, 1190, 0], [50, 1210, 0]);
+  check("four curves form one region", slotRegion?.edgeCount === 4 && slotRegion.holes === 0 &&
+    Math.abs((slotRegion.boundaryLengthMm ?? 0) - (80 + 20 * Math.PI)) < 1e-3, JSON.stringify(slotRegion));
+  const slotSolid = made(await native.extrudeProfile([slotRegion!.id], 5), "Solid");
+  check("extrude a region", slotSolid?.faceCount === 6 &&
+    boundsMatch(slotSolid, [-10, 1190, 0], [50, 1210, 5]), fmt(slotSolid));
+  await native.undo();
+  const joinedSlot = await native.joinCurves([slotTop.id, slotRight.id, slotBottom.id, slotLeft.id]);
+  check("join keeps the first curve and removes the rest",
+    joinedSlot.changed[0]?.id === slotTop.id && joinedSlot.removedIds.length === 3 &&
+      boundsMatch(joinedSlot.changed[0], [-10, 1190, 0], [50, 1210, 0]), fmt(joinedSlot.changed[0]));
+  const joinedSolid = made(await native.extrudeProfile(slotTop.id, 5), "Solid");
+  check("the joined curve is a profile of its own", joinedSolid?.faceCount === 6, fmt(joinedSolid));
+  await native.undo();
+  const staleRegion = await failure(native.extrudeProfile([slotRegion!.id], 5));
+  check("stale region ids are rejected", /Stale or unknown region/.test(staleRegion?.message ?? ""),
+    staleRegion?.message ?? "no error");
+
+  // A plate with a hole: the nested circle splits the rectangle into a ring and a disc.
+  const holed = wire(await native.createPolyline(
+    [[100, 1280, 0], [160, 1280, 0], [160, 1320, 0], [100, 1320, 0]], true))!;
+  await native.createCircle([130, 1300, 0], 8);
+  const plateRegions = await native.listRegions();
+  const ringRegion = regionAt(plateRegions, [100, 1280, 0], [160, 1320, 0]);
+  const discRegion = regionAt(plateRegions, [122, 1292, 0], [138, 1308, 0]);
+  check("ring and disc regions", ringRegion?.holes === 1 && discRegion?.holes === 0,
+    JSON.stringify({ ring: ringRegion?.holes, disc: discRegion?.holes }));
+  const stillAmbiguous = await failure(native.extrudeProfile(holed.id, 10));
+  check("the rectangle curve itself is still ambiguous", /ambiguous/.test(stillAmbiguous?.message ?? ""));
+  const holedPlate = made(await native.extrudeProfile([ringRegion!.id], 10), "Solid");
+  check("extruding the ring gives a plate with a hole", holedPlate?.faceCount === 7 &&
+    boundsMatch(holedPlate, [100, 1280, 0], [160, 1320, 10]), fmt(holedPlate));
+  await native.undo();
+  const fullPlate = made(await native.extrudeProfile([ringRegion!.id, discRegion!.id], 10), "Solid");
+  check("ring and disc together give a full plate", fullPlate?.faceCount === 6, fmt(fullPlate));
+  await native.undo();
+  const arch = made(await native.revolveProfile([ringRegion!.id], [0, 1250, 0], [1, 0, 0], 90), "Solid");
+  check("revolve a region", boundsMatch(arch, [100, 1250, 0], [160, 1320, 70]), fmt(arch));
+  await native.undo();
+  await native.createCircle([130, 1300, 50], 15);
+  const upperRegion = regionAt(await native.listRegions(), [115, 1285, 50], [145, 1315, 50]);
+  const cup = made(await native.loftProfiles([discRegion!.id, upperRegion!.id]), "Solid");
+  check("loft through regions", boundsMatch(cup, [115, 1285, 0], [145, 1315, 50], LOFT_TOLERANCE_MM), fmt(cup));
+  await native.undo();
+
+  // A sweep path of a line and an arc has to be joined into one curve first.
+  const leg = wire(await native.createPolyline([[300, 1000, 0], [300, 1000, 40]]))!;
+  const bend = wire(await native.createArcCenter([320, 1000, 40], [300, 1000, 40], 90, [0, 1, 0]))!;
+  const hook = (await native.joinCurves([leg.id, bend.id])).changed[0];
+  check("join a line and an arc", hook?.id === leg.id &&
+    boundsMatch(hook, [300, 1000, 0], [320, 1000, 60]), fmt(hook));
+  const hookProfile = wire(await native.createCircle([300, 1000, 0], 4))!;
+  const bentPipe = made(await native.sweepProfile(hookProfile.id, leg.id), "Solid");
+  check("sweep along the joined path", bentPipe?.faceCount === 4 &&
+    boundsMatch(bentPipe, [296, 996, 0], [320, 1004, 64]), fmt(bentPipe));
+  await native.undo();
+  const apart = await failure(native.joinCurves([hookProfile.id, slotTop.id]));
+  check("joining curves that do not touch is refused with a hint",
+    /must touch end to end/.test(apart?.message ?? ""), apart?.message ?? "no error");
+  const lonely = await failure(native.joinCurves([leg.id]));
+  check("joining needs two curves", /at least two/.test(lonely?.message ?? ""));
 
   // --- files, camera, screenshot (temporary folder, removed afterwards) ---
   const folder = mkdtempSync(join(tmpdir(), "plasticity-mcp-smoke-"));

@@ -187,36 +187,89 @@ const CreateCircleArgs = z.object({
   name: z.string().optional(),
 });
 
-const ExtrudeProfileArgs = z.object({
-  id: BodyId,
-  distance: z.number().refine((d) => d !== 0, "distance must be non-zero"),
+const RegionIds = z.array(z.string().min(1)).min(1);
+const oneProfile = (a: { id?: number; profileId?: number; regionIds?: string[] }) =>
+  ((a.id ?? a.profileId) === undefined) !== (a.regionIds === undefined);
+const ONE_PROFILE_MESSAGE = "pass exactly one of the curve id or regionIds";
+
+const ExtrudeProfileArgs = z
+  .object({
+    id: BodyId.optional(),
+    regionIds: RegionIds.optional(),
+    distance: z.number().refine((d) => d !== 0, "distance must be non-zero"),
+  })
+  .refine(oneProfile, ONE_PROFILE_MESSAGE);
+
+const CreateArcArgs = z.object({
+  start: Vec3Mm,
+  through: Vec3Mm,
+  end: Vec3Mm,
+  name: z.string().optional(),
 });
 
-const RevolveProfileArgs = z.object({
-  id: BodyId,
-  axisOrigin: Vec3Mm,
-  axis: Vec3Mm.refine((a) => Math.hypot(...a) > 0, "axis must be non-zero"),
+const CreateArcCenterArgs = z.object({
+  center: Vec3Mm,
+  start: Vec3Mm,
   angle: z
     .number()
-    .min(-360)
-    .max(360)
-    .refine((a) => a !== 0, "angle must be non-zero")
-    .optional()
-    .default(360),
+    .refine((a) => a !== 0 && Math.abs(a) < 360, "angle must be non-zero and within ±360"),
+  normal: Vec3Mm.optional().refine((a) => !a || Math.hypot(...a) > 0, "normal must be non-zero"),
+  name: z.string().optional(),
 });
 
-const SweepProfileArgs = z.object({
-  profileId: BodyId,
-  pathId: BodyId,
-  twist: z.number().optional().default(0),
-  scale: z.number().positive().optional().default(1),
+const CreateEllipseArgs = z.object({
+  center: Vec3Mm,
+  majorRadius: z.number().positive(),
+  minorRadius: z.number().positive(),
+  normal: Vec3Mm.optional().refine((a) => !a || Math.hypot(...a) > 0, "normal must be non-zero"),
+  majorDirection: Vec3Mm.optional().refine(
+    (a) => !a || Math.hypot(...a) > 0,
+    "majorDirection must be non-zero",
+  ),
+  name: z.string().optional(),
 });
 
-const LoftProfilesArgs = z.object({
-  profileIds: z.array(BodyId).min(2),
-  guideIds: z.array(BodyId).optional().default([]),
-  closed: z.boolean().optional().default(false),
+const JoinCurvesArgs = z.object({
+  ids: z.array(BodyId).min(2),
 });
+
+const RevolveProfileArgs = z
+  .object({
+    id: BodyId.optional(),
+    regionIds: RegionIds.optional(),
+    axisOrigin: Vec3Mm,
+    axis: Vec3Mm.refine((a) => Math.hypot(...a) > 0, "axis must be non-zero"),
+    angle: z
+      .number()
+      .min(-360)
+      .max(360)
+      .refine((a) => a !== 0, "angle must be non-zero")
+      .optional()
+      .default(360),
+  })
+  .refine(oneProfile, ONE_PROFILE_MESSAGE);
+
+const SweepProfileArgs = z
+  .object({
+    profileId: BodyId.optional(),
+    regionIds: RegionIds.optional(),
+    pathId: BodyId,
+    twist: z.number().optional().default(0),
+    scale: z.number().positive().optional().default(1),
+  })
+  .refine(oneProfile, ONE_PROFILE_MESSAGE);
+
+const LoftProfilesArgs = z
+  .object({
+    profileIds: z.array(BodyId).min(2).optional(),
+    regionIds: z.array(z.string().min(1)).min(2).optional(),
+    guideIds: z.array(BodyId).optional().default([]),
+    closed: z.boolean().optional().default(false),
+  })
+  .refine(
+    (a) => (a.profileIds === undefined) !== (a.regionIds === undefined),
+    "pass exactly one of profileIds or regionIds",
+  );
 
 const ExportStepArgs = z.object({
   path: z.string().min(1),
@@ -264,6 +317,13 @@ const POINTS_SCHEMA = {
   type: "array",
   items: { type: "array", items: { type: "number" }, minItems: 3, maxItems: 3 },
   description: "Points [[x, y, z], ...] in millimetres",
+};
+
+const REGION_IDS_SCHEMA = {
+  type: "array",
+  items: { type: "string" },
+  minItems: 1,
+  description: "Region ids from list_regions (alternative to the curve id)",
 };
 
 const TOPOLOGY_IDS_SCHEMA = {
@@ -698,19 +758,102 @@ const tools: Tool[] = [
     },
   },
   {
+    name: "create_arc",
+    description:
+      "Create a circular arc (Wire) from `start` through `through` to `end` (millimetres). The " +
+      "three points must not be collinear. Undoable.",
+    inputSchema: {
+      type: "object",
+      required: ["start", "through", "end"],
+      properties: {
+        start: VEC3_SCHEMA,
+        through: VEC3_SCHEMA,
+        end: VEC3_SCHEMA,
+        name: { type: "string" },
+      },
+    },
+  },
+  {
+    name: "create_arc_center",
+    description:
+      "Create a circular arc (Wire) around `center`, starting at `start` and turning through " +
+      "`angle` degrees by the right-hand rule about `normal` (default [0, 0, 1]); a negative " +
+      "angle turns the other way. `start` must lie in the plane through `center` perpendicular " +
+      "to `normal`. For a full circle use create_circle. Undoable.",
+    inputSchema: {
+      type: "object",
+      required: ["center", "start", "angle"],
+      properties: {
+        center: VEC3_SCHEMA,
+        start: VEC3_SCHEMA,
+        angle: { type: "number", description: "Degrees, non-zero, between -360 and 360" },
+        normal: { ...VEC3_SCHEMA, description: "Plane normal direction [x, y, z]" },
+        name: { type: "string" },
+      },
+    },
+  },
+  {
+    name: "create_ellipse",
+    description:
+      "Create an ellipse (Wire) with `center`, `majorRadius` and `minorRadius` in millimetres, " +
+      "in the plane perpendicular to `normal` (default [0, 0, 1]). `majorDirection` is the " +
+      "direction of the major axis (projected into the plane); by default the X axis, or Y " +
+      "when the normal is X. Undoable.",
+    inputSchema: {
+      type: "object",
+      required: ["center", "majorRadius", "minorRadius"],
+      properties: {
+        center: VEC3_SCHEMA,
+        majorRadius: { type: "number" },
+        minorRadius: { type: "number" },
+        normal: { ...VEC3_SCHEMA, description: "Plane normal direction [x, y, z]" },
+        majorDirection: { ...VEC3_SCHEMA, description: "Direction of the major axis [x, y, z]" },
+        name: { type: "string" },
+      },
+    },
+  },
+  {
+    name: "join_curves",
+    description:
+      "Join curves that touch end to end into one curve — needed to use several pieces (lines " +
+      "and arcs) as one sweep path. The joined curve keeps the id of the first curve and is " +
+      "returned in `changed`; the other curves are in `removedIds`. Undoable.",
+    inputSchema: {
+      type: "object",
+      required: ["ids"],
+      properties: { ids: { ...BODY_IDS_SCHEMA, minItems: 2 } },
+    },
+  },
+  {
+    name: "list_regions",
+    description:
+      "List the regions Plasticity has built from closed loops of curves — one per enclosed " +
+      "area, so a rectangle with a circle inside gives a ring (holes: 1) and a disc. A profile " +
+      "drawn as several curves (lines and arcs) also shows up as a region. Each entry: id, " +
+      "approximate bounds in millimetres (about 0.01 mm accurate), plane normal, number of " +
+      "boundary edges, total boundary length, number of holes. Pass the ids as `regionIds` to " +
+      "extrude_profile, revolve_profile, sweep_profile or loft_profiles. IMPORTANT: region ids " +
+      "are valid only until curves in that plane change — re-read after creating, moving or " +
+      "deleting curves.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
     name: "extrude_profile",
     description:
       "Extrude a curve by `distance` millimetres along the normal of its plane. A closed planar " +
       "curve becomes a Solid, an open curve becomes a Sheet; the new body is in `created` and " +
       "the curve is kept. Positive distance follows the plane normal (+Z for curves in the XY " +
       "plane, the `normal` given to create_circle), negative goes the other way — check the " +
-      "returned bounds. Refused when the profile is ambiguous: other closed curves in the same " +
-      "plane nested in or overlapping this one. Undoable.",
+      "returned bounds. A curve `id` is refused when its profile is ambiguous (other curves " +
+      "in the same plane cross it or lie inside it); in that case, or for a profile made of " +
+      "several curves, pass `regionIds` from list_regions instead of `id` — several regions " +
+      "are extruded as one profile. Undoable.",
     inputSchema: {
       type: "object",
-      required: ["id", "distance"],
+      required: ["distance"],
       properties: {
         id: { type: "number", description: "Stable id of the curve (Wire)" },
+        regionIds: REGION_IDS_SCHEMA,
         distance: { type: "number" },
       },
     },
@@ -722,13 +865,15 @@ const tools: Tool[] = [
       "Sheet; the new body is in `created` and the curve is kept. The axis passes through " +
       "`axisOrigin` along `axis`; it must lie in the plane of the profile and must not pass " +
       "through it. `angle` in degrees (default 360) follows the right-hand rule around `axis`; " +
-      "negative turns the other way. Refused when the profile is ambiguous (other curves in " +
-      "its plane cross it or lie inside it). Undoable.",
+      "negative turns the other way. A curve `id` is refused when its profile is ambiguous " +
+      "(other curves in its plane cross it or lie inside it); pass `regionIds` from " +
+      "list_regions instead to choose the regions. Undoable.",
     inputSchema: {
       type: "object",
-      required: ["id", "axisOrigin", "axis"],
+      required: ["axisOrigin", "axis"],
       properties: {
         id: { type: "number", description: "Stable id of the profile curve (Wire)" },
+        regionIds: REGION_IDS_SCHEMA,
         axisOrigin: VEC3_SCHEMA,
         axis: { ...VEC3_SCHEMA, description: "Axis direction [x, y, z]" },
         angle: { type: "number", default: 360, description: "Degrees, -360..360, non-zero" },
@@ -743,13 +888,16 @@ const tools: Tool[] = [
       "perpendicular to the start of the path; a profile drawn away from the path keeps that " +
       "offset. Corners of a polyline path are mitred. `twist` (degrees, default 0) rotates the " +
       "profile gradually along the path, `scale` (default 1) is its relative size at the end. " +
-      "Refused when the profile is ambiguous — note that a path lying in the profile's own " +
-      "plane and crossing it makes it so. Undoable.",
+      "A curve `profileId` is refused when its profile is ambiguous — note that a path lying " +
+      "in the profile's own plane and crossing it makes it so; pass `regionIds` from " +
+      "list_regions instead to choose the regions. A path made of several pieces must first " +
+      "be merged with join_curves. Undoable.",
     inputSchema: {
       type: "object",
-      required: ["profileId", "pathId"],
+      required: ["pathId"],
       properties: {
         profileId: { type: "number", description: "Stable id of the profile curve (Wire)" },
+        regionIds: REGION_IDS_SCHEMA,
         pathId: { type: "number", description: "Stable id of the path curve (Wire)" },
         twist: { type: "number", default: 0 },
         scale: { type: "number", default: 1 },
@@ -766,10 +914,10 @@ const tools: Tool[] = [
       "the first (3+ profiles); it works for open curves, but Plasticity refuses a closed loop " +
       "of closed profiles — use revolve_profile or sweep_profile for ring-shaped solids. " +
       "Profiles that turn through more than about half a circle in total also fail. Bounds of " +
-      "lofted bodies can be a few microns large. Undoable.",
+      "lofted bodies can be a few microns large. Instead of `profileIds`, `regionIds` from " +
+      "list_regions (2+, in loft order) loft a Solid through chosen regions. Undoable.",
     inputSchema: {
       type: "object",
-      required: ["profileIds"],
       properties: {
         profileIds: {
           type: "array",
@@ -777,6 +925,7 @@ const tools: Tool[] = [
           minItems: 2,
           description: "Stable ids of the profile curves, in loft order",
         },
+        regionIds: { ...REGION_IDS_SCHEMA, minItems: 2 },
         guideIds: { type: "array", items: { type: "number" } },
         closed: { type: "boolean", default: false },
       },
@@ -1261,24 +1410,76 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return ok(await native.createCircle(args.center, args.radius, args.normal, args.name));
       }
 
+      case "create_arc": {
+        const args = CreateArcArgs.parse(rawArgs ?? {});
+        return ok(await native.createArc(args.start, args.through, args.end, args.name));
+      }
+
+      case "create_arc_center": {
+        const args = CreateArcCenterArgs.parse(rawArgs ?? {});
+        return ok(
+          await native.createArcCenter(args.center, args.start, args.angle, args.normal, args.name),
+        );
+      }
+
+      case "create_ellipse": {
+        const args = CreateEllipseArgs.parse(rawArgs ?? {});
+        return ok(
+          await native.createEllipse(
+            args.center,
+            args.majorRadius,
+            args.minorRadius,
+            args.normal,
+            args.majorDirection,
+            args.name,
+          ),
+        );
+      }
+
+      case "join_curves": {
+        const args = JoinCurvesArgs.parse(rawArgs ?? {});
+        return ok(await native.joinCurves(args.ids));
+      }
+
+      case "list_regions": {
+        const regions = await native.listRegions();
+        return ok({ count: regions.length, regions });
+      }
+
       case "extrude_profile": {
         const args = ExtrudeProfileArgs.parse(rawArgs ?? {});
-        return ok(await native.extrudeProfile(args.id, args.distance));
+        return ok(await native.extrudeProfile((args.id ?? args.regionIds)!, args.distance));
       }
 
       case "revolve_profile": {
         const args = RevolveProfileArgs.parse(rawArgs ?? {});
-        return ok(await native.revolveProfile(args.id, args.axisOrigin, args.axis, args.angle));
+        return ok(
+          await native.revolveProfile(
+            (args.id ?? args.regionIds)!,
+            args.axisOrigin,
+            args.axis,
+            args.angle,
+          ),
+        );
       }
 
       case "sweep_profile": {
         const args = SweepProfileArgs.parse(rawArgs ?? {});
-        return ok(await native.sweepProfile(args.profileId, args.pathId, args.twist, args.scale));
+        return ok(
+          await native.sweepProfile(
+            (args.profileId ?? args.regionIds)!,
+            args.pathId,
+            args.twist,
+            args.scale,
+          ),
+        );
       }
 
       case "loft_profiles": {
         const args = LoftProfilesArgs.parse(rawArgs ?? {});
-        return ok(await native.loftProfiles(args.profileIds, args.guideIds, args.closed));
+        return ok(
+          await native.loftProfiles((args.profileIds ?? args.regionIds)!, args.guideIds, args.closed),
+        );
       }
 
       case "export_step": {

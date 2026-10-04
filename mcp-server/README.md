@@ -48,7 +48,12 @@ A second channel, independent of the WebSocket bridge: real B-Rep operations thr
 | `create_polyline` | Curve of straight segments through `points`; `closed` makes a profile. |
 | `create_spline` | Smooth curve through `points`. |
 | `create_circle` | Circle from `center`, `radius`, optional plane `normal`. |
-| `extrude_profile` | Closed planar curve → Solid, open curve → Sheet, by `distance` along the plane normal. Refuses ambiguous (nested / overlapping) profiles. |
+| `create_arc` | Arc through three points (`start`, `through`, `end`). |
+| `create_arc_center` | Arc around `center` from `start` through `angle` degrees about `normal`. |
+| `create_ellipse` | Ellipse from `center`, `majorRadius`, `minorRadius`, optional `normal` and `majorDirection`. |
+| `join_curves` | Merge curves that touch end to end into one (keeps the first id). |
+| `list_regions` | Regions Plasticity built from closed loops of curves: id, bounds, normal, boundary length, holes. |
+| `extrude_profile` | Closed planar curve → Solid, open curve → Sheet, by `distance` along the plane normal. Takes a curve `id` or `regionIds`. |
 
 | `revolve_profile` | Revolve a curve around an axis (`axisOrigin`, `axis`, `angle`): closed → Solid, open → Sheet. |
 | `sweep_profile` | Sweep a profile curve along a path curve; optional `twist` and end `scale`. |
@@ -63,7 +68,9 @@ A second channel, independent of the WebSocket bridge: real B-Rep operations thr
 
 File tools take absolute paths, check the extension and never replace an existing file without `overwrite: true`.
 
-Face and edge ids are valid only until the body changes — re-read `get_body_topology` after every operation on it. Stale ids are rejected.
+The profile tools (`extrude_profile`, `revolve_profile`, `sweep_profile`, `loft_profiles`) take either a curve id or `regionIds` from `list_regions`. A curve id is refused when other curves in its plane cross it or lie inside it; regions are how to pick the plate-with-holes area, or a profile drawn as several lines and arcs.
+
+Face and edge ids are valid only until the body changes — re-read `get_body_topology` after every operation on it. Region ids likewise change whenever curves in their plane change. Stale ids are rejected.
 
 `pivot` is optional for rotate and scale; it defaults to the centre of the bodies' combined bounding box.
 

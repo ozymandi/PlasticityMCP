@@ -76,6 +76,22 @@ export interface BodyTopology {
 
 export type BooleanOperation = "union" | "difference" | "intersection";
 
+/** A profile for extrude / revolve / sweep: a curve id, or region ids from list_regions. */
+export type ProfileRef = number | string[];
+
+export interface RegionInfo {
+  id: string;
+  /** From the display mesh: accurate to about 0.01 mm. */
+  boundsMm: { min: Vec3; max: Vec3 };
+  normal?: Vec3;
+  /** Edges of the boundary, holes included. */
+  edgeCount?: number;
+  /** Total length of the boundary, holes included. */
+  boundaryLengthMm?: number;
+  /** Number of holes: 1 for the ring left around a nested closed curve. */
+  holes?: number;
+}
+
 // Native operation codes, read from the running 26.1.3 app.
 const BOOLEAN_CODES: Record<BooleanOperation, number> = {
   intersection: 15901,
@@ -139,6 +155,27 @@ export interface CameraInfo {
 const LOAD_TIMEOUT_MS = 40_000;
 
 const toMeters = (v: Vec3): Vec3 => [v[0] * MM, v[1] * MM, v[2] * MM];
+
+const add = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const scaled = (a: Vec3, k: number): Vec3 => [a[0] * k, a[1] * k, a[2] * k];
+const dot = (a: Vec3, b: Vec3): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const cross = (a: Vec3, b: Vec3): Vec3 => [
+  a[1] * b[2] - a[2] * b[1],
+  a[2] * b[0] - a[0] * b[2],
+  a[0] * b[1] - a[1] * b[0],
+];
+const norm = (a: Vec3): number => Math.hypot(a[0], a[1], a[2]);
+const unit = (a: Vec3): Vec3 => scaled(a, 1 / norm(a));
+/** Rotate `v` by `radians` about the unit vector `axis` (right-hand rule). */
+const rotated = (v: Vec3, axis: Vec3, radians: number): Vec3 =>
+  add(
+    add(scaled(v, Math.cos(radians)), scaled(cross(axis, v), Math.sin(radians))),
+    scaled(axis, dot(axis, v) * (1 - Math.cos(radians))),
+  );
+
+const profileArgs = (profile: ProfileRef) =>
+  typeof profile === "number" ? { id: profile } : { regionIds: profile };
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /** Append an explanation to a native kernel error that says nothing useful on its own. */
@@ -362,9 +399,72 @@ const PROFILE_OF = `const profileOf = (id) => {
   };`;
 
 // Setup lines shared by the profile factories (extrude, revolve, sweep): `args.id` is the curve.
-const USE_PROFILE = `const profile = profileOf(args.id);
-        if (profile.region) factory.regions = [profile.region];
-        else factory.curves = [profile.view];`;
+const USE_PROFILE = `if (args.regionIds) {
+          factory.regions = pickRegions(args.regionIds);
+        } else {
+          const profile = profileOf(args.id);
+          if (profile.region) factory.regions = [profile.region];
+          else factory.curves = [profile.view];
+        }`;
+
+// Resolves region ids from list_regions. Like face and edge ids they are version-specific:
+// any change to the curves of that plane renames them, so a miss is reported as stale.
+const PICK_REGIONS = `const pickRegions = (ids) => {
+    const byId = new Map();
+    for (const [, candidate] of editor.geo.geometryModel) {
+      if (candidate.view?.constructor?.name !== 'SketchIsland') continue;
+      for (let i = 0; i < (candidate.view.regions?.length ?? 0); i += 1) {
+        const region = candidate.view.regions.get(i);
+        if (region) byId.set(String(region.versionId), region);
+      }
+    }
+    return ids.map((id) => {
+      const region = byId.get(String(id));
+      if (!region) throw new Error('Stale or unknown region id: ' + id + ' (re-read list_regions)');
+      return region;
+    });
+  };`;
+
+// Runs with `this` = editor. Every Region Plasticity has built from closed loops of curves.
+// Bounds come from the display mesh (approximate); the rest is read from the exact face of
+// the island body that backs the Region.
+const READ_REGIONS = `function () {
+  const mm = (v) => [v.x, v.y, v.z].map((n) => Math.round(n * 1e9) / 1e6 + 0);
+  const round = (n) => Math.round(n * 1e9) / 1e9 + 0;
+  const regions = [];
+  for (const [, item] of this.geo.geometryModel) {
+    if (item.view?.constructor?.name !== 'SketchIsland') continue;
+    const faces = new Map();
+    const modelFaces = item.model?.GetFaces?.();
+    for (let i = 0; i < (modelFaces?.Size?.() ?? 0); i += 1) {
+      const face = modelFaces.Get(i);
+      faces.set(face.Id(), face);
+    }
+    for (let i = 0; i < (item.view.regions?.length ?? 0); i += 1) {
+      const region = item.view.regions.get(i);
+      if (!region) continue;
+      const box = region.getBoundingBox();
+      const entry = { id: String(region.versionId), boundsMm: { min: mm(box.min), max: mm(box.max) } };
+      const face = faces.get(region.entityId);
+      if (face) {
+        try {
+          const normal = face.FindMidpoint().normal;
+          entry.normal = [normal.x, normal.y, normal.z].map(round);
+          const edges = face.GetEdges();
+          let length = 0;
+          for (let j = 0; j < edges.Size(); j += 1) length += edges.Get(j).FindLength().length;
+          entry.edgeCount = edges.Size();
+          entry.boundaryLengthMm = Math.round(length * 1e9) / 1e6;
+          const inner = face.GetInnerLoops();
+          entry.holes = typeof inner?.Size === 'function' ? inner.Size() : (inner?.length ?? 0);
+        } catch {}
+      }
+      regions.push(entry);
+    }
+  }
+  regions.sort((a, b) => a.id.localeCompare(b.id));
+  return regions;
+}`;
 
 /**
  * Wraps a factory setup snippet into a native command. The snippet sees `factory`, `editor`,
@@ -387,6 +487,7 @@ function commandFunction(
     ${FIND_VIEW}
     ${PICK_TOPOLOGY}
     ${PROFILE_OF}
+    ${PICK_REGIONS}
     const editor = this;
     let failure;
     const command = new ${commandClass}(this);
@@ -895,19 +996,170 @@ export class NativeSession {
     );
   }
 
+  /** Circular arc from `startMm` through `throughMm` to `endMm`. */
+  createArc(startMm: Vec3, throughMm: Vec3, endMm: Vec3, name?: string): Promise<MutationResult> {
+    const a = sub(throughMm, startMm);
+    const b = sub(endMm, startMm);
+    const n = cross(a, b);
+    const nn = dot(n, n);
+    if (nn < 1e-12 * dot(a, a) * dot(b, b) || nn === 0) {
+      return Promise.reject(new Error("The three arc points are collinear or coincide"));
+    }
+    // Circumcentre of the triangle; start -> through -> end runs counter-clockwise about n.
+    const offset = scaled(
+      add(scaled(cross(b, n), dot(a, a)), scaled(cross(n, a), dot(b, b))),
+      1 / (2 * nn),
+    );
+    return this.arc(add(startMm, offset), startMm, endMm, unit(n), name);
+  }
+
+  /**
+   * Circular arc around `centerMm`, from `startMm` through `angleDeg` (right-hand rule about
+   * `normal`; negative turns the other way).
+   */
+  createArcCenter(
+    centerMm: Vec3,
+    startMm: Vec3,
+    angleDeg: number,
+    normal: Vec3 = [0, 0, 1],
+    name?: string,
+  ): Promise<MutationResult> {
+    const radial = sub(startMm, centerMm);
+    const axis = unit(normal);
+    if (norm(radial) === 0) return Promise.reject(new Error("start must differ from center"));
+    if (Math.abs(dot(radial, axis)) > 1e-6 * norm(radial)) {
+      return Promise.reject(
+        new Error("start must lie in the plane through center perpendicular to normal"),
+      );
+    }
+    const turn = angleDeg < 0 ? scaled(axis, -1) : axis;
+    const end = add(centerMm, rotated(radial, turn, (Math.abs(angleDeg) * Math.PI) / 180));
+    return this.arc(centerMm, startMm, end, turn, name);
+  }
+
+  /** Arc from `startMm` counter-clockwise about `normal` to `endMm`. */
+  private arc(
+    centerMm: Vec3,
+    startMm: Vec3,
+    endMm: Vec3,
+    normal: Vec3,
+    name?: string,
+  ): Promise<MutationResult> {
+    const setup = `
+        factory.isKnife = false;
+        factory.center.fromArray(args.center);
+        factory.orientation.copy(
+          new Quaternion().setFromUnitVectors(new Vector3(0, 0, 1), new Vector3(...args.normal).normalize()),
+        );
+        factory.p2.fromArray(args.start);
+        factory.p3.fromArray(args.end);
+        factory.lastSense = true;`;
+    return this.mutate(
+      commandFunction("CenterPointArcCommand", ["Vector3", "Quaternion"], setup),
+      ["KnifeCenterPointArcFactory", "Vector3", "Quaternion"],
+      [
+        {
+          center: toMeters(centerMm),
+          start: toMeters(startMm),
+          end: toMeters(endMm),
+          normal,
+          name: name ?? null,
+        },
+      ],
+    );
+  }
+
+  /**
+   * Ellipse in the plane perpendicular to `normal`. `majorDirection` (projected into that
+   * plane) is the direction of the major axis; by default the X axis, or Y if the normal is X.
+   */
+  createEllipse(
+    centerMm: Vec3,
+    majorRadiusMm: number,
+    minorRadiusMm: number,
+    normal: Vec3 = [0, 0, 1],
+    majorDirection?: Vec3,
+    name?: string,
+  ): Promise<MutationResult> {
+    const axis = unit(normal);
+    const inPlane = (v: Vec3): Vec3 => sub(v, scaled(axis, dot(v, axis)));
+    let major = inPlane(majorDirection ?? [1, 0, 0]);
+    if (norm(major) < 1e-9) {
+      if (majorDirection) {
+        return Promise.reject(new Error("majorDirection must not be parallel to normal"));
+      }
+      major = inPlane([0, 1, 0]);
+    }
+    major = unit(major);
+    const minor = cross(axis, major);
+    const setup = `
+        factory.isKnife = false;
+        factory.center.fromArray(args.center);
+        factory.orientation.copy(
+          new Quaternion().setFromUnitVectors(new Vector3(0, 0, 1), new Vector3(...args.normal).normalize()),
+        );
+        factory.point1.fromArray(args.majorPoint);
+        factory.point2.fromArray(args.minorPoint);`;
+    return this.mutate(
+      commandFunction("EllipseCommand", ["Vector3", "Quaternion"], setup),
+      ["KnifeEllipseFactory", "Vector3", "Quaternion"],
+      [
+        {
+          center: toMeters(centerMm),
+          majorPoint: toMeters(add(centerMm, scaled(major, majorRadiusMm))),
+          minorPoint: toMeters(add(centerMm, scaled(minor, minorRadiusMm))),
+          normal: axis,
+          name: name ?? null,
+        },
+      ],
+    );
+  }
+
+  /**
+   * Join curves that touch end to end into one curve. The result keeps the id of the first
+   * curve (reported in `changed`); the others are removed.
+   */
+  joinCurves(ids: number[]): Promise<MutationResult> {
+    if (ids.length < 2) return Promise.reject(new Error("Joining needs at least two curves"));
+    if (new Set(ids).size !== ids.length) {
+      return Promise.reject(new Error("Curves to join must be distinct"));
+    }
+    const setup = `
+        factory.curves = args.ids.map((id) => {
+          const view = find(id);
+          if (view.constructor.name !== 'Wire') {
+            throw new Error('Body ' + id + ' is a ' + view.constructor.name + ', not a curve');
+          }
+          return view;
+        });`;
+    return withHint(
+      this.mutate(commandFunction("JoinCurvesCommand", [], setup), ["JoinCurvesFactory"], [{ ids }]),
+      "Operation has no effect",
+      "Nothing was joined: the curves must touch end to end.",
+    );
+  }
+
+  /**
+   * Regions Plasticity has built from closed loops of curves. Their ids are valid only until
+   * the curves of that plane change.
+   */
+  listRegions(): Promise<RegionInfo[]> {
+    return this.enqueue(() => this.call<RegionInfo[]>(READ_REGIONS));
+  }
+
   /**
    * Extrude a curve by `distanceMm`. A closed planar curve gives a Solid, an open curve a Sheet.
    * Refuses a closed curve whose profile is ambiguous (nested or overlapping closed curves in
    * the same plane).
    */
-  extrudeProfile(id: number, distanceMm: number): Promise<MutationResult> {
+  extrudeProfile(profile: ProfileRef, distanceMm: number): Promise<MutationResult> {
     const setup = `
         ${USE_PROFILE}
         factory.distance1 = args.distance;`;
     return this.mutate(
       commandFunction("ExtrudeCommand", [], setup),
       ["ExtrudeFactory"],
-      [{ id, distance: distanceMm * MM }],
+      [{ ...profileArgs(profile), distance: distanceMm * MM }],
     );
   }
 
@@ -916,7 +1168,7 @@ export class NativeSession {
    * A closed planar curve gives a Solid, an open curve a Sheet.
    */
   revolveProfile(
-    id: number,
+    profile: ProfileRef,
     axisOriginMm: Vec3,
     axis: Vec3,
     angleDeg = 360,
@@ -930,7 +1182,7 @@ export class NativeSession {
       this.mutate(
         commandFunction("RevolveCommand", [], setup),
         ["RevolveFactory"],
-        [{ id, origin: toMeters(axisOriginMm), axis, degrees: angleDeg }],
+        [{ ...profileArgs(profile), origin: toMeters(axisOriginMm), axis, degrees: angleDeg }],
       ),
       "PK_ERROR_impossible_spin",
       "The axis must lie in the plane of the profile and must not pass through it.",
@@ -942,12 +1194,12 @@ export class NativeSession {
    * one a Sheet. `twistDeg` rotates the profile along the way, `scale` is its size at the end.
    */
   sweepProfile(
-    profileId: number,
+    profile: ProfileRef,
     pathId: number,
     twistDeg = 0,
     scale = 1,
   ): Promise<MutationResult> {
-    if (profileId === pathId) {
+    if (profile === pathId) {
       return Promise.reject(new Error("The sweep path must be a different curve than the profile"));
     }
     const setup = `
@@ -962,7 +1214,7 @@ export class NativeSession {
     return this.mutate(
       commandFunction("SweepCommand", [], setup),
       ["SweepFactory"],
-      [{ id: profileId, pathId, twist: twistDeg, scale }],
+      [{ ...profileArgs(profile), pathId, twist: twistDeg, scale }],
     );
   }
 
@@ -972,13 +1224,35 @@ export class NativeSession {
    * between the profiles; `closed` joins the last profile back to the first (3+ profiles).
    */
   async loftProfiles(
-    profileIds: number[],
+    profiles: number[] | string[],
     guideIds: number[] = [],
     closed = false,
   ): Promise<MutationResult> {
-    if (new Set(profileIds).size !== profileIds.length) throw new Error("Loft profiles must be distinct");
-    if (profileIds.length < 2) throw new Error("A loft needs at least two profiles");
-    if (closed && profileIds.length < 3) throw new Error("A closed loft needs at least three profiles");
+    if (new Set<number | string>(profiles).size !== profiles.length) {
+      throw new Error("Loft profiles must be distinct");
+    }
+    if (profiles.length < 2) throw new Error("A loft needs at least two profiles");
+    if (closed && profiles.length < 3) throw new Error("A closed loft needs at least three profiles");
+    const loftHint =
+      "Plasticity could not build this loft. A closed loop of closed profiles, or profiles " +
+      "that turn through more than about half a circle, are known to fail: use fewer or " +
+      "straighter profiles, or sweep_profile / revolve_profile for ring shapes.";
+    if (typeof profiles[0] === "string") {
+      const setup = `
+        factory.regions = pickRegions(args.regionIds);
+        if (args.guideIds.length > 0) factory.guides = args.guideIds.map(find);
+        factory.closed = args.closed;`;
+      return withHint(
+        this.mutate(
+          commandFunction("LoftCommand", [], setup),
+          ["RegionLoftFactory"],
+          [{ regionIds: profiles, guideIds, closed }],
+        ),
+        "PK_BODY_make_lofted_body",
+        loftHint,
+      );
+    }
+    const profileIds = profiles as number[];
     if (guideIds.some((id) => profileIds.includes(id))) {
       throw new Error("A loft guide must be a different curve than the profiles");
     }
@@ -998,9 +1272,9 @@ export class NativeSession {
     );
     const notCurve = kinds.find((k) => k.type !== "Wire");
     if (notCurve) throw new Error(`Body ${notCurve.id} is a ${notCurve.type}, not a curve`);
-    const profiles = kinds.slice(0, profileIds.length);
-    const solid = profiles.every((k) => k.closed);
-    if (!solid && profiles.some((k) => k.closed)) {
+    const profileKinds = kinds.slice(0, profileIds.length);
+    const solid = profileKinds.every((k) => k.closed);
+    if (!solid && profileKinds.some((k) => k.closed)) {
       throw new Error("Loft profiles must be either all closed (Solid) or all open (Sheet)");
     }
     const args = [{ profileIds, guideIds, closed }];
@@ -1014,9 +1288,7 @@ export class NativeSession {
       return withHint(
         this.mutate(commandFunction("LoftCommand", [], setup), ["RegionLoftFactory"], args),
         "PK_BODY_make_lofted_body",
-        "Plasticity could not build this loft. A closed loop of closed profiles, or profiles " +
-          "that turn through more than about half a circle, are known to fail: use fewer or " +
-          "straighter profiles, or sweep_profile / revolve_profile for ring shapes.",
+        loftHint,
       );
     }
     // The curve loft reads the selection; LoftEdgeCommand exists only in the module closure.

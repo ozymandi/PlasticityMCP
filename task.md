@@ -318,7 +318,31 @@ Limits: a **minimized** window still does not draw (camera and screenshot keep f
 
 Block 6 and the keep-alive switches are committed and merged into `main` (fast-forward) and pushed. The MCP client must be restarted to see the new tools.
 
-Ideas beyond the agreed list (not agreed yet): arcs and ellipse; selecting individual Regions for extrusion (plate-with-hole profiles); copy / mirror; other exchange formats (IGES, Parasolid, STL, OBJ); opening `.plasticity` files.
+## Native block 7 — arcs, ellipse, join, regions — ✅ Done (2026-10-04, ~3 h)
+
+Work is on branch `native-block-7`. Designer asked for `join_curves` to be included.
+
+New tools: `create_arc` (three points), `create_arc_center` (centre, start, signed angle, normal), `create_ellipse`, `join_curves`, `list_regions` — 47 tools total. `extrude_profile`, `revolve_profile`, `sweep_profile` and `loft_profiles` accept `regionIds` as an alternative to curve ids (exactly one of the two).
+
+Verified live on 26.1.3 (Untitled), `smoke:native` extended and passing (126 checks, 17 s):
+- Arcs: +90°, −90°, 270°, about the X axis, three-point arc through its middle point; collinear points and an off-plane start refused. Ellipse with the major axis along X and along Y.
+- Regions: a slot drawn as two lines and two arcs is one region (4 edges, exact boundary length); extruding it gives a 6-face Solid. Rectangle + nested circle give a ring (`holes: 1`) and a disc; the ring extrudes to a plate with a hole (7 faces), ring + disc to a full plate, a region revolves and lofts; stale region ids refused.
+- Join: four slot curves → one closed curve that extrudes by its own id; line + arc → one path that a circle sweeps along; non-touching curves refused with a hint.
+- Built stdio server exercised end to end (bracket with two holes from one region, joined sweep path) incl. validation errors.
+
+Findings:
+- Arcs: `KnifeCenterPointArcFactory` + `CenterPointArcCommand` (`isKnife = false`, `center`, `orientation`, `p2` = start, `p3` = end, `lastSense = true`) draws counter-clockwise about the orientation normal; a clockwise arc is the same call with the normal flipped. The three-point arc is reduced to this in Node (circumcentre + normal).
+- Ellipse: `KnifeEllipseFactory` + `EllipseCommand` (`center`, `orientation`, `point1` = end of the major axis, `point2` = end of the minor axis). A "minor" radius larger than the "major" one is accepted.
+- Join: `JoinCurvesFactory` + `JoinCurvesCommand` (`curves`). **The joined curve keeps the id of the first curve** (it comes back in `changed`); the others are removed. Curves that do not touch give "Operation has no effect".
+- Regions: each `SketchIsland` item is backed by a `RegionBody` model whose faces match the Region views by `entityId`. From the face: plane normal, boundary edges and their exact lengths, inner loops (holes). **No area is available**; bounds still come from the display mesh (≈ 0.01–0.03 mm off on curved boundaries).
+- Region ids look like `426r36946` (island version prefix) and change whenever curves in that plane change — including a join.
+- Several region ids in one call are extruded as one profile (ring + disc → a full plate).
+
+**Not verified:** arcs and ellipses in tilted (non-axis) planes; `sweep_profile` with `regionIds` on curved paths; `loft_profiles` with `regionIds` plus guides; joining curves that meet at a T or form several chains.
+
+Block 7 is committed, merged into `main` (fast-forward) and pushed. The MCP client must be restarted to see the new tools.
+
+Ideas beyond the agreed list (not agreed yet): copy / mirror; other exchange formats (IGES, Parasolid, STL, OBJ); opening `.plasticity` files.
 
 ## Risks
 
@@ -365,4 +389,4 @@ PlasticityMCP/
 ## Next action
 
 1. Designer: close Plasticity and call `native_launch` (or `npm run smoke:native`) once to verify the cold-start path; restart the MCP client so it picks up the new tools.
-2. Blocks 1–6 are in `main` and published. Designer decides what comes next (see the ideas list).
+2. Blocks 1–7 are in `main` and published. Designer decides what comes next (see the ideas list).
