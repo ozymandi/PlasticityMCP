@@ -11,6 +11,10 @@
  *   3005 ellipse         5 numbers: cx, cy, rx, ry, rotation (radians)
  *   3004 elliptical arc  11 numbers: cx, cy, rx, ry, rotation, startX, startY, endX, endY,
  *                        sweep flag, large-arc flag (the flags as in an SVG path "A" command)
+ *   3009 Bezier          `count` control points: x, y, x, y, … — three points are one
+ *                        quadratic piece (start, control, end); a multiple of four is a
+ *                        chain of cubic pieces, four points each, the end of one repeated
+ *                        as the start of the next (edges of text and of lofted faces)
  */
 
 export interface ProjectedSegment {
@@ -44,11 +48,14 @@ export interface Drawing {
 const POLYLINE = 3006;
 const ELLIPSE = 3005;
 const ARC = 3004;
+const BEZIER = 3009;
 
 const MARGIN_MM = 5;
 const GAP_MM = 10;
 /** Sampling step used only to measure curved elements. */
 const SAMPLE_STEP = Math.PI / 36;
+/** Points taken on each Bezier piece to measure it. */
+const BEZIER_SAMPLES = 8;
 
 type Point = [number, number];
 
@@ -83,6 +90,15 @@ function parameterOf(cx: number, cy: number, rx: number, ry: number, rotation: n
   return Math.atan2(y / ry, x / rx);
 }
 
+/** Point of a Bezier piece (three or four control points) at parameter `t`. */
+function onBezier(control: Point[], t: number): Point {
+  let points = control;
+  while (points.length > 1) {
+    points = points.slice(1).map((p, i) => [points[i]![0] + (p[0] - points[i]![0]) * t, points[i]![1] + (p[1] - points[i]![1]) * t]);
+  }
+  return points[0]!;
+}
+
 function toElement(projection: ProjectedView, segment: ProjectedSegment): Element {
   const k = projection.mmPerPixel;
   const d = projection.positions;
@@ -98,6 +114,28 @@ function toElement(projection: ProjectedView, segment: ProjectedSegment): Elemen
       markup: (c) =>
         `<polyline class="${c}" points="${points.map(([x, y]) => `${fixed(x)},${fixed(y)}`).join(" ")}"/>`,
     };
+  }
+
+  if (segment.type === BEZIER) {
+    const control: Point[] = [];
+    for (let i = 0; i < segment.count; i++) control.push([d[o + i * 2]! * k, d[o + i * 2 + 1]! * k]);
+    const size = segment.count === 3 ? 3 : segment.count > 0 && segment.count % 4 === 0 ? 4 : 0;
+    if (size === 0) {
+      throw new Error(`Plasticity returned a Bezier curve of ${segment.count} control points, which this exporter does not know`);
+    }
+    const extent: Point[] = [];
+    const commands: string[] = [];
+    for (let i = 0; i < control.length; i += size) {
+      const piece = control.slice(i, i + size);
+      const previous = control[i - 1];
+      const start = piece[0]!;
+      if (!previous || Math.hypot(start[0] - previous[0], start[1] - previous[1]) > 1e-6) {
+        commands.push(`M ${fixed(start[0])} ${fixed(start[1])}`);
+      }
+      commands.push(`${size === 3 ? "Q" : "C"} ${piece.slice(1).map(([x, y]) => `${fixed(x)} ${fixed(y)}`).join(" ")}`);
+      for (let j = 0; j <= BEZIER_SAMPLES; j++) extent.push(onBezier(piece, j / BEZIER_SAMPLES));
+    }
+    return { hidden, extent, markup: (c) => `<path class="${c}" d="${commands.join(" ")}"/>` };
   }
 
   const cx = d[o]! * k;

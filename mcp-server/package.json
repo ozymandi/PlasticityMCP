@@ -13,7 +13,7 @@
     "start": "node dist/index.js",
     "smoke": "tsx src/smoke.ts",
     "smoke:native": "tsx src/native-smoke.ts",
-    "test": "tsx src/protocol.test.ts && tsx src/catalog.test.ts",
+    "test": "tsx src/protocol.test.ts && tsx src/catalog.test.ts && tsx src/drawing.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
