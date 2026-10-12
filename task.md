@@ -1085,6 +1085,8 @@ Brake levers re-angled on the Designer's remark that they stuck out (2026-10-12)
 
 Brake levers rebuilt again on the Designer's remark that the blade stuck out forward at 90° to the bar (2026-10-12): the master cylinder now runs from the clamp outward along the bar (20° forward of it), the pivot block sits at its outer end, and the blade is lofted along the bar in front of the grip (local y −48…−125, 28–38 mm forward of the bar axis) with a down-hook at the tip; whole lever tilted 30° down about the bar, swept to the bar angle, mirrored. Hoses leave the inboard end of the body. Verified in the top view: blades parallel to the bar in front of the grips.
 
+Previews (2026-10-12, taken from the Designer's own save `bicicle.plasticity`, 45 bodies, same model): `tests/mountain-bike/view-front|back|left|right|top|bottom.png` (axis views, X-ray) and `view-iso-front-right|rear-right|rear-left|front-left.png` (shaded). Committed with the model in `tests/mountain-bike/`.
+
 Lessons for the server/skill: edge ids go stale after every change of the body and the server now says so; many-edge fillets on messy junctions fail — build tube ends inside the bodies they meet (the stay ends had to be trimmed after the union); the chain was cheapest as one link unit + `array_curve` + one union (54 bodies, OK).
 
 ## Risks
