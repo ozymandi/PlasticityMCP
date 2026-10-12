@@ -1089,6 +1089,8 @@ Previews (2026-10-12, taken from the Designer's own save `bicicle.plasticity`, 4
 
 Vector drawings (2026-10-12) through `export_drawing`: `examples/mountain-bike/drawings/bike-{front,back,left,right,top,bottom,isometric,sheet}.svg` (visible lines only — with hidden lines the whole bike, about 10–20 thousand visible lines per view, fails with "Maximum call stack size exceeded"; a server bug, recursion in the hidden-line pass) and `examples/nikon-f2/drawings/camera-{…}.svg` with hidden lines (camera from `nikon-f2-with-el-nikkor.plasticity`, 33 bodies, 1–3 thousand visible lines per view). The stray Wire "blade" left from the first lever build has been deleted; `mtb_final.plasticity` is the cleaned 44-body model.
 
+Presentation boards (2026-10-12): `examples/mountain-bike/drawings/bike-presentation.png` and `examples/nikon-f2/drawings/camera-presentation.png`, one vertical 1600 px column each with all eight SVG drawings rasterised through resvg (the `mm` units in the SVG width/height attributes have to be stripped before resvg accepts the file; stroke widths were rescaled to about 1.6 px visible / 0.9 px hidden at output size).
+
 Lessons for the server/skill: edge ids go stale after every change of the body and the server now says so; many-edge fillets on messy junctions fail — build tube ends inside the bodies they meet (the stay ends had to be trimmed after the union); the chain was cheapest as one link unit + `array_curve` + one union (54 bodies, OK).
 
 ## Risks
