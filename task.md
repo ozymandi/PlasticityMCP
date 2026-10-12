@@ -767,7 +767,7 @@ Other ideas (not agreed yet): transforming and hiding reference meshes; opening 
 
 ### Nikon F2 from a three-view drawing — stages 1–3 ✅ (2026-10-04, ~0.5 h)
 
-Source: a 640 px blueprint with dimensions (top, front, bottom views), given by the Designer. Plan agreed: seven stages (1 body, 2 finder, 3 mirror box and mount, 4 top controls, 5 front details, 6 bottom, 7 fillets, checks, export); first stages 1–3, separate bodies in groups, files in `tests/nikon-f2/` (not committed).
+Source: a 640 px blueprint with dimensions (top, front, bottom views), given by the Designer. Plan agreed: seven stages (1 body, 2 finder, 3 mirror box and mount, 4 top controls, 5 front details, 6 bottom, 7 fillets, checks, export); first stages 1–3, separate bodies in groups, files in `examples/nikon-f2/` (not committed).
 
 Coordinates: X along the width, front of the camera towards −Y, Z up; origin on the lens axis, Y = 0 on the reference line of the top view.
 
@@ -789,7 +789,7 @@ Findings:
 - Reading the drawing: the figure that looks like "13.5" at the right of the top view is 43.5 (reference line to the mount flange) — it matches the pixels and the 46.5 mm flange distance.
 - When the work began the document was empty with 37 undo steps that are not from this session (the default cube was gone). Nothing of it was undone.
 
-Files: `tests/nikon-f2/nikon-f2-stage3.plasticity`, `.step`, `stage3-isometric.png`, `stage3-front.png`, `stage3-top.png`, `stage3-filleted-isometric.png`.
+Files: `examples/nikon-f2/nikon-f2-stage3.plasticity`, `.step`, `stage3-isometric.png`, `stage3-front.png`, `stage3-top.png`, `stage3-filleted-isometric.png`.
 
 **Designer's rules for modelling, given after seeing stages 1–3 (2026-10-04)** — written into a new skill `~/.claude/skills/plasticity-mcp/SKILL.md`:
 1. No bare edges: every visible edge gets a fillet or a chamfer, also at intermediate stages.
@@ -825,7 +825,7 @@ Findings:
 
 Left out, as said in the brief: knurling, scales and numbers, screws, leatherette texture; also the fold-out crank on the rewind knob and the mirror lock-up tab at the DOF button. Estimated: heights and protrusions without a dimension on the drawing, the shape of the lever arms, the position of the strap lugs on the corner faces. Bare edges that remain: inside the coin slot and the engraved letters, the wall-to-roof edge of the Finder (see above), and the inner corners where joined parts meet.
 
-Files: `tests/nikon-f2/nikon-f2-stage6.plasticity`, `.step`, `stage6-isometric.png`, `stage6-front.png`, `stage6-bottom.png`.
+Files: `examples/nikon-f2/nikon-f2-stage6.plasticity`, `.step`, `stage6-isometric.png`, `stage6-front.png`, `stage6-bottom.png`.
 
 ### Filter in `get_body_topology` — ✅ built (2026-10-04, ~0.5 h), found by the test
 
@@ -843,7 +843,7 @@ Designer's rule for it: merge what is one piece in reality, keep what is a separ
 - Mirror box (with the lens release boss) → **Body shell** (id 246, 60 faces); Tripod socket → **Bottom cover** (id 247). Both valid.
 - **Self-timer** rebuilt (id 335, in group Front): the lever now starts 0.5 inside the hub (y = −19.3) with both rims rounded R0.5, so its walls meet the hub face (y = −19.8) at a right angle — a junction that can be chamfered.
 - Kept separate: Top cover 243, Bottom cover 247, Mount ring 250, Finder 253, strap lugs 313 / 314, Sync terminal 309, and the moving parts (290, 294, 295, 296, 308, 322, 324–328).
-- Copy of this state: `tests/nikon-f2/nikon-f2-merge-wip.plasticity`.
+- Copy of this state: `examples/nikon-f2/nikon-f2-merge-wip.plasticity`.
 
 To do after the restart, picking edges with `box` (thin boxes; ids must be re-read):
 1. Body shell 246 — chamfer 0.6 on the concave junctions: mirror box sides with the front face (lines at x = ±29.5, y = −16.8, z −27…24; the right one is interrupted by the boss), the boss with the mirror box side (two lines on x = 29.5 at z ≈ ±4.96) and with the front face (arc on y = −16.8, r 6.5 about x = 33.7, z = 0), the hinge strip (x ≈ −86.1, y −4.9…0.9, z −26.5…23.5) and the latch strip (x ≈ 61.5, y ±2, z −26.5…23).
@@ -871,7 +871,7 @@ Why the main junction fails: the mirror box is taller than the Body shell it is 
 
 Findings about the filter in use: a thin box around a plane returns the junction loop directly (8–13 edges, 3–4 thousand tokens); a box that is only roughly right returns too much (29 edges for the lever hub). A filter "edges of this face" / "edges between these two faces" would be more exact than a box — an idea, not agreed.
 
-Files: `tests/nikon-f2/nikon-f2-merged.plasticity`, `.step`, `merge-isometric.png`.
+Files: `examples/nikon-f2/nikon-f2-merged.plasticity`, `.step`, `merge-isometric.png`.
 
 ### Nikon F2 — fine detail ✅ in part (2026-10-05, ~1 h)
 
@@ -893,7 +893,7 @@ Findings:
 - `copy_bodies` shows as more than one undo step in `undoDepth` (the description says one).
 - Outputs that grow with the model: `group_bodies` / `move_to_group` print the whole group tree, `create_text` and `list_regions` one entry per outline — on a detailed model these are the expensive calls now.
 
-Files: `tests/nikon-f2/nikon-f2-detailed.plasticity`, `.step`, `detail-isometric.png`, `detail-bottom.png`.
+Files: `examples/nikon-f2/nikon-f2-detailed.plasticity`, `.step`, `detail-isometric.png`, `detail-bottom.png`.
 
 ### EL-Nikkor 50 mm f/2.8 from Nikon's own drawing ✅ (2026-10-05, ~1 h)
 
@@ -913,7 +913,7 @@ Findings:
 
 Not done: the filter thread (pitch 0.5), inner optics.
 
-Files: `tests/nikon-f2/nikon-f2-with-el-nikkor.plasticity`, `el-nikkor-50.step`, `el-nikkor-isometric.png`, `scene-with-lens.png`.
+Files: `examples/nikon-f2/nikon-f2-with-el-nikkor.plasticity`, `el-nikkor-50.step`, `el-nikkor-isometric.png`, `scene-with-lens.png`.
 
 ### Compact results — ✅ built (2026-10-05, ~0.7 h), found by the test
 
@@ -934,13 +934,13 @@ The MCP client must be restarted to see the new format. Not committed.
 
 On the Designer's word. `set_view` takes `ids`: with `fit` the camera frames only those bodies (their combined box), so one part of a scene can be looked at closely; without `ids` it frames every body as before, hidden and isolated-away ones included. What to frame is worked out before the camera moves: an unknown id is refused and the camera stays where it was. `ids` with `fit: false` and an empty list are refused by the schema.
 
-Verified over stdio on the open scene (12 checks): framing the four lens bodies puts the target at their centre (110, 0, −15.2), a screenshot shows the lens filling the view (`tests/nikon-f2/el-nikkor-close.png`), an unknown id is refused without moving the camera, back to the whole scene, document untouched. Build passes. Not committed.
+Verified over stdio on the open scene (12 checks): framing the four lens bodies puts the target at their centre (110, 0, −15.2), a screenshot shows the lens filling the view (`examples/nikon-f2/el-nikkor-close.png`), an unknown id is refused without moving the camera, back to the whole scene, document untouched. Build passes. Not committed.
 
-Checked through the MCP client after its restart (2026-10-05): `native_connect` and `list_bodies` answer in the compact format (33 bodies, one per line); `set_view` front with the four lens `ids` frames the lens, and the side screenshot (`tests/nikon-f2/el-nikkor-side.png`) shows the M39 thread (three turns), the knurled ring, the flats of the front ring and the tail — the silhouette of Nikon's drawing.
+Checked through the MCP client after its restart (2026-10-05): `native_connect` and `list_bodies` answer in the compact format (33 bodies, one per line); `set_view` front with the four lens `ids` frames the lens, and the side screenshot (`examples/nikon-f2/el-nikkor-side.png`) shows the M39 thread (three turns), the knurled ring, the flats of the front ring and the tail — the silhouette of Nikon's drawing.
 
 **Scale turned the right way up (2026-10-05, on the Designer's word):** the barrel was rebuilt (new id 469, same profile) and the text was drawn on the unwrapped Sheet already rotated by 180° — `create_text` with `xDirection` [−1, 0, 0], origin at (14, −2.175) — so that after `deform` it lands upright and in place without a move: letters at z −6.55 … −4.2, reading "2.8 4 5.6 8 11 16" left to right for a viewer outside. The mapping of the first run (Sheet +y → −z, Sheet +x → clockwise seen from the front) held for the rebuilt body. Flats, thread and index dot redone; four bodies valid; `move_to_group` with the new return shape and `list_regions` with `box` worked through the client. Committed before that: `688fa2b` (compact results, `set_view` ids).
 
-**Lens put on the camera (2026-10-05, on the Designer's word):** the four lens bodies were turned 90° about their own axis (scale to the top), 90° about X (front towards −Y) and moved so that the flange face sits on the floor of the mount ring's counterbore (y = −42), axis on the camera's lens axis. Three calls (`rotate_bodies` twice, `move_bodies`). The tail (Ø34) and the thread (Ø39) go into the Ø44 throat; nothing overlaps the mount screws. A real M39 enlarging lens does not fit an F mount — this is a placement, not a fit. Copy: `tests/nikon-f2/nikon-f2-lens-mounted.plasticity`, screenshot `camera-with-lens.png`.
+**Lens put on the camera (2026-10-05, on the Designer's word):** the four lens bodies were turned 90° about their own axis (scale to the top), 90° about X (front towards −Y) and moved so that the flange face sits on the floor of the mount ring's counterbore (y = −42), axis on the camera's lens axis. Three calls (`rotate_bodies` twice, `move_bodies`). The tail (Ø34) and the thread (Ø39) go into the Ø44 throat; nothing overlaps the mount screws. A real M39 enlarging lens does not fit an F mount — this is a placement, not a fit. Copy: `examples/nikon-f2/nikon-f2-lens-mounted.plasticity`, screenshot `camera-with-lens.png`.
 
 **Back of the body — brief given, waiting (2026-10-05):** the drawing has no back view; photos found (jshop.jp items C1981 back view, C1136 open back, C2474 top view). Proposed: Back door as its own body (rear 4 mm of the shell), leatherette pad, memo holder frame, a proper eyepiece (round ocular in the frame), the round contact on the rear of the top cover; all sizes by proportion from the photo — estimates.
 
@@ -958,13 +958,13 @@ Designer's word: build from the references (there are no drawings), and where ex
 Findings:
 - `extrude_profile` of a rectangle made with the same `normal` went +Y for a positive distance on the back (y = 17.3) and +Y for a **negative** distance on the front (y = −16.8): the direction is not decided by the sign alone. Corrected with `move_bodies`; the bounds have to be read every time.
 - `boolean` difference with `keepTools` can split the target: the left pad came back as two bodies (the main pad as a new id in `created`, the old id left on a sliver cut off by the DOF ring). The sliver was deleted.
-- There is no shaded view from behind: `set_view` has one isometric direction and the axis views are X-ray, so the back was checked only in X-ray (`tests/nikon-f2/back-view.png`). An idea, not agreed: a `direction` for the isometric view.
+- There is no shaded view from behind: `set_view` has one isometric direction and the axis views are X-ray, so the back was checked only in X-ray (`examples/nikon-f2/back-view.png`). An idea, not agreed: a `direction` for the isometric view.
 
-**`set_view` takes a `direction` (2026-10-05, on the Designer's word, ~0.3 h):** instead of a view name, the vector from the model towards the camera — any side, shaded like the isometric view (the axis views stay X-ray). Either `view` or `direction`; a direction along Z is refused (that is top / bottom); works together with `ids`. Verified over stdio on the scene (13 checks): [1, 1, 1] gives the returned direction (0.577, 0.577, 0.577) and leaves the X-ray state after an axis view; with the Back door's id the target is its centre; refusals; back to the isometric view; document untouched. First shaded look at the back: `tests/nikon-f2/back-shaded.png` — door, leatherette pad, memo holder, eyepiece with its round ocular and the rear contact are where the photo has them. Build passes. Checked through the MCP client after its restart: `set_view` with `direction` [−0.6, 1, 0.5] alone (no `view`) is accepted and gives a shaded view of the back from the other side (`tests/nikon-f2/back-shaded-left.png`). Not committed.
+**`set_view` takes a `direction` (2026-10-05, on the Designer's word, ~0.3 h):** instead of a view name, the vector from the model towards the camera — any side, shaded like the isometric view (the axis views stay X-ray). Either `view` or `direction`; a direction along Z is refused (that is top / bottom); works together with `ids`. Verified over stdio on the scene (13 checks): [1, 1, 1] gives the returned direction (0.577, 0.577, 0.577) and leaves the X-ray state after an axis view; with the Back door's id the target is its centre; refusals; back to the isometric view; document untouched. First shaded look at the back: `examples/nikon-f2/back-shaded.png` — door, leatherette pad, memo holder, eyepiece with its round ocular and the rear contact are where the photo has them. Build passes. Checked through the MCP client after its restart: `set_view` with `direction` [−0.6, 1, 0.5] alone (no `view`) is accepted and gives a shaded view of the back from the other side (`examples/nikon-f2/back-shaded-left.png`). Not committed.
 
 Differences from the photos seen and **not** changed: the shutter speed dial is low on the photos — the tall column comes from the Designer's drawing and stays; the real finder roof is a peaked prism with leatherette, the model has a hip roof; the rewind knob has a fold-out crank; the advance lever has a plastic tip and another arm shape; the top cover has a step line at the back; the strap lugs carry rings; the memo holder has a slot at the top.
 
-Files: `tests/nikon-f2/nikon-f2-back.plasticity`, `.step`, `back-view.png`, `camera-with-lens.png`.
+Files: `examples/nikon-f2/nikon-f2-back.plasticity`, `.step`, `back-view.png`, `camera-with-lens.png`.
 
 Seen in the first close screenshot (before the turn): the aperture scale reads upside down when the lens stands front up (as recorded above); the knurling, the twelve flats, the index dot and the glass look right; the M39 thread is not visible from that side.
 
@@ -976,7 +976,7 @@ The debt named in the three sections above (topology filter, compact results, `s
 
 Still outside the smoke test, because they live in the tools layer and the smoke test drives the native layer: the `box` of `list_regions` and the return shape of the group tools (both exercised through the MCP client on the Nikon).
 
-After the run the Nikon scene was reopened from `tests/nikon-f2/nikon-f2-back.plasticity` with `open_document` (41 bodies). The window is now on that file, not on an Untitled document: body ids and history start anew, and Plasticity's own Save would write into that file.
+After the run the Nikon scene was reopened from `examples/nikon-f2/nikon-f2-back.plasticity` with `open_document` (41 bodies). The window is now on that file, not on an Untitled document: body ids and history start anew, and Plasticity's own Save would write into that file.
 
 ### Nikon F2 — second pass by the photos ✅ (2026-10-05, ~1 h)
 
@@ -998,7 +998,7 @@ Findings:
 - **Check added on the Designer's word (~0.3 h):** `set_view` with `direction` (and the isometric view) now fails with "The camera did not reach the asked direction: it looks from […]" when the camera rests somewhere else, instead of returning that other direction in silence; nothing is framed in that case. Verified over stdio on the scene: the direction script as before (13 checks ok, no false alarm), and a race of two servers turning the camera at the same time (32 calls: 20 returned their own direction, 12 failed with the new error, none returned a foreign direction). Not in the smoke test — it needs a second mover. The axis views (Plasticity's own navigation) are not checked this way.
 - The region normal of text on a vertical face decided the sign of the engraving depth again (−0.4 for a normal along −Y).
 
-Files: `tests/nikon-f2/nikon-f2-v2.plasticity`, `.step`, `v2-front.png`, `v2-front-close.png`, `v2-back-close.png`.
+Files: `examples/nikon-f2/nikon-f2-v2.plasticity`, `.step`, `v2-front.png`, `v2-front-close.png`, `v2-back-close.png`.
 
 ### Compact catalog — ✅ built (2026-10-05, ~1.5 h)
 
@@ -1047,9 +1047,47 @@ Verified: `npm test` (catalog test now 33 checks, among them: every tool name wr
 
 The Designer asked for an SVG of the camera from all sides; `export_drawing` failed with "a projected geometry type this exporter does not know: 3009". Probed read-only on the open scene (45 Solids, front view: 6 707 segments, 531 of type 3009): a segment of this type holds `count` control points — 475 with three points, the rest with a multiple of four (4 to 168). Three points are one quadratic Bezier (start, control, end): at 74 of 76 joins of bent pieces the control point of one, the shared point and the control point of the next lie on one line (median 0.15 degrees), while the chords turn there by a median of 32 degrees. A multiple of four is a chain of cubic pieces: at all 382 joins the end of a group of four equals the start of the next, and the tangents continue. They come from the edges of engraved text and of lofted faces — no simple part had them, so the smoke test never met the type.
 
-`src/drawing.ts` now draws type 3009 as an SVG path (`Q` for three points, `C` pieces for a multiple of four, a new `M` where pieces do not meet), measures it on the curve and refuses any other number of control points by name. New `src/drawing.test.ts` (10 checks, in `npm test`). Result on the Nikon through the freshly built server: `tests/nikon-f2/nikon-f2-views.svg` — front, back, left, right, top, bottom and isometric on one sheet 990 × 134 mm, visible lines only (14 015 of them), front view 152.5 × 101.7 mm as the model; rendered with headless Chrome and looked at (`nikon-f2-views-preview.png`): outlines, knurling and the engraved "Nikon" are right. Not run: the smoke test (needs an Untitled document), the same export with hidden lines. The MCP client of this session still holds the old build — a restart is needed for its own `export_drawing`. Committed after the tag: `v0.1.0` (on `6ce1bca`) does not hold this fix — whether to move on to `v0.1.1` is the Designer's open decision.
+`src/drawing.ts` now draws type 3009 as an SVG path (`Q` for three points, `C` pieces for a multiple of four, a new `M` where pieces do not meet), measures it on the curve and refuses any other number of control points by name. New `src/drawing.test.ts` (10 checks, in `npm test`). Result on the Nikon through the freshly built server: `examples/nikon-f2/nikon-f2-views.svg` — front, back, left, right, top, bottom and isometric on one sheet 990 × 134 mm, visible lines only (14 015 of them), front view 152.5 × 101.7 mm as the model; rendered with headless Chrome and looked at (`nikon-f2-views-preview.png`): outlines, knurling and the engraved "Nikon" are right. Not run: the smoke test (needs an Untitled document), the same export with hidden lines. The MCP client of this session still holds the old build — a restart is needed for its own `export_drawing`. Committed after the tag: `v0.1.0` (on `6ce1bca`) does not hold this fix — whether to move on to `v0.1.1` is the Designer's open decision.
 
 Still open from the same comparison (not agreed): volume / area / centre of mass from an exported mesh (~1.5 h); several views in one screenshot (~1.5 h); named checkpoints (~1 h).
+
+### Mountain bike (2026-10-12)
+
+A full hardtail MTB built from a geometry chart (Vitus Sentier 29 2019, size M; sources in the session report) and component specs found on the web. Files: `examples/mountain-bike/mtb_final.plasticity` (31 Solids, six groups: Frame, Fork+Cockpit, FrontWheel, RearWheel, Drivetrain, Seat), `examples/mountain-bike/mtb_blocking.plasticity` (checkpoint after blocking), screenshots `examples/mountain-bike/mtb_iso_front.png`, `examples/mountain-bike/mtb_iso_rear.png`. All bodies pass `check_bodies`; helper curves are deleted.
+
+Built: frame as one body (tubes, tapered head tube, stays, dropouts; junction fillets at head tube and seat tube), fork (lowers+arch, crown+stanchions+steerer+top cap), headset, spacers, stem, handlebar with grips, dropper post with saddle, wheels (rim+hub+28 spokes as one body, treaded tyre with 96 knobs, slotted 180 mm rotors, axles), crankset (spindle, two arms, 32T chainring with teeth), 12-speed cassette 10–51T with teeth, derailleur (body+hanger, cage, two jockeys), chain of 54 links along a computed path (tangent lines + arcs over chainring, 18T cog and both jockeys).
+
+Edges left untreated (kernel refuses or too many): frame junctions at the BB shell (tiny intersection fragments), dropout plate outlines, stanchion/crown junction, derailleur cage (sliver edges from circle/rectangle union), saddle underside outline (rail junctions), teeth of chainring/cassette, chain plates. Left out: cables, brake calipers and levers, shifter, spoke nipples, valve.
+
+Pedals reworked on the Designer's request (2026-10-12): flat pedal 105×105×12 with R10 corners, axle tunnel Ø22 through the platform, four rounded windows, 12 traction pins per side (Ø4, chamfered), spindle Ø14 with a hex nut at the crank; edges filleted R1.5, tunnel ends R1. Built once, mirrored for the left side; both in the Drivetrain group, `mtb_final.plasticity` re-saved, screenshot `examples/mountain-bike/mtb_pedal.png`.
+
+Fork crown and cockpit reworked on the Designer's request (2026-10-12): the crown is now a forged-style profile (three Ø44 bosses — two over the stanchions, one around the steerer — joined by a bridge 26 high, filleted R3/R2), seated 10 mm below the lower headset cup (the old box crown overlapped the head tube by 18 mm — found and fixed); stanchion collars Ø40 under the crown, dust seals Ø40 on the lowers; stem faceplate 50×38×10 with four chamfered bolts and two rear clamp bolts; top cap bolt with a hex socket; lower headset cup chamfered 2.5. Screenshot `examples/mountain-bike/mtb_crown.png`.
+
+Brake system built on the Designer's request (2026-10-12), group Brakes: rotors 180 rebuilt as a braking ring R73–90 with 12 slots and 24 holes, six spider arms, a 6-bolt flange with chamfered bolts (one built, rotated into the wheel plane, copied to the front); post-mount calipers 64×30×35 with a 3 mm rotor slot (front behind the left fork leg at 160° from the axle, rear on the left chainstay at 22°), adapters with two bolts (front) and plain (rear); brake levers (clamp, master cylinder body, bent blade 85 mm, reach-adjust screw) built once at the origin, tilted 30° down, swept to the bar angle, mirrored; hydraulic hoses Ø5 swept along splines (front down the left leg, rear along the down tube and left chainstay). Untreated: rotor ring circles (0.4 mm chamfer skipped, ids buried among the hole edges), hose ends. Screenshots `examples/mountain-bike/mtb_brake_front.png`, `examples/mountain-bike/mtb_brake_rear.png`.
+
+Cassette, chainring and derailleur reworked on the Designer's request (2026-10-12): six rounded windows through the five big cogs (28–51T) between r 36 and 48; lockring Ø38×4 with 12 notches on the 10T (first attempt at Ø34 sat inside the carrier bore and did not union — the bore is Ø35.2); four arc windows in the chainring spider (r 28–45); derailleur rebuilt as B-knuckle with pivot, two parallelogram links, P-knuckle with clutch cover, rounded hanger plate with bolt — one body, fillets R4; jockey wheels now 11-tooth with hubs. Screenshot `examples/mountain-bike/mtb_derailleur.png`.
+
+Small hardware added on the Designer's request (2026-10-12): bolt-head prototypes (M4 cross-slot, M5/M6/M8 hex-socket, Ø20 cap, Ø18 cap nut, Ø14 axle head) built once at the origin with chamfers and sockets, then copied/mirrored into place and sunk 0.3 mm into their parts before union (face-to-face contact does not union). Placed: derailleur (cage pivot and B-pivot heads, two limit screws, cable clamp bolt with washer, jockey bolts on the cage), thru-axle levers and heads on the left ends of both axles with cap nuts on the right, crank pinch bolts and spindle cap on the left arm, seat clamp ear with bolt, two dropper-head bolts, two bottle-cage bolts on the down tube, lever clamp and grip bolts. Screenshot `examples/mountain-bike/mtb_hardware.png`. Not done: chamfers on the cage plates (sliver edges), fillets on the parallelogram links.
+
+Saddle rebuilt on the Designer's request (2026-10-12): sporty shell 262 long lofted through six D-sections (open spline top + line bottom joined into closed wires; a closed spline through the bottom corners overshot by 40 mm and was dropped; the loft had to go through list_regions ids because the joined wires were reported ambiguous), end faces filleted R4; rails Ø7 swept along a spline, mirrored, joined by a crossbar at the tail; two coil springs (helix r12, 4 turns, wire Ø4) with washers between the crossbar and the shell. Shell and rails are separate bodies in the Seat group. Loft bulges to 164 mm wide between the 200 and 250 sections (intended 130) — left as is. Screenshot `examples/mountain-bike/mtb_saddle.png`.
+
+Dropper head fixed on the Designer's request (2026-10-12): the old axis-aligned box (which left a wedge gap over the tilted post) was cut away; new head = round neck continuing the post axis, lower and upper clamp plates with half-round grooves for the rails, two M6 bolts through both plates; a 2 mm slit cut into the back of the seat tube under the clamp. All one body with the post.
+
+Diamond knurl on the grips on the Designer's request (2026-10-12), the unwrap/deform way: unwrap_faces of the grip wall gave a 100.5×125 Sheet at the origin; 29 groove bars (1.2 wide, 1 thick, straddling the sheet) at +35° via array_rectangular, mirrored to −35°; one boolean intersection of all 58 bars with a box the size of the sheet trimmed them and, because they cross, merged them into one lattice body; deform carried the lattice onto the cylinder wall in one call; difference cut 0.5 mm grooves. The lattice was mirrored across the bike's centre plane for the left grip. Each grip is now about 2060 faces, both valid. Screenshot `examples/mountain-bike/mtb_grip.png`.
+
+Brake levers and shifter reworked on the Designer's request (2026-10-12): lever = clamp ring (chamfered) with boss and bolt, round master-cylinder reservoir Ø22×45 with filleted cap and two screws, bleed screw, pivot block R2.5, pivot pin with head, blade lofted through three rectangles (8×8 at the root to 4×7 at the hooked tip, filleted R1.5), reach-adjust screw; built once at the origin, tilted 30°, swept to the bar angle, mirrored. Small parts that straddle a fillet corner refuse to union (PK_BODY_boolean_2 21653) — moved onto flat faces. Trigger shifter (right, inboard of the lever): clamp ring, body 53×30×22 R4 with indicator window, bridge, main and release paddles, cable exit; shift cable Ø4 swept down the right side of the down tube and right chainstay to the derailleur cable bolt. Dropper remote not built (not asked). Screenshot `examples/mountain-bike/mtb_lever_shifter.png`.
+
+Dropper remote built on the Designer's request (2026-10-12): left side of the bar inboard of the brake lever — clamp ring, body 30×20×14 R3, bridge, thumb paddle 32×16×4 R1.5, cable exit, pivot bolt; built at the origin like the shifter, swept to the bar angle, mirrored to the left (original discarded). Cable Ø4 swept along a spline down the left side of the top tube to a cable stop on the dropper body (the first spline overshot 40 mm below the top tube at the turn into the seat tube — fixed with two extra points). Screenshot `examples/mountain-bike/mtb_dropper_remote.png`.
+
+Cable routing fixed on the Designer's remark that cables ran through the frame (2026-10-12): all four lines rebuilt — the front hose went through the left fork leg under the crown, the rear hose and the shift cable clipped the BB shell and the chainstays, the dropper cable entered the seat tube; the rear hose also crossed the left chainstay on its way to the caliper and now comes in over the stay from above. Clearance verified with a boolean trick: copy the cable, intersect the copy with the frame / fork with keepTools — "no effect" means no overlap, a result body shows where they meet; copies deleted afterwards. Extra spline points were needed to stop the splines bowing into the tubes between far-apart points.
+
+Brake levers re-angled on the Designer's remark that they stuck out (2026-10-12): each lever turned a further 5° down about the bar axis (35° in all) and 25° toward its grip about the vertical through its clamp, so the blade now runs along the bar in front of the grip; the mirrored left lever needs the opposite sign about the bar axis. Both hoses rebuilt from the new reservoir fronts (positions computed by replaying the transform chain in Python).
+
+Brake levers rebuilt again on the Designer's remark that the blade stuck out forward at 90° to the bar (2026-10-12): the master cylinder now runs from the clamp outward along the bar (20° forward of it), the pivot block sits at its outer end, and the blade is lofted along the bar in front of the grip (local y −48…−125, 28–38 mm forward of the bar axis) with a down-hook at the tip; whole lever tilted 30° down about the bar, swept to the bar angle, mirrored. Hoses leave the inboard end of the body. Verified in the top view: blades parallel to the bar in front of the grips.
+
+Previews (2026-10-12, taken from the Designer's own save `bicicle.plasticity`, 45 bodies, same model): `examples/mountain-bike/view-front|back|left|right|top|bottom.png` (axis views, X-ray) and `view-iso-front-right|rear-right|rear-left|front-left.png` (shaded). Committed with the model in `examples/mountain-bike/`.
+
+Lessons for the server/skill: edge ids go stale after every change of the body and the server now says so; many-edge fillets on messy junctions fail — build tube ends inside the bodies they meet (the stay ends had to be trimmed after the union); the chain was cheapest as one link unit + `array_curve` + one union (54 bodies, OK).
 
 ## Risks
 
