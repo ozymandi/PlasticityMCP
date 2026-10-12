@@ -1087,6 +1087,8 @@ Brake levers rebuilt again on the Designer's remark that the blade stuck out for
 
 Previews (2026-10-12, taken from the Designer's own save `bicicle.plasticity`, 45 bodies, same model): `examples/mountain-bike/view-front|back|left|right|top|bottom.png` (axis views, X-ray) and `view-iso-front-right|rear-right|rear-left|front-left.png` (shaded). Committed with the model in `examples/mountain-bike/`.
 
+Vector drawings (2026-10-12) through `export_drawing`: `examples/mountain-bike/drawings/bike-{front,back,left,right,top,bottom,isometric,sheet}.svg` (visible lines only — with hidden lines the whole bike, about 10–20 thousand visible lines per view, fails with "Maximum call stack size exceeded"; a server bug, recursion in the hidden-line pass) and `examples/nikon-f2/drawings/camera-{…}.svg` with hidden lines (camera from `nikon-f2-with-el-nikkor.plasticity`, 33 bodies, 1–3 thousand visible lines per view). The Designer's `bicicle.plasticity` carries a stray Wire "blade" from the first lever build.
+
 Lessons for the server/skill: edge ids go stale after every change of the body and the server now says so; many-edge fillets on messy junctions fail — build tube ends inside the bodies they meet (the stay ends had to be trimmed after the union); the chain was cheapest as one link unit + `array_curve` + one union (54 bodies, OK).
 
 ## Risks
