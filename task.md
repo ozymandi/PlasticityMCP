@@ -767,7 +767,7 @@ Other ideas (not agreed yet): transforming and hiding reference meshes; opening 
 
 ### Nikon F2 from a three-view drawing — stages 1–3 ✅ (2026-10-04, ~0.5 h)
 
-Source: a 640 px blueprint with dimensions (top, front, bottom views), given by the Designer. Plan agreed: seven stages (1 body, 2 finder, 3 mirror box and mount, 4 top controls, 5 front details, 6 bottom, 7 fillets, checks, export); first stages 1–3, separate bodies in groups, files in `tests/nikon-f2/` (not committed).
+Source: a 640 px blueprint with dimensions (top, front, bottom views), given by the Designer. Plan agreed: seven stages (1 body, 2 finder, 3 mirror box and mount, 4 top controls, 5 front details, 6 bottom, 7 fillets, checks, export); first stages 1–3, separate bodies in groups, files in `examples/nikon-f2/` (not committed).
 
 Coordinates: X along the width, front of the camera towards −Y, Z up; origin on the lens axis, Y = 0 on the reference line of the top view.
 
@@ -789,7 +789,7 @@ Findings:
 - Reading the drawing: the figure that looks like "13.5" at the right of the top view is 43.5 (reference line to the mount flange) — it matches the pixels and the 46.5 mm flange distance.
 - When the work began the document was empty with 37 undo steps that are not from this session (the default cube was gone). Nothing of it was undone.
 
-Files: `tests/nikon-f2/nikon-f2-stage3.plasticity`, `.step`, `stage3-isometric.png`, `stage3-front.png`, `stage3-top.png`, `stage3-filleted-isometric.png`.
+Files: `examples/nikon-f2/nikon-f2-stage3.plasticity`, `.step`, `stage3-isometric.png`, `stage3-front.png`, `stage3-top.png`, `stage3-filleted-isometric.png`.
 
 **Designer's rules for modelling, given after seeing stages 1–3 (2026-10-04)** — written into a new skill `~/.claude/skills/plasticity-mcp/SKILL.md`:
 1. No bare edges: every visible edge gets a fillet or a chamfer, also at intermediate stages.
@@ -825,7 +825,7 @@ Findings:
 
 Left out, as said in the brief: knurling, scales and numbers, screws, leatherette texture; also the fold-out crank on the rewind knob and the mirror lock-up tab at the DOF button. Estimated: heights and protrusions without a dimension on the drawing, the shape of the lever arms, the position of the strap lugs on the corner faces. Bare edges that remain: inside the coin slot and the engraved letters, the wall-to-roof edge of the Finder (see above), and the inner corners where joined parts meet.
 
-Files: `tests/nikon-f2/nikon-f2-stage6.plasticity`, `.step`, `stage6-isometric.png`, `stage6-front.png`, `stage6-bottom.png`.
+Files: `examples/nikon-f2/nikon-f2-stage6.plasticity`, `.step`, `stage6-isometric.png`, `stage6-front.png`, `stage6-bottom.png`.
 
 ### Filter in `get_body_topology` — ✅ built (2026-10-04, ~0.5 h), found by the test
 
@@ -843,7 +843,7 @@ Designer's rule for it: merge what is one piece in reality, keep what is a separ
 - Mirror box (with the lens release boss) → **Body shell** (id 246, 60 faces); Tripod socket → **Bottom cover** (id 247). Both valid.
 - **Self-timer** rebuilt (id 335, in group Front): the lever now starts 0.5 inside the hub (y = −19.3) with both rims rounded R0.5, so its walls meet the hub face (y = −19.8) at a right angle — a junction that can be chamfered.
 - Kept separate: Top cover 243, Bottom cover 247, Mount ring 250, Finder 253, strap lugs 313 / 314, Sync terminal 309, and the moving parts (290, 294, 295, 296, 308, 322, 324–328).
-- Copy of this state: `tests/nikon-f2/nikon-f2-merge-wip.plasticity`.
+- Copy of this state: `examples/nikon-f2/nikon-f2-merge-wip.plasticity`.
 
 To do after the restart, picking edges with `box` (thin boxes; ids must be re-read):
 1. Body shell 246 — chamfer 0.6 on the concave junctions: mirror box sides with the front face (lines at x = ±29.5, y = −16.8, z −27…24; the right one is interrupted by the boss), the boss with the mirror box side (two lines on x = 29.5 at z ≈ ±4.96) and with the front face (arc on y = −16.8, r 6.5 about x = 33.7, z = 0), the hinge strip (x ≈ −86.1, y −4.9…0.9, z −26.5…23.5) and the latch strip (x ≈ 61.5, y ±2, z −26.5…23).
@@ -871,7 +871,7 @@ Why the main junction fails: the mirror box is taller than the Body shell it is 
 
 Findings about the filter in use: a thin box around a plane returns the junction loop directly (8–13 edges, 3–4 thousand tokens); a box that is only roughly right returns too much (29 edges for the lever hub). A filter "edges of this face" / "edges between these two faces" would be more exact than a box — an idea, not agreed.
 
-Files: `tests/nikon-f2/nikon-f2-merged.plasticity`, `.step`, `merge-isometric.png`.
+Files: `examples/nikon-f2/nikon-f2-merged.plasticity`, `.step`, `merge-isometric.png`.
 
 ### Nikon F2 — fine detail ✅ in part (2026-10-05, ~1 h)
 
@@ -893,7 +893,7 @@ Findings:
 - `copy_bodies` shows as more than one undo step in `undoDepth` (the description says one).
 - Outputs that grow with the model: `group_bodies` / `move_to_group` print the whole group tree, `create_text` and `list_regions` one entry per outline — on a detailed model these are the expensive calls now.
 
-Files: `tests/nikon-f2/nikon-f2-detailed.plasticity`, `.step`, `detail-isometric.png`, `detail-bottom.png`.
+Files: `examples/nikon-f2/nikon-f2-detailed.plasticity`, `.step`, `detail-isometric.png`, `detail-bottom.png`.
 
 ### EL-Nikkor 50 mm f/2.8 from Nikon's own drawing ✅ (2026-10-05, ~1 h)
 
@@ -913,7 +913,7 @@ Findings:
 
 Not done: the filter thread (pitch 0.5), inner optics.
 
-Files: `tests/nikon-f2/nikon-f2-with-el-nikkor.plasticity`, `el-nikkor-50.step`, `el-nikkor-isometric.png`, `scene-with-lens.png`.
+Files: `examples/nikon-f2/nikon-f2-with-el-nikkor.plasticity`, `el-nikkor-50.step`, `el-nikkor-isometric.png`, `scene-with-lens.png`.
 
 ### Compact results — ✅ built (2026-10-05, ~0.7 h), found by the test
 
@@ -934,13 +934,13 @@ The MCP client must be restarted to see the new format. Not committed.
 
 On the Designer's word. `set_view` takes `ids`: with `fit` the camera frames only those bodies (their combined box), so one part of a scene can be looked at closely; without `ids` it frames every body as before, hidden and isolated-away ones included. What to frame is worked out before the camera moves: an unknown id is refused and the camera stays where it was. `ids` with `fit: false` and an empty list are refused by the schema.
 
-Verified over stdio on the open scene (12 checks): framing the four lens bodies puts the target at their centre (110, 0, −15.2), a screenshot shows the lens filling the view (`tests/nikon-f2/el-nikkor-close.png`), an unknown id is refused without moving the camera, back to the whole scene, document untouched. Build passes. Not committed.
+Verified over stdio on the open scene (12 checks): framing the four lens bodies puts the target at their centre (110, 0, −15.2), a screenshot shows the lens filling the view (`examples/nikon-f2/el-nikkor-close.png`), an unknown id is refused without moving the camera, back to the whole scene, document untouched. Build passes. Not committed.
 
-Checked through the MCP client after its restart (2026-10-05): `native_connect` and `list_bodies` answer in the compact format (33 bodies, one per line); `set_view` front with the four lens `ids` frames the lens, and the side screenshot (`tests/nikon-f2/el-nikkor-side.png`) shows the M39 thread (three turns), the knurled ring, the flats of the front ring and the tail — the silhouette of Nikon's drawing.
+Checked through the MCP client after its restart (2026-10-05): `native_connect` and `list_bodies` answer in the compact format (33 bodies, one per line); `set_view` front with the four lens `ids` frames the lens, and the side screenshot (`examples/nikon-f2/el-nikkor-side.png`) shows the M39 thread (three turns), the knurled ring, the flats of the front ring and the tail — the silhouette of Nikon's drawing.
 
 **Scale turned the right way up (2026-10-05, on the Designer's word):** the barrel was rebuilt (new id 469, same profile) and the text was drawn on the unwrapped Sheet already rotated by 180° — `create_text` with `xDirection` [−1, 0, 0], origin at (14, −2.175) — so that after `deform` it lands upright and in place without a move: letters at z −6.55 … −4.2, reading "2.8 4 5.6 8 11 16" left to right for a viewer outside. The mapping of the first run (Sheet +y → −z, Sheet +x → clockwise seen from the front) held for the rebuilt body. Flats, thread and index dot redone; four bodies valid; `move_to_group` with the new return shape and `list_regions` with `box` worked through the client. Committed before that: `688fa2b` (compact results, `set_view` ids).
 
-**Lens put on the camera (2026-10-05, on the Designer's word):** the four lens bodies were turned 90° about their own axis (scale to the top), 90° about X (front towards −Y) and moved so that the flange face sits on the floor of the mount ring's counterbore (y = −42), axis on the camera's lens axis. Three calls (`rotate_bodies` twice, `move_bodies`). The tail (Ø34) and the thread (Ø39) go into the Ø44 throat; nothing overlaps the mount screws. A real M39 enlarging lens does not fit an F mount — this is a placement, not a fit. Copy: `tests/nikon-f2/nikon-f2-lens-mounted.plasticity`, screenshot `camera-with-lens.png`.
+**Lens put on the camera (2026-10-05, on the Designer's word):** the four lens bodies were turned 90° about their own axis (scale to the top), 90° about X (front towards −Y) and moved so that the flange face sits on the floor of the mount ring's counterbore (y = −42), axis on the camera's lens axis. Three calls (`rotate_bodies` twice, `move_bodies`). The tail (Ø34) and the thread (Ø39) go into the Ø44 throat; nothing overlaps the mount screws. A real M39 enlarging lens does not fit an F mount — this is a placement, not a fit. Copy: `examples/nikon-f2/nikon-f2-lens-mounted.plasticity`, screenshot `camera-with-lens.png`.
 
 **Back of the body — brief given, waiting (2026-10-05):** the drawing has no back view; photos found (jshop.jp items C1981 back view, C1136 open back, C2474 top view). Proposed: Back door as its own body (rear 4 mm of the shell), leatherette pad, memo holder frame, a proper eyepiece (round ocular in the frame), the round contact on the rear of the top cover; all sizes by proportion from the photo — estimates.
 
@@ -958,13 +958,13 @@ Designer's word: build from the references (there are no drawings), and where ex
 Findings:
 - `extrude_profile` of a rectangle made with the same `normal` went +Y for a positive distance on the back (y = 17.3) and +Y for a **negative** distance on the front (y = −16.8): the direction is not decided by the sign alone. Corrected with `move_bodies`; the bounds have to be read every time.
 - `boolean` difference with `keepTools` can split the target: the left pad came back as two bodies (the main pad as a new id in `created`, the old id left on a sliver cut off by the DOF ring). The sliver was deleted.
-- There is no shaded view from behind: `set_view` has one isometric direction and the axis views are X-ray, so the back was checked only in X-ray (`tests/nikon-f2/back-view.png`). An idea, not agreed: a `direction` for the isometric view.
+- There is no shaded view from behind: `set_view` has one isometric direction and the axis views are X-ray, so the back was checked only in X-ray (`examples/nikon-f2/back-view.png`). An idea, not agreed: a `direction` for the isometric view.
 
-**`set_view` takes a `direction` (2026-10-05, on the Designer's word, ~0.3 h):** instead of a view name, the vector from the model towards the camera — any side, shaded like the isometric view (the axis views stay X-ray). Either `view` or `direction`; a direction along Z is refused (that is top / bottom); works together with `ids`. Verified over stdio on the scene (13 checks): [1, 1, 1] gives the returned direction (0.577, 0.577, 0.577) and leaves the X-ray state after an axis view; with the Back door's id the target is its centre; refusals; back to the isometric view; document untouched. First shaded look at the back: `tests/nikon-f2/back-shaded.png` — door, leatherette pad, memo holder, eyepiece with its round ocular and the rear contact are where the photo has them. Build passes. Checked through the MCP client after its restart: `set_view` with `direction` [−0.6, 1, 0.5] alone (no `view`) is accepted and gives a shaded view of the back from the other side (`tests/nikon-f2/back-shaded-left.png`). Not committed.
+**`set_view` takes a `direction` (2026-10-05, on the Designer's word, ~0.3 h):** instead of a view name, the vector from the model towards the camera — any side, shaded like the isometric view (the axis views stay X-ray). Either `view` or `direction`; a direction along Z is refused (that is top / bottom); works together with `ids`. Verified over stdio on the scene (13 checks): [1, 1, 1] gives the returned direction (0.577, 0.577, 0.577) and leaves the X-ray state after an axis view; with the Back door's id the target is its centre; refusals; back to the isometric view; document untouched. First shaded look at the back: `examples/nikon-f2/back-shaded.png` — door, leatherette pad, memo holder, eyepiece with its round ocular and the rear contact are where the photo has them. Build passes. Checked through the MCP client after its restart: `set_view` with `direction` [−0.6, 1, 0.5] alone (no `view`) is accepted and gives a shaded view of the back from the other side (`examples/nikon-f2/back-shaded-left.png`). Not committed.
 
 Differences from the photos seen and **not** changed: the shutter speed dial is low on the photos — the tall column comes from the Designer's drawing and stays; the real finder roof is a peaked prism with leatherette, the model has a hip roof; the rewind knob has a fold-out crank; the advance lever has a plastic tip and another arm shape; the top cover has a step line at the back; the strap lugs carry rings; the memo holder has a slot at the top.
 
-Files: `tests/nikon-f2/nikon-f2-back.plasticity`, `.step`, `back-view.png`, `camera-with-lens.png`.
+Files: `examples/nikon-f2/nikon-f2-back.plasticity`, `.step`, `back-view.png`, `camera-with-lens.png`.
 
 Seen in the first close screenshot (before the turn): the aperture scale reads upside down when the lens stands front up (as recorded above); the knurling, the twelve flats, the index dot and the glass look right; the M39 thread is not visible from that side.
 
@@ -976,7 +976,7 @@ The debt named in the three sections above (topology filter, compact results, `s
 
 Still outside the smoke test, because they live in the tools layer and the smoke test drives the native layer: the `box` of `list_regions` and the return shape of the group tools (both exercised through the MCP client on the Nikon).
 
-After the run the Nikon scene was reopened from `tests/nikon-f2/nikon-f2-back.plasticity` with `open_document` (41 bodies). The window is now on that file, not on an Untitled document: body ids and history start anew, and Plasticity's own Save would write into that file.
+After the run the Nikon scene was reopened from `examples/nikon-f2/nikon-f2-back.plasticity` with `open_document` (41 bodies). The window is now on that file, not on an Untitled document: body ids and history start anew, and Plasticity's own Save would write into that file.
 
 ### Nikon F2 — second pass by the photos ✅ (2026-10-05, ~1 h)
 
@@ -998,7 +998,7 @@ Findings:
 - **Check added on the Designer's word (~0.3 h):** `set_view` with `direction` (and the isometric view) now fails with "The camera did not reach the asked direction: it looks from […]" when the camera rests somewhere else, instead of returning that other direction in silence; nothing is framed in that case. Verified over stdio on the scene: the direction script as before (13 checks ok, no false alarm), and a race of two servers turning the camera at the same time (32 calls: 20 returned their own direction, 12 failed with the new error, none returned a foreign direction). Not in the smoke test — it needs a second mover. The axis views (Plasticity's own navigation) are not checked this way.
 - The region normal of text on a vertical face decided the sign of the engraving depth again (−0.4 for a normal along −Y).
 
-Files: `tests/nikon-f2/nikon-f2-v2.plasticity`, `.step`, `v2-front.png`, `v2-front-close.png`, `v2-back-close.png`.
+Files: `examples/nikon-f2/nikon-f2-v2.plasticity`, `.step`, `v2-front.png`, `v2-front-close.png`, `v2-back-close.png`.
 
 ### Compact catalog — ✅ built (2026-10-05, ~1.5 h)
 
@@ -1047,7 +1047,7 @@ Verified: `npm test` (catalog test now 33 checks, among them: every tool name wr
 
 The Designer asked for an SVG of the camera from all sides; `export_drawing` failed with "a projected geometry type this exporter does not know: 3009". Probed read-only on the open scene (45 Solids, front view: 6 707 segments, 531 of type 3009): a segment of this type holds `count` control points — 475 with three points, the rest with a multiple of four (4 to 168). Three points are one quadratic Bezier (start, control, end): at 74 of 76 joins of bent pieces the control point of one, the shared point and the control point of the next lie on one line (median 0.15 degrees), while the chords turn there by a median of 32 degrees. A multiple of four is a chain of cubic pieces: at all 382 joins the end of a group of four equals the start of the next, and the tangents continue. They come from the edges of engraved text and of lofted faces — no simple part had them, so the smoke test never met the type.
 
-`src/drawing.ts` now draws type 3009 as an SVG path (`Q` for three points, `C` pieces for a multiple of four, a new `M` where pieces do not meet), measures it on the curve and refuses any other number of control points by name. New `src/drawing.test.ts` (10 checks, in `npm test`). Result on the Nikon through the freshly built server: `tests/nikon-f2/nikon-f2-views.svg` — front, back, left, right, top, bottom and isometric on one sheet 990 × 134 mm, visible lines only (14 015 of them), front view 152.5 × 101.7 mm as the model; rendered with headless Chrome and looked at (`nikon-f2-views-preview.png`): outlines, knurling and the engraved "Nikon" are right. Not run: the smoke test (needs an Untitled document), the same export with hidden lines. The MCP client of this session still holds the old build — a restart is needed for its own `export_drawing`. Committed after the tag: `v0.1.0` (on `6ce1bca`) does not hold this fix — whether to move on to `v0.1.1` is the Designer's open decision.
+`src/drawing.ts` now draws type 3009 as an SVG path (`Q` for three points, `C` pieces for a multiple of four, a new `M` where pieces do not meet), measures it on the curve and refuses any other number of control points by name. New `src/drawing.test.ts` (10 checks, in `npm test`). Result on the Nikon through the freshly built server: `examples/nikon-f2/nikon-f2-views.svg` — front, back, left, right, top, bottom and isometric on one sheet 990 × 134 mm, visible lines only (14 015 of them), front view 152.5 × 101.7 mm as the model; rendered with headless Chrome and looked at (`nikon-f2-views-preview.png`): outlines, knurling and the engraved "Nikon" are right. Not run: the smoke test (needs an Untitled document), the same export with hidden lines. The MCP client of this session still holds the old build — a restart is needed for its own `export_drawing`. Committed after the tag: `v0.1.0` (on `6ce1bca`) does not hold this fix — whether to move on to `v0.1.1` is the Designer's open decision.
 
 Still open from the same comparison (not agreed): volume / area / centre of mass from an exported mesh (~1.5 h); several views in one screenshot (~1.5 h); named checkpoints (~1 h).
 
