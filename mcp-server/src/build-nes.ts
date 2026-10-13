@@ -386,16 +386,39 @@ async function main() {
   const doorFlapBox = (await native.createBox([-117, -100.5, 49], [136, 5.5, 35], "cartridge_door_flap")).created[0]!;
   topo = await native.topology(doorFlapBox.id);
   const doorFEdges = topo.edges!.filter(e => Math.abs(e.startMm[1] - (-100.5)) < 0.1 && Math.abs(e.endMm[1] - (-100.5)) < 0.1);
-  const chDoorId = await safeChamfer(native, doorFlapBox.id, doorFEdges.map(e => e.id), 0.8);
+  let chDoorId = await safeChamfer(native, doorFlapBox.id, doorFEdges.map(e => e.id), 0.8);
 
-  // Molded badge stripe on door
-  const doorBadge = (await native.createBox([-110, -101.2, 64], [122, 1.0, 5], "door_nintendo_badge")).created[0]!;
   // Bottom finger-lift groove
   const fingerLift = (await native.createBox([-80, -101.2, 49], [62, 2.0, 3], "door_finger_lift")).created[0]!;
 
-  consoleBodies.push(chDoorId, doorBadge.id, fingerLift.id);
+  // AUTHENTIC ENGRAVED LOGO ON DOOR FLAP
+  console.log("Engraving Authentic Nintendo ENTERTAINMENT SYSTEM Logo onto Door Flap...");
+  const nintendoWires = (await native.createText("Nintendo", 7.0, [-92, -100.5, 57], [0, -1, 0], [1, 0, 0])).created;
+  const subWires = (await native.createText("ENTERTAINMENT SYSTEM", 2.3, [-92, -100.5, 53], [0, -1, 0], [1, 0, 0])).created;
+  const logoWires = [...nintendoWires, ...subWires];
+
+  const imp = await native.imprint(chDoorId, {
+    curveIds: logoWires.map(w => w.id),
+    direction: [0, 1, 0],
+  });
+  chDoorId = imp.changed[0]!.id;
+  await native.deleteBodies(logoWires.map(w => w.id));
+
+  // Deboss letter faces into the flap surface
+  topo = await native.topology(chDoorId, { faces: true });
+  const letterFaces = topo.faces!.filter(f => {
+    return Math.abs(f.normal[1] - (-1)) < 0.05 &&
+           Math.abs(f.centerMm[1] - (-100.5)) < 0.1 &&
+           f.centerMm[0] > -94 && f.centerMm[0] < -35 &&
+           f.centerMm[2] > 51 && f.centerMm[2] < 66;
+  });
+  if (letterFaces.length > 0) {
+    const debossRes = await native.offset(chDoorId, { faceIds: letterFaces.map(f => f.id) }, -0.35);
+    chDoorId = debossRes.changed[0]?.id ?? chDoorId;
+  }
+
+  consoleBodies.push(chDoorId, fingerLift.id);
   await native.setMaterial([chDoorId], matDarkCharcoal.id);
-  await native.setMaterial([doorBadge.id], matNintendoRed.id);
   await native.setMaterial([fingerLift.id], matDarkCharcoal.id);
 
   // Ventilation Louvers (12 cooling fins sitting neatly inside the pocket)
@@ -781,6 +804,7 @@ async function main() {
   const detailViews = [
     { name: "detail-controls", view: [-0.6, -1, 0.4], ids: [lowerChassisId, powerBtnId, resetBtnId, ledJewelId] },
     { name: "detail-cartridge", view: [0.8, -0.6, 0.5], ids: cartridgeBodies },
+    { name: "detail-logo-engraving", view: [-0.4, -1, 0.3], ids: [chDoorId] },
     { name: "detail-controller-dpad", view: [-0.3, -1, 0.9], ids: ctrl1Bodies.slice(0, 5) },
     { name: "detail-controller-buttons", view: [0.3, -1, 0.9], ids: ctrl1Bodies.slice(5) },
     { name: "detail-screws", view: [0.35, 0.45, -0.85], ids: [lowerChassisId, ...screwBodies.slice(0, 6)] }
@@ -788,7 +812,7 @@ async function main() {
 
   for (const { name, view, ids } of detailViews) {
     try {
-      await native.setView(view as any, ids);
+      await native.setView(view as any, true, ids);
       await delay(300);
       const outPath = join(EXAMPLES_DIR, `${name}.png`);
       await native.screenshot(outPath, true);
