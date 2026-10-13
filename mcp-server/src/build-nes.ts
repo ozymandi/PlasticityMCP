@@ -506,8 +506,8 @@ async function main() {
   // ==========================================
   console.log("Modeling Controller 1 & 2 with Fillets, Chamfers & 12 Rear Screws...");
   const ctrlConfigs = [
-    { idx: 1, cx: -85, cy: -165, list: ctrl1Bodies, portX: -48 },
-    { idx: 2, cx: 55, cy: -165, list: ctrl2Bodies, portX: -16 }
+    { idx: 1, cx: -85, cy: -195, list: ctrl1Bodies, portX: -48 },
+    { idx: 2, cx: 55, cy: -195, list: ctrl2Bodies, portX: -16 }
   ];
 
   for (const { idx, cx, cy, list, portX } of ctrlConfigs) {
@@ -628,24 +628,52 @@ async function main() {
     list.push(boot1.id, boot2.id);
     await native.setMaterial([boot1.id, boot2.id], matRubber.id);
 
-    // Molded Cable running to Console Port
-    console.log(`Modeling Controller ${idx} Cable & Console Plug...`);
+    // Molded Cable running to Console Port in coiled loops
+    console.log(`Modeling Controller ${idx} Coiled Cable & Console Plug...`);
     let cablePoints: Vec3[];
     if (idx === 1) {
       cablePoints = [
-        [-85, -129.5, 8.5],
-        [-80, -122, 6.0],
-        [-68, -114, 5.0],
-        [-54, -108, 11.0],
-        [-48, -106, 16.0]
+        [-85, -163.5, 8.5],
+        [-85, -158, 4.5],
+        [-95, -154, 2.0],
+        // Loop 1 (outer left sweep)
+        [-118, -158, 2.0],
+        [-138, -146, 2.0],
+        [-132, -132, 2.0],
+        [-112, -136, 2.0],
+        // Loop 2 (forward inner sweep)
+        [-92, -148, 2.0],
+        [-76, -158, 2.0],
+        [-62, -145, 2.0],
+        [-68, -132, 2.0],
+        // Loop 3 (sweep towards console plug)
+        [-84, -130, 2.0],
+        [-78, -122, 4.0],
+        [-64, -120, 8.0],
+        [-52, -120, 13.0],
+        [-48, -118, 16.0]
       ];
     } else {
       cablePoints = [
-        [55, -129.5, 8.5],
-        [46, -122, 6.0],
-        [22, -114, 5.0],
-        [-4, -108, 10.0],
-        [-16, -106, 16.0]
+        [55, -163.5, 8.5],
+        [55, -158, 4.5],
+        [65, -154, 2.0],
+        // Loop 1 (outer right sweep)
+        [88, -158, 2.0],
+        [108, -146, 2.0],
+        [102, -132, 2.0],
+        [82, -136, 2.0],
+        // Loop 2 (forward inner sweep)
+        [62, -148, 2.0],
+        [46, -158, 2.0],
+        [32, -145, 2.0],
+        [38, -132, 2.0],
+        // Loop 3 (sweep towards console plug)
+        [24, -130, 2.0],
+        [10, -124, 4.0],
+        [-2, -120, 8.0],
+        [-12, -120, 13.0],
+        [-16, -118, 16.0]
       ];
     }
     const splineWire = (await native.createSpline(cablePoints, false, `ctrl_${idx}_cable_spine`)).created[0]!;
@@ -755,7 +783,7 @@ async function main() {
     { name: "detail-cartridge", view: [0.8, -0.6, 0.5], ids: cartridgeBodies },
     { name: "detail-controller-dpad", view: [-0.3, -1, 0.9], ids: ctrl1Bodies.slice(0, 5) },
     { name: "detail-controller-buttons", view: [0.3, -1, 0.9], ids: ctrl1Bodies.slice(5) },
-    { name: "detail-screws", view: [0.0, 0.0, -1.0], ids: [lowerChassisId, ...screwBodies.slice(0, 6)] }
+    { name: "detail-screws", view: [0.35, 0.45, -0.85], ids: [lowerChassisId, ...screwBodies.slice(0, 6)] }
   ];
 
   for (const { name, view, ids } of detailViews) {

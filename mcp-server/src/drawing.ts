@@ -119,21 +119,42 @@ function toElement(projection: ProjectedView, segment: ProjectedSegment): Elemen
   if (segment.type === BEZIER) {
     const control: Point[] = [];
     for (let i = 0; i < segment.count; i++) control.push([d[o + i * 2]! * k, d[o + i * 2 + 1]! * k]);
-    const size = segment.count === 3 ? 3 : segment.count > 0 && segment.count % 4 === 0 ? 4 : 0;
-    if (size === 0) {
-      throw new Error(`Plasticity returned a Bezier curve of ${segment.count} control points, which this exporter does not know`);
-    }
     const extent: Point[] = [];
     const commands: string[] = [];
-    for (let i = 0; i < control.length; i += size) {
-      const piece = control.slice(i, i + size);
-      const previous = control[i - 1];
-      const start = piece[0]!;
-      if (!previous || Math.hypot(start[0] - previous[0], start[1] - previous[1]) > 1e-6) {
-        commands.push(`M ${fixed(start[0])} ${fixed(start[1])}`);
+
+    if (segment.count === 3) {
+      commands.push(`M ${fixed(control[0]![0])} ${fixed(control[0]![1])}`);
+      commands.push(`Q ${fixed(control[1]![0])} ${fixed(control[1]![1])} ${fixed(control[2]![0])} ${fixed(control[2]![1])}`);
+      for (let j = 0; j <= BEZIER_SAMPLES; j++) extent.push(onBezier(control, j / BEZIER_SAMPLES));
+    } else if (segment.count > 0 && segment.count % 4 === 0) {
+      for (let i = 0; i < control.length; i += 4) {
+        const piece = control.slice(i, i + 4);
+        const previous = control[i - 1];
+        const start = piece[0]!;
+        if (!previous || Math.hypot(start[0] - previous[0], start[1] - previous[1]) > 1e-6) {
+          commands.push(`M ${fixed(start[0])} ${fixed(start[1])}`);
+        }
+        commands.push(`C ${piece.slice(1).map(([x, y]) => `${fixed(x)} ${fixed(y)}`).join(" ")}`);
+        for (let j = 0; j <= BEZIER_SAMPLES; j++) extent.push(onBezier(piece, j / BEZIER_SAMPLES));
       }
-      commands.push(`${size === 3 ? "Q" : "C"} ${piece.slice(1).map(([x, y]) => `${fixed(x)} ${fixed(y)}`).join(" ")}`);
-      for (let j = 0; j <= BEZIER_SAMPLES; j++) extent.push(onBezier(piece, j / BEZIER_SAMPLES));
+    } else if (segment.count >= 4 && (segment.count - 1) % 3 === 0) {
+      // Chained cubic Bezier sharing start/end points (1 + 3*k points, e.g. 4, 7, 10, 13, 16...)
+      commands.push(`M ${fixed(control[0]![0])} ${fixed(control[0]![1])}`);
+      for (let i = 1; i < control.length; i += 3) {
+        const p1 = control[i]!;
+        const p2 = control[i + 1]!;
+        const p3 = control[i + 2]!;
+        commands.push(`C ${fixed(p1[0])} ${fixed(p1[1])} ${fixed(p2[0])} ${fixed(p2[1])} ${fixed(p3[0])} ${fixed(p3[1])}`);
+        const piece = [control[i - 1]!, p1, p2, p3];
+        for (let j = 0; j <= BEZIER_SAMPLES; j++) extent.push(onBezier(piece, j / BEZIER_SAMPLES));
+      }
+    } else {
+      // Safe fallback: polyline through control points
+      commands.push(`M ${fixed(control[0]![0])} ${fixed(control[0]![1])}`);
+      for (let i = 1; i < control.length; i++) {
+        commands.push(`L ${fixed(control[i]![0])} ${fixed(control[i]![1])}`);
+        extent.push(control[i]!);
+      }
     }
     return { hidden, extent, markup: (c) => `<path class="${c}" d="${commands.join(" ")}"/>` };
   }
