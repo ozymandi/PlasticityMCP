@@ -1135,6 +1135,35 @@ PlasticityMCP/
 └── scripts/                     # dev helpers
 ```
 
+## Promo videos (2026-10-13) — ✅ published
+
+YouTube promo of the server, two cuts, built with HyperFrames in `promo/` (not part of the server; `promo/assets/fonts` and
+render artifacts are gitignored). Sources: `promo/src/{16x9,shorts}/*.html` + `common.css` + `helpers.js` → `python promo/tools/build.py <fmt>`
+inlines the chunked drawings (`promo/tools/svgprep.py`) into `promo/videos/plasticity-mcp-{16x9,shorts}/`. Edit the templates, not `compositions/`.
+
+- 16:9, 68.3 s: typed prompt → NES drawing draws itself + tool-call log → matcap render → Qwen photoreal → details → screen
+  recording of the orbit (`~/Videos/2026-10-13 15-46-49.mp4`, trimmed) → gallery (Technics, Nikon, bike: drawing → render → photoreal)
+  → the four drawing sheets as flush columns → "144 MCP tools" → lockup + GitHub URL.
+- Shorts 9:16, 34.5 s: same material, condensed.
+- Decisions of the Designer: English in frame; headings in Adhesive Nr. Eight (Adobe Fonts); the Plasticity dark palette with the
+  tan matcap accent stays (an O'Tool blue version was considered and dropped); double background grid (96 px + 5×5 at 30 %);
+  text plates with backdrop blur 12 px. After every object's matcap render a **brushed-steel Cycles render** of the real
+  geometry: OBJ exported through the server (`promo/tools/export_meshes.mjs`, copy in `mcp-server/scripts/`, `export_mesh`
+  tol 0.02 / 8°), rendered headless in Blender 5.2 (`promo/tools/blender_steel.py`, `render_steel.sh`): one anisotropic
+  steel material, Technics dust cover (`Extruded.008`) as clear acrylic, 4 area lights + gradient env for reflections,
+  ortho iso camera az −45° el 32°, shadow-catcher floor, RGBA → composited over #161616. Qwen Image photoreal attempts
+  (`promo/tools/photoreal.py`, `assets/photoreal/`) were rejected by the Designer (invented text, sunk housings, flat look).
+- Sound: HeyGen catalog track "dark driving minimal synth-bass" (id b60cea1f…, 35 s; looped 2× with a 1 s crossfade for
+  16:9, loudnorm −16 LUFS) + bundled Pixabay SFX (key-press, click-soft, chime, whoosh-short, impact-bass) placed by
+  `promo/tools/audio_layout.py` on tracks 8–12 of each `index.html`. HeyGen CLI runs in WSL Ubuntu (`~/.local/bin/heygen`,
+  OAuth credential copied from the Windows `~/.heygen`); the Windows `npx hyperframes auth login` only works from the
+  user's own terminal.
+- Post layer `px.html`: grain only (vignette and chromatic aberration removed on the Designer's request — he grades himself).
+- **Finals** (`-q high`): `promo/videos/plasticity-mcp-16x9/renders/final-16x9.mp4` (68.3 s, 1080p30) and
+  `promo/videos/plasticity-mcp-shorts/renders/final-shorts.mp4` (34.5 s, 1080×1920). Both pass `npx hyperframes check`.
+- Published on the Designer's YouTube channel 2026-10-13: the 16:9 (title "PlasticityMCP — an LLM models real CAD in Plasticity (NES, Technics SL-1200, Nikon F2, MTB)", description with chapters) and the Short (title "An LLM modelled this in Plasticity — no mouse, 144 MCP tools", Related video → the 16:9). Channel advanced-features verification done so description links become clickable. Open: optional own colour grade / vignette pass; custom 16:9 thumbnail.
+- Fiverr portfolio entry (2026-10-19) — ✅ published on the Fiverr account, 5 attachments, title "PlasticityMCP: an AI that models real CAD parts", categories Software Development / AI Development / Industrial & Product Design, cost "Up to $50", duration 3–6 months. Field copy and attachment order in `promo/fiverr-portfolio.md`; two 4:3 covers `promo/assets/img/fiverr-cover-{tt,nes}-1024x768.png` from the steel renders, Technics first (Designer's choice). Industries chosen: Software Development, Engineering. Cost field left to the Designer.
+
 ## Next action
 
 1. Designer: close Plasticity and call `native_launch` (or `npm run smoke:native`) once to verify the cold-start path; restart the MCP client so it picks up the new tools.
