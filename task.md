@@ -1093,6 +1093,75 @@ Presentation boards (2026-10-12): `examples/mountain-bike/drawings/bike-presenta
 
 Lessons for the server/skill: edge ids go stale after every change of the body and the server now says so; many-edge fillets on messy junctions fail — build tube ends inside the bodies they meet (the stay ends had to be trimmed after the union); the chain was cheapest as one link unit + `array_curve` + one union (54 bodies, OK).
 
+### ZX Spectrum 128 "toastrack" ✅ (2026-10-25, ~2.5 h with research)
+
+Built on 26.1.3 started through the launcher beside the installed 26.2.1 (the launcher starts
+`app-26.1.3\Plasticity.exe` directly; it came up fine, opened the Designer's last document, which
+was left untouched, and a new document was used). Research: Wikipedia, Sinclair Collection,
+Sinclair Wiki, the service manual (parts list, 8 screws, 2 legs, reset in a case cut-out), the user
+manual (MIC/EAR/RS232/keypad on the left end), five reference photos (downloaded on the Designer's
+word into `examples/zx-spectrum-128/reference/`). Brief approved by the Designer, then: blocking
+(case 319 x 151 x 39, keyboard well, heatsink block), 58 keys (one filleted 1u key arrayed 13 x 4,
+specials by hand, ENTER as an L profile), heatsink of 24 chamfered fins united to a base plate,
+case cut into halves at z = 13, rear vents, five rear and five left-end connectors with socket
+bodies, feet, folded legs, screws, "sinclair" / "ZX Spectrum" / "128K" raised 0.3 mm in the
+built-in font, rainbow badge as four parallelograms in a 0.5 mm recess. All edges treated, 116
+bodies valid, STEP exported, ten views and four detail shots in the example folder. Full sources
+and estimates in `examples/zx-spectrum-128/README.md`.
+
+**Keys reworked on the Designer's remark (2026-10-25, ~1 h):** the real keys are low flat plates
+with a raised finger pad on the front half, not 6 mm blocks. Now: plate 4.5 mm tall (1.5 mm above
+the case top, R0.8 all round), pad a Ø13 disc 1.2 mm high cut flat by the key's front edge (set
+0.8 mm back so it sits on the plate's fillet tangent), R0.5 on top; pill-shaped pads 13 mm wide on
+CAPS SHIFT, SYMBOL SHIFT, SPACE and along the lower bar of ENTER. One reference 1u key built
+complete, arrayed 13 x 4, seven copies for row 5; the six specials by hand (pill = rectangle,
+fillet R6.5 on the curve, extrude, intersection with a box from the front edge, union). All 58
+valid; renders, `.plasticity` and STEP rewritten. Heights 1.5 / 1.2 mm are estimates from photos.
+
+On the Designer's screenshot (sharp corners where the pad's front face meets the pill): R0.5
+on the two vertical corner edges of the pad on the six wide keys (the 1u key already had them)
+and R0.3 along the pad's base on all keys except the front line, which lies on the plate fillet's
+tangent. 1u keys deleted and re-arrayed from the reference again; all 58 valid, files rewritten.
+
+Two more remarks from the Designer with screenshots: (1) the heatsink fins have a notch at the
+bottom inner corner, sketched as about 16.5 x 15.5 mm, running the whole length — heatsink rebuilt
+from an L-profile fin (polyline in the XZ plane, extruded 1.5, chamfer 0.3 on the outer edges,
+arrayed 24, united to the base plate); (2) the rear vent slots run up through the top edge as on
+the reference photo — the 36 slots extended from z = 30 to the top surface. Both valid; files and
+renders rewritten.
+
+Seam and vents (Designer's screenshots): the parting line is now a real 0.3 mm gap (lower half
+trimmed to z = 12.7) with a 0.4 chamfer on both outer perimeter edges, so renders show the seam;
+the 36 vent slots got a 0.3 chamfer on their whole outline (288 edges in one call — top side
+lines, the arcs through the R2 edge, the rear verticals and the 2 mm ends), picked from the
+topology by coordinates with a script because the listing was 97 kB. Both halves valid.
+
+Ports detailed on the Designer's go (2026-10-25, ~1 h): expansion slot 76 x 5 through both
+halves with 0.5 / 0.3 chamfers and 2 x 28 gold contact fingers (2.54 pitch) on the PCB edge;
+RGB DIN rebuilt as a metal shell with a 1.5 mm bore and key notch plus a black insulator with
+7 pin holes on a Ø7 circle and a centre hole; TV phono got a black insulator and a centre pin,
+9 V DC a centre pin; the two BT631 sockets got a 12 x 6 window 6 deep with a latch notch and
+six gold contact blades each. All valid; Connectors group now 81 bodies.
+
+Screws (Designer: "add screws"): the eight underside screw heads got R0.3 on the rim and a
+cross recess 3.5 x 0.6, 0.5 deep. The DIN pin holes the Designer thought were missing are cut
+(5 mm blind, checked in a shaded view; X-ray showed them as circles). Bug fixed: the "e" of
+"ZX Spectrum" was solid because its three regions were extruded together — the counter was cut
+afterwards with the eye regions scaled to 82 % so they no longer touch the outline (the boolean
+on the full-size eye fails as non-manifold).
+
+Corrections on the Designer's screenshots: the screw cross had been cut into the hidden upper
+face of the head (the visible face is the underside) — cut again from below, R0.3 on the lower
+rim; the first pocket stays inside the head, hidden in the case recess. The DIN shell was a full
+cylinder sharing its volume with the insulator (z-fighting on the face) — bored through, so the
+insulator sits inside a true ring.
+
+Found on the way: `chamfer` on the whole heatsink (142 edges at once, fins already united)
+fails with `PK_ERROR_unsuitable_topology`; chamfering one fin and arraying it works.
+`extrude_profile` with several text regions in one call fails with `PK_ERROR_non_manifold` when
+glyph regions touch at a vertex (the "t" and "e" of the built-in font); one region per call
+works, and the "e" needs its three regions together. Left out: key legends, texture, internals.
+
 ## Risks
 
 - **Binary protocol details**: WS payloads are likely binary (efficient mesh transfer). Recon must decode framing exactly. Mitigation: addon source is Python and readable.
@@ -1163,6 +1232,34 @@ inlines the chunked drawings (`promo/tools/svgprep.py`) into `promo/videos/plast
   `promo/videos/plasticity-mcp-shorts/renders/final-shorts.mp4` (34.5 s, 1080×1920). Both pass `npx hyperframes check`.
 - Published on the Designer's YouTube channel 2026-10-13: the 16:9 (title "PlasticityMCP — an LLM models real CAD in Plasticity (NES, Technics SL-1200, Nikon F2, MTB)", description with chapters) and the Short (title "An LLM modelled this in Plasticity — no mouse, 144 MCP tools", Related video → the 16:9). Channel advanced-features verification done so description links become clickable. Open: optional own colour grade / vignette pass; custom 16:9 thumbnail.
 - Fiverr portfolio entry (2026-10-19) — ✅ published on the Fiverr account, 5 attachments, title "PlasticityMCP: an AI that models real CAD parts", categories Software Development / AI Development / Industrial & Product Design, cost "Up to $50", duration 3–6 months. Field copy and attachment order in `promo/fiverr-portfolio.md`; two 4:3 covers `promo/assets/img/fiverr-cover-{tt,nes}-1024x768.png` from the steel renders, Technics first (Designer's choice). Industries chosen: Software Development, Engineering. Cost field left to the Designer.
+
+## Re-check 2026-10-24 — Plasticity 26.2.1 closes the native path
+
+The Designer's machine updated itself to **26.2.1** (installed 2026-10-20; 26.2.0 and 26.2.1 are from 2026-10-19, a 26.2.2 pre-release from 2026-10-23). Findings, all read from the installed build and the release notes, no live write test:
+
+| What | 26.1.3 | 26.2.1 |
+|------|--------|--------|
+| Electron | 26.6.9 | 42.11.8 |
+| Fuse `EnableNodeCliInspectArguments` (our `--inspect-brk` hook) | on | **off** |
+| Fuses `RunAsNode`, `EnableNodeOptionsEnvironmentVariable` | on | off |
+| Fuses `EmbeddedAsarIntegrityValidation`, `OnlyLoadAppFromAsar` | off | **on** |
+| App code | unpacked `resources/app`, bytenode `.jsc` (strings readable) | `app.asar` + `plasticity.jsc.pack`; renderer bytecode in a Plasticity container `PLSEC001` (encrypted, no readable strings) |
+| Main-process entry | 5.8 kB bytenode loader | 14-byte stub; real main code loaded by the patched exe (248 MB) |
+| WebSocket bridge, port 8980 | 13 opcodes | same 13 opcodes, `npm run smoke` passes (read, subscribe, refacet); still no `PUT_SOME_1` |
+
+Conclusion: the main-process inspector trick is closed by design in 26.2.x (inspector flags fused off, asar sealed, bytecode encrypted). The 143 native tools cannot work against 26.2.x; `native_status` reports `supportedVersion 26.1.3`. The read-only WebSocket path (Phase 1) still works on 26.2.1. The release notes mention no API, scripting, plug-in or MCP access.
+
+Still on disk: `C:\Program Files\Plasticitypp-26.1.3` (and `app-26.1.2`) are intact, so the launcher (which starts `app-26.1.3\Plasticity.exe` directly) can still run the pinned version. Risks: the Squirrel updater may remove old version folders on a later update; both versions share `%APPDATA%\Plasticity` (settings, licence, crash backups); a document saved by 26.2.1 may not open in 26.1.3.
+
+New 26.2 features that would have become tools if the path were open (reference for a later re-check): `Viewport: Home View`; `Viewport: Toggle Images / Meshes / Constraints`; Deform with curves as reference and target; Extend with modify / unmodify for untrimmed sheets; Slide with proportional falloff; Edge Align (renamed from Align, Collinear solver, Skew boundary); Offset Curve vertex offsets past adjacent vertices; `.plasticity` import with meshes, images and instances; Assets (mark, export, place — `command:export-asset-pack` already existed in 26.1.3); Gaussian / Mean / Max curvature shader (display only). Studio only, out for the Indie licence: Project Align, Constraints, Select All Constraints.
+
+**Live check with Plasticity closed (2026-10-24, on the Designer's word):** 26.2.1 started directly with `--remote-debugging-port=9223 --inspect=9229` listens on neither port; only the WebSocket bridge on 8980 comes up. So the app still strips the Chromium debugging switch and the fuse blocks the Node inspector. The test instance was closed again; no document was touched.
+
+**Backup of the pinned version (2026-10-24, on the Designer's word):** `C:\Program Files\Plasticitypp-26.1.3` copied with robocopy to `E:\Soft\Plasticitypp-26.1.3` — 441 files, 573 MB, counts and sizes equal, hashes of `Plasticity.exe` and the renderer `.jsc` equal. If the installer removes the original, point the launcher at the copy with `PLASTICITY_EXE=E:\Soft\Plasticitypp-26.1.3\Plasticity.exe` (the launcher reads that variable first).
+
+**What the web says (2026-10-25, on the Designer's word):** nobody has a way in. The only public report is Mesteriis/plasticity-mcp issue #10 (2026-10-20, open, no maintainer reply): same fuse finding, "no non-invasive alternative". kad-xyz, gumayunov, nscrdev, Sparrow51 and te9no forks all still pin 26.1.3 or older and say nothing about 26.2. Plasticity's Canny board (1,330 requests) has no request for an API, scripting or MCP; the release notes and press coverage mention no API. No Reddit or Discord thread found.
+
+Decision needed from the Designer: (a) keep working on 26.1.3 from the surviving folder (back it up first), or (b) stop native development and keep the server as read-only on 26.2.x, or (c) ask for official access (feature request `docs/feature-request.md`).
 
 ## Next action
 
