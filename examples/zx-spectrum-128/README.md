@@ -6,7 +6,7 @@ Connectors (81: sockets, pins, insulators, 56 gold edge-connector fingers, 12 BT
 
 Files: `zx-spectrum-128.plasticity` (final), `zx-spectrum-128_blocking.plasticity` (blocking
 stage), `zx-spectrum-128.step`, `view-*.png` (six axis views in X-ray plus four isometrics),
-`detail-*.png`, `reference/` (five photos, see `reference/SOURCES.md`).
+`detail-*.png`, `drawings/` (hidden-line SVG drawings `spectrum-{front,back,left,right,top,bottom,isometric,sheet}.svg` from `export_drawing`, 1 unit = 1 mm, and `spectrum-presentation.png`, all eight rasterised in one column), `reference/` (five photos, see `reference/SOURCES.md`).
 
 ## Dimensions and where they come from
 

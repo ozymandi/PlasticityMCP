@@ -1156,6 +1156,8 @@ rim; the first pocket stays inside the head, hidden in the case recess. The DIN 
 cylinder sharing its volume with the insulator (z-fighting on the face) — bored through, so the
 insulator sits inside a true ring.
 
+Drawings (Designer: "and SVG like the others"): `examples/zx-spectrum-128/drawings/spectrum-{front,back,left,right,top,bottom,isometric,sheet}.svg` through `export_drawing` with hidden lines (188 bodies, 1–7 thousand visible and 5–12 thousand hidden lines per view, no stack overflow this time) and `spectrum-presentation.png` (1600 x 4860, all eight rasterised with resvg_py, strokes rescaled to 1.6 / 0.9 px, a label per view). Committed with the example as 796a6cd and the follow-up commit; pushed to origin/main on the Designer's word.
+
 Found on the way: `chamfer` on the whole heatsink (142 edges at once, fins already united)
 fails with `PK_ERROR_unsuitable_topology`; chamfering one fin and arraying it works.
 `extrude_profile` with several text regions in one call fails with `PK_ERROR_non_manifold` when
