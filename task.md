@@ -1164,6 +1164,102 @@ fails with `PK_ERROR_unsuitable_topology`; chamfering one fin and arraying it wo
 glyph regions touch at a vertex (the "t" and "e" of the built-in font); one region per call
 works, and the "e" needs its three regions together. Left out: key legends, texture, internals.
 
+### ZX Spectrum 128 — Octane animation ✅ (2026-10-25, ~4.5 h work + 2 h 40 min machine time)
+
+Designer's request: in the running Blender (Octane 2026.4 plugin, Blender 5.2.1) put materials and key legends on the model
+from the Plasticity bridge and render an animation: assembly, three slow-motion fly-throughs, a somersault, a final
+axonometric shot. Scene: `promo/blender/spectrum.blend`; key-legend atlas `promo/blender/tex/key-legends.png`;
+floor grid `promo/blender/tex/floor-grid-10mm.png`; test frames `promo/renders/spectrum/test-*.png`.
+
+- **Timeline 960 frames @ 30 fps**, cameras bound by markers: assembly 1–240 (action compressed to ~175 frames on the
+  Designer's note "128 frames is too much"; lower case slides in on the floor, connectors drop, upper case from 0.32 m,
+  heatsink from +X, keys by rows from 0.45 m, screws from below, decals from 0.50 m — the keys and decals start above the
+  upper case so it no longer passes through them), fly1 keys 241–390, fly2 heatsink fins 391–540, fly3 rear ports 541–690,
+  flip 691–810 (all meshes parented to `Pivot` at the model centre, 360° about X with a lift), iso 811–960.
+- **Look (Designer's decisions):** background almost black, floor albedo 0.012 with specular 0.12 / roughness 0.8 ("a bit
+  reflective, high roughness"), millimetre grid on the floor 10 / 2 / 1 mm ("each square divided in 5 with thin lines"),
+  case darker than the keys (case 0.02, keys 0.07; specular 0.5–0.6, roughness 0.3–0.4 — "the plastic must have gloss"),
+  focus on the model centre with the far floor in bokeh (assembly aperture 0.9 cm, fly-throughs 0.5, flip 0.6, iso none),
+  near clip 1 mm on every camera ("the near clip cuts the frame").
+- **Octane plugin findings** (cost most of the time): (1) lights and the world created from Python keep Blender node trees
+  and Octane renders black — convert them with the add-on's own `NodeTreeHandler.update_new_light()` / `_on_world_new()`;
+  (2) Octane area lights are opaque to the camera — `obj.octane.camera_visibility = False`, but keep "Visible on specular"
+  on or the plastic has no gloss; (3) autofocus does not work in the final render and the Octane focal-depth field is
+  ignored — the plugin reads Blender's `camera.dof.focus_distance` (keyed per camera to the distance to its aim empty);
+  (4) Blender's orthographic camera renders wrong through Octane — the iso shot is a 240 mm lens at 3.6 m instead;
+  (5) the texture atlas needs the UV layer to be the only / render-active one.
+- **Final render:** `promo/tools/render_spectrum.py` run headless (`blender -b … --python … -- [scene] [--test]`),
+  1000 samples, 1920×1080, PNG per scene in `promo/renders/spectrum/<scene>/frame_####.png`, `use_overwrite = False` so a
+  crashed run resumes. Test frame headless: 14 s per frame incl. startup → whole run ≈ 3–3.5 h. Started 2026-10-25 ~03:55
+  in the background, log `promo/renders/spectrum/render.log`. Stalled at frame 8 when the GUI Blender was closed (its
+  OctaneServer went idle); headless Blender does **not** start OctaneServer itself — it must already run
+  (`C:\Program Files\OctaneServerPrime31.10\OctaneServer.exe`, port 50051). Restarted 03:58 with a fresh server, resumes from the frames on disk. **Finished 06:34**: 960 frames, per scene
+  assembly ≈ 55 min, fly1 ≈ 30, fly2 41, fly3 33, flip 23, iso 34 min (≈12–17 s/frame; the fly-throughs with DOF are slower).
+  mp4s built with `promo/tools/make_spectrum_mp4.sh` (H.264 crf 15, 1080p30): `promo/videos/spectrum/spectrum-{assembly,fly1,fly2,fly3,flip,iso}.mp4`
+  and the joined `spectrum-cut.mp4` (32 s, 27.6 MB). Not committed (renders/videos are gitignored under `promo/`; the
+  blend, textures and the two tool scripts are new files). **Accepted by the Designer 2026-10-25 (morning).** On his "давай його в ае" the six scene clips are assembled in After
+  Effects through the kumo MCP: `promo/ae/spectrum-cut.aep`, comp "Spectrum cut" 1920×1080 30 fps 32 s, six footage layers
+  back to back (assembly 0–8, fly1 8–13, fly2 13–18, fly3 18–23, flip 23–27, iso 27–32), stitches verified by frame
+  captures (`promo/ae/check/cut_sheet.png`). The flip layer is time-remapped on the Designer's sketch (slow start, sharp ramp, fast somersault, gentle
+  settle): first try with five easy-ease keys was "very jerky" (speed steps 0.5×→1.8×→2×); now TWO keys 23.0→0 and
+  27.0→4 s with one asymmetric bezier (out-influence 60 at the start, in-influence 72 at the end, speeds 0): a single smooth
+  speed hump peaking ≈2.8× at 24.8 s, pixel-motion frame blending; the slot stays 4 s so the iso shot does not move. kumo note: `keyframe.apply replace:true` on Time Remap wipes the keys
+  and disables the remap — enable with `timeline.set_active_comp` + `timeline.select_layers` + `command.execute 2153`, then
+  `keyframe.add` without replace. Then on his word the six layers are precomposed into "Spectrum video"; in "Spectrum cut" that layer is scaled to 92 %,
+  cut by a rounded-rect mask (1920×1080, radius 8 px — was 48, "радіус 8 пікс") and sits on a ZX Spectrum tape-loader border ("пілотон" = pilot tone). First try was a shape-layer stripe loop; on
+  "як в реальному загрузчику" it is now a simulation of the ROM loader (`promo/tools/pilot_tone.py` →
+  `promo/assets/video/zx-loader-border.mp4`, 32 s 1080p30): border toggled on every tape edge, pilot 2168 T red/cyan
+  (header pilot 8063 pulses ≈ 5 s, data pilot 3223 ≈ 2 s), sync 667+735 T, bits 855/1710 T blue/yellow, 1 s white pause
+  between blocks, 312 lines × 224 T per 50 Hz frame so colour changes land mid-line; phases at 0–5.0 pilot, 5.0–5.1 header,
+  5.1–6.1 white, 6.1–8.1 pilot, 8.1–32 data. Footage layer "ZX loader border" under the video; the #161616 solid is gone.
+  Frame blending on the flip layer is OFF: pixel motion warped the case underside at the 2.8× peak and frame mix
+  showed triple echoes of the screws; the slow phase barely moves, so held frames are invisible there. HUD overlays on the Designer's sketch ("1–5 мітки, 6 таймінг, 7 текст на кожну секцію", texts approved with "го"):
+  five static Cascadia Mono 16 px labels (timecode 18 px) 8 px in from the window edges ("менше і ближче до країв") (PLASTICITY MCP · ZX SPECTRUM 128 · TOASTRACK ·
+  OCTANE · 1000 SPP · 188 SOLIDS · 143 TOOLS · PLASTICITYMCP.GITHUB — URL placeholder), a live timecode
+  (`timeToTimecode(time, 30, false)`, tan) bottom-centre, and per section a title (Adhesive Nr. Eight 64 px, white on "колір тайтла білий") + subline (Montserrat 26 px),
+  the block left-justified at x = 1380 (was 1180, "ближче до краю") and vertically centred (title y 512, subline in two lines from y 556, leading 34 — "по центру по висоті, виключка
+  вліво"), 10-frame opacity fades at the section bounds; a small white cross icon (shape layer "7c cross", 22 px, 2 px strokes) sits above the
+  block's left edge at (1392, 460) and fades with the titles; opposite the block a small progress bar (shape layer "7d progress" at (310, 500): white frame ("білим")
+  300×12 px stroke 1.5, inner 6 px line driven by Trim Paths End 0→100 % over each section with a hold key one frame before
+  the bound and a reset to 0 on it); "7b sub AXONOMETRIC" was lost in the UI and recreated on 2026-10-26 ("тут теж треба якийсь сабтекст"); layer names "1 label TL" … "7b sub …".
+  Post stack on top ("коректуючий слой, нойз, віньєтка і хроматичні аберації"; "аберації слабо в центрі, сильно по
+  краям"): everything below is precomposed into "Spectrum composite"; in "Spectrum cut" it sits three times with Shift
+  Channels ("CA red" red-only, scale 100.3 %, Add; "CA blue" blue-only, 99.7 %, Add; "CA green" green-only, 100 %, Normal) —
+  radial chromatic aberration, zero at the centre, ≈3 px at the corners; above them the adjustment layer "Post · vignette
+  grain" with CC Vignette (amount 1.2, angle of view 70, pin highlights 0) and Noise (6 %, mono, clipping on). The VR
+  Chromatic Aberrations effect was tried first and does nothing visible on a flat 16:9 frame even at ±40, so it was removed. **Intro (2026-10-25, Designer: "процес загрузки як в спектрум бейсік … print 'hello speccy'", "даю добро, го"):**
+  `promo/tools/speccy_intro.py` renders a ZX Spectrum 128 sequence on a 320×180 Spectrum-like raster (40 columns) scaled nearest into the main cut's
+  video window 1766×994 at (77, 43) with 7 px rounded corners, so the loaded SCREEN$ cuts seamlessly to the video (Designer:
+  "екран загружчика такий самий по розміру як в роліку"; the first 256×192 ×4 version was replaced), font
+  ZX Spectrum-7 by Style-7, freeware, downloaded from font.download into `promo/assets/fonts/`, size 20 = 8 px cell):
+  0.3 s 128K menu (Tape Loader → 128 BASIC) → 1.6–4.4 typing `10 PRINT "hello speccy"` → RUN, `hello speccy`, `0 OK, 10:1`
+  → `LOAD ""` at 7.0 → tape sim (pilot 1.4 s, header, `Program: toastrack`, pause, pilot 0.7 s) → 9.7–12.0 SCREEN$ of the
+  axonometric frame (promo/renders/spectrum/iso/frame_0960.png, contrast-lifted, 15-colour palette, two colours per 8×8
+  cell with Bayer dither, loaded in display-file order then attributes). Output `promo/assets/video/speccy-intro-v2.mp4`
+  (12 s; AE holds the open footage file, so re-renders go to a new name + `footage.replace`) and, from the same simulation, `zx-loader-border.mp4` regenerated as sim time 12–44 s (data stripes only) so the
+  border continues seamlessly. AE: "Spectrum composite" and "Spectrum cut" are 44 s, every composite layer shifted +12 s,
+  intro footage at 0–12 on top, timecode expression `timeToTimecode(Math.max(time - 12, 0), 30, false)`.
+  **Music (2026-10-26):** Suno track from the prompt in the session ("upbeat 8-bit chiptune, ZX Spectrum AY-3-8912 …, 128 BPM")
+  delivered as `promo/assets/audio/loading-screen.mp3` (156.8 s, quiet intro to ~7 s then drums); in "Spectrum cut" as
+  audio layer "Music · Loading Screen" from 0 s, trimmed to 44 s, Audio Levels 0 dB → −48 dB over 41.5–44 s.
+  Under the progress bar a text layer "7e part" (Cascadia Mono 16 px, white, at (161, 526)) reads `PART #n / 6` from a
+  Source Text expression keyed on the section times ("під прогрес додамо парт #1 - 2 - …").
+  **Preview proxy (2026-10-26, "превью тормозить"):** the CA stack renders the 22-layer composite three times per frame.
+  AE's own Render Queue H.264 output crawled (5.9 MB in 11 min) and the scripted `render.start` froze the UI until AE was
+  killed; `aerender -comp "Spectrum composite" -OMtemplate "TIFF Sequence with Alpha" -mfr ON 90` did all 1320 frames in
+  ~1 min, ffmpeg → `promo/ae/proxy/spectrum-composite-proxy.mp4` (intra H.264, crf 15, 92 MB), set as the comp's proxy
+  (`footage.set_proxy`). Rule: after editing inside the composite run `promo/tools/make_proxy.sh` — AE keeps the current proxy file open, so it
+  writes a timestamped new file that is then relinked with `footage.set_proxy`; for the
+  final render use "Use No Proxies" in the render settings. Viewer fast preview = Adaptive Resolution.
+  **Final render (2026-10-26, "додавай звук, моушен блюр і рендери"):** motion blur switched on in all three comps (180°) and
+  on every animated layer; rendered with aerender ("Best Settings" = no proxies, MFR; always pass `-s 0 -e 1319`, the default span is the comp's
+  work area, which the Designer often narrows to one frame) to TIFF, then ffmpeg muxes the
+  frames with `loading-screen.mp3` (trimmed to 44 s, 2.5 s fade-out from 41.5 s, AAC 192 k) into
+  `promo/videos/spectrum/spectrum-final.mp4` (1080p30, H.264 crf 15, 508 MB — the grain costs bitrate) and a delivery copy
+  `spectrum-final-15mbps.mp4` (77 MB). **Rendered 2026-10-26**: 1320 frames, 44.0 s, AAC 192 k, verified by frame sheet. The AE Render Queue's own H.264 encoder is avoided
+  on purpose (it crawled and froze the UI). Possible follow-ups, not requested: sound and titles, colour grade, a Short cut. Next: ffmpeg mp4 per scene + joined cut into
+  `promo/videos/spectrum/`, show the Designer. Out of scope: sound, titles.
+
 ## Risks
 
 - **Binary protocol details**: WS payloads are likely binary (efficient mesh transfer). Recon must decode framing exactly. Mitigation: addon source is Python and readable.

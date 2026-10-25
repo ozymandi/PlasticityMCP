@@ -1,0 +1,11 @@
+assets/fonts/
+videos/*/assets/fonts/
+videos/*/.hyperframes/
+videos/*/renders/
+videos/*/node_modules/
+blender/*.blend1
+ae/Auto-Save/
+ae/*Logs/
+ae/check/
+ae/proxy/
+ae/final/
