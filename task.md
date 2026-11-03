@@ -1093,6 +1093,33 @@ Presentation boards (2026-10-12): `examples/mountain-bike/drawings/bike-presenta
 
 Lessons for the server/skill: edge ids go stale after every change of the body and the server now says so; many-edge fillets on messy junctions fail — build tube ends inside the bodies they meet (the stay ends had to be trimmed after the union); the chain was cheapest as one link unit + `array_curve` + one union (54 bodies, OK).
 
+### RC boat "CUBE" — form and engraved name ✅ (2026-10-18, ~2 h)
+
+Built through **OpenCode** (compact catalog: 26 tools + `find_tools` / `call_tool`), Plasticity 26.1.3, Untitled document. Reference: the Designer's photo of an RC monohull with a bubble canopy, a rear wing on two fins, an air intake and two antennas. **No dimensions were taken from anything: web search was rate-limited (Exa free tier on this machine), so 800 × 230 × 110 mm and the bow / stern proportions are estimates by eye from the photo**, named as such to the Designer. Brief agreed in two parts: the form in full (blocking and edge treatment), plus "CUBE" engraved on the hull side.
+
+Built in the guide's order (blocking → edges → merge → detail):
+
+| Body | How | Result |
+|------|-----|--------|
+| `hull` (id 10) | one `loft_profiles` through eight closed sections (5-point arch topsides over a shallow V, sharp chine) | 10 faces, 24 edges, −400…400 X, ±123.9 Y, −2.9…119.3 Z |
+| `canopy` (id 38) | a second loft through six sections, base z 95, crown 184.7 | kept as a separate part |
+| `intake`, `wing`, `wing-fin` ×2 | boxes 40×36×50, 200×70×6, 30×6×66 | united into the hull |
+| `antenna-1/2` (19, 20) | `create_cylinder` Ø5 × 95 | kept separate |
+
+Edges: `fillet` R4 on both sheer lines and the two stern corners **in one call** (they meet in two vertices, so one radius / one call), R2 on the wing, R5 on the intake, R1.5 on the fins — the chine stays sharp, as the guide says. Merge: `boolean` union hull + intake + fins + wing (73 faces, 177 edges, top 162). Engraving: `create_text` (40 mm letters) at y 112 → `project` onto the hull → `imprint` (`complete: none`) → `offset` −1.5 on the six letter faces, then the same with a **mirrored** text for the port side. Four bodies left, all valid by `check_bodies`.
+
+Findings:
+- **A loft of four sections overshoots between them.** A cubic spline through the canopy's four sections put the widest point 11 % outside the widest section and the crown 7 % above it (75.5 mm against 68; 203.4 against 190) — with uneven spacing *and* with even spacing. Six evenly spaced sections cut both to under 2 %; the canopy came out 61.1 mm wide against the 60 drawn. Even spacing mattered more than the count.
+- `project` along a horizontal direction returns the curves on **both** sides of the body, because the ray crosses it; the wanted side is picked by the `y` of the returned bounds.
+- **A name for the other side must be drawn mirrored, not re-projected.** A projection keeps X and Z, so the port copies of the starboard letters came out reading right-to-left ("EBUC"). The port text was created separately with `xDirection` [1, 0, 0] and `normal` [0, −1, 0].
+- **Engraving by `imprint` + `offset` works on a curved side**, and is cheaper than the unwrap / deform way used on the EL-Nikkor: the six letter loops imprinted on the topside split it into the letter faces (faceCount +6 — C, U, B, B's two counters, E), and `offset` with a negative distance pushed them 1.5 mm inward with the neighbours following. The body went 73 → 237 faces. The letters are cut in the topside's own coordinates, so the tilt of the side costs nothing and no flat cutter is needed.
+- `boundsMm` grew 4.2 mm in Y after the sheer fillet although nothing was added — a trimmed B-spline face reports loose bounds (same effect as on the lens).
+- Reading the hull's 24 edges in full was affordable and the filter was not needed at this size; the canopy's was never read.
+
+Left for a later pass, not asked for now: the canopy frame, deck panels and the two small foredeck vents of the reference, materials, and the cold-start path of this particular window (it was already open). The work sits in an Untitled document — `save_document` was **not** called, so nothing was written to `examples/`.
+
+**OpenCode — other MCP servers registered (2026-10-18):** the rest of this workspace was cloned and built on this machine and added to the same `~/.config/opencode/opencode.json`: `framer` and `framer-design` (`Framer-MCP`, `Framer-MCP-M2`; both wait for real project keys in their placeholder `projects.json`), `lmagent` (`BigSmall`; needs `mcp<2` — 1.30.0 installed, LM Studio on :1234), `gemma-figma` (`Ego_mcp`; disabled until `FIGMA_TOKEN` is in its `.env`), `worksection` (needs its own server on :8000). `plasticity` is registered with the **compact** catalog.
+
 ### ZX Spectrum 128 "toastrack" ✅ (2026-10-25, ~2.5 h with research)
 
 Built on 26.1.3 started through the launcher beside the installed 26.2.1 (the launcher starts
