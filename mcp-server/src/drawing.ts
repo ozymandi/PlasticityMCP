@@ -212,17 +212,27 @@ export function buildDrawing(projections: ProjectedView[], hiddenLines: boolean)
     const elements = projection.segments
       .filter((segment) => hiddenLines || !isHidden(segment))
       .map((segment) => toElement(projection, segment));
-    const extent = elements.flatMap((element) => element.extent);
-    if (extent.length === 0) throw new Error(`The ${projection.view} view has no lines to draw`);
-    const minX = Math.min(...extent.map((p) => p[0]));
-    const minY = Math.min(...extent.map((p) => p[1]));
+    // A plain loop: a detailed model has more points than Math.min(...points) can take as arguments.
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const element of elements) {
+      for (const [x, y] of element.extent) {
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x);
+        maxY = Math.max(maxY, y);
+      }
+    }
+    if (minX === Infinity) throw new Error(`The ${projection.view} view has no lines to draw`);
     return {
       view: projection.view,
       elements,
       minX,
       minY,
-      width: Math.max(...extent.map((p) => p[0])) - minX,
-      height: Math.max(...extent.map((p) => p[1])) - minY,
+      width: maxX - minX,
+      height: maxY - minY,
     };
   });
 
