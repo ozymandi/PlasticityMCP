@@ -32,6 +32,16 @@ step of detailing.
    stations and `loft_profiles`; one section along a path — `sweep_profile`; a symmetric
    form — one half, `mirror_bodies`, union. Boxes and cylinders are only for boxy and round
    parts.
+   **Seating pass — one more iteration right after blocking (the user's rule).** A part that
+   goes into another is not simply poked into it. Copy the inserted part, scale the copy up a
+   little (`copy_bodies`, `scale_bodies` with the pivot on its axis, about 3–10 % so that the
+   gap is 0.2–0.5 mm on a hand-sized part), `boolean` difference it from the receiving part,
+   then seat the original in the socket. The gap gives extra visible edges and a thin shadow
+   line, which reads like a real assembly. It applies to parts that stay separate (shanks,
+   shafts, pins, bushings, screw-in parts); parts to be united in the merge pass still run
+   into each other. A shank fully hidden under a screw head needs no socket. Every socket
+   gets a small chamfer on its rim right after it is cut (about 0.2-0.4 mm on a hand-sized
+   part; the user's rule): pick the rim with a thin `box` on `get_body_topology`.
 2. **Refining.** The details, and the edges: see "No bare edges" below.
 3. **Merge pass — the last step.** Go through the finished model, find the parts that should
    be one piece, `boolean` union them, and put a chamfer / bevel on the edges where they meet.
@@ -61,6 +71,15 @@ step of detailing.
      same radius), or
      through unwrap (flatten the face with `unwrap_faces`, make the pattern flat, wrap it
      back with `deform`) — the second for patterns that do not simply run along the axis.
+   - **Pyramid grip on a round handle (the user's method).** `unwrap_faces` of the grip
+     wall gives a flat Sheet at the origin. On it build a thin plate that straddles the Sheet
+     with one row of small pyramids (`loft_profiles` from a square to a very small square,
+     `array_rectangular`), union the row, array the rows, union them into the plate. `deform`
+     that one body from the Sheet's face onto the wall: it becomes a grip sleeve. Hundreds of
+     separate pyramids would flood the output and every later call. Delete the Sheet.
+   - **Engraved text gets a chamfer on its rim** (about 0.05-0.1 mm; the user's rule). Letters
+     from `create_text` can hold a tiny segment that makes the whole call fail: find it in
+     the edge list and leave it out of the chain.
    - **Inscriptions and decals** (markings, scales, numbers, labels). On a
      flat face: text, letter regions extruded, `boolean` difference. On a cylinder:
      `unwrap_faces` of the wall (do it while the body is still simple) gives a flat Sheet
