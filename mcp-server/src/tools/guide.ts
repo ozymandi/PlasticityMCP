@@ -22,6 +22,7 @@ Basics
 
 Order of work — finish a stage for the whole model before the next one
 1. Blocking: the main volumes as simple bodies, in the right sizes and places. From large to small: no part gets details while another is still missing.
+   Seating, right after blocking: a separate part that goes into another is not poked into it. Copy it, scale the copy up a little (a gap of 0.2-0.5 mm on a hand-sized part), boolean difference the copy from the receiving part, then seat the original. The gap gives extra edges and a thin shadow line. Chamfer the rim of every socket right after cutting it (0.2-0.4 mm).
 2. Refining: the details, then the edges.
 3. Merge: union the parts that are one piece in reality, bevel the edges where they meet.
 4. Fine detail: knurling, text, screws, threads. Always last.
@@ -87,6 +88,8 @@ const TOPICS = {
 
   detail: `Fine detail — after everything else
 - Knurling on a knob of radius R: a closed zig-zag polyline around the axis (points alternating R + 0.25 and R - 0.35), a circle a little larger around it, list_regions, extrude_profile the ring between them to the height of the band, boolean difference from the knob.
+- Pyramid grip on a round handle: unwrap_faces of the grip wall, on the flat Sheet a thin plate with one row of small pyramids (loft_profiles from a square to a very small square, array_rectangular), union the row, array the rows, union them into the plate, deform the one body onto the wall. Delete the Sheet.
+- Chamfer the rim of engraved text (0.05-0.1 mm). Letters can hold a tiny segment that makes the whole call fail: leave it out of the chain.
 - Text on a flat face: create_text on that face, list_regions, extrude_profile the letter regions (not the holes inside letters) into the body, boolean difference. The region normal decides which way a positive distance goes: read it and the returned bounds.
 - Text on a cylinder: unwrap_faces the wall, make the letter solids on the flat sheet, deform them onto the wall, boolean difference.
 - Thread: create_spiral with a whole number of turns, a small triangle profile, sweep_profile, trim with a box (boolean intersection) where it sticks out, then boolean with the part.
