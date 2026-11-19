@@ -2,13 +2,13 @@
 name: plasticity-mcp
 description: Model real CAD geometry in a running Plasticity window through the Plasticity MCP server (tools mcp__plasticity__*: native_connect, create_*, extrude_profile, boolean, fillet, chamfer, cut, get_body_topology, …). Use whenever the user asks to build, edit, measure or export a part or a model in Plasticity, to model something from a drawing or a description, or mentions Plasticity MCP.
 metadata:
-  version: "1.1.0"
+  version: "1.2.0"
   author: ozymandi
 ---
 
 # Plasticity MCP
 
-Own MCP server for Plasticity 26.1.3 (this repository). It builds native
+Own MCP server for Plasticity 26.1.3 (repository `ozymandi/PlasticityMCP` on GitHub). It builds native
 B-Rep geometry through Plasticity's own commands, so every step lands in Plasticity's undo
 history. What each Plasticity command maps to, and what is not available:
 `docs/coverage.md` in the repository.
@@ -165,6 +165,38 @@ How to keep to it:
 - Screenshots from the same sides as the reference were compared with it; the differences
   are corrected or named.
 - What is estimated or left out is in the report, not left for the user to find.
+
+## Pitfalls (field-tested)
+
+- **`extrude_profile` does not consume the source polygon** — the wire stays in the scene
+  (type `Wire` in `list_bodies`). Delete every helper wire at the end.
+- **Polygon extrusion direction**: a default `create_polygon` (normal +Z) extrudes toward
+  −Z. For an upward extrude pass `normal: [0,0,-1]`. Always check the returned bounds.
+- **A `boolean` union of a floating (non-intersecting) tool is a silent no-op**
+  ("Operation has no effect"), not an error. After any multi-step union verify the
+  resulting `boundsMm` — a missing part shows up as a bounds that never grew.
+- **Chamfering all edges of one box in a single call can fail with
+  `PK_ERROR_unsuitable_topology` (1033)** even when geometrically fine. Fallback:
+  chamfer in groups — long parallel edges first, then the rim loops — or edge-by-edge.
+- **A batch chamfer on a long polygon rim (8–12 edges) with a large distance can
+  silently produce an INVALID body** (no error; `check_bodies` reveals it). Then chamfer
+  that rim one edge at a time, long edges first, smaller distance on short fragments.
+  Run `check_bodies` after every chamfer batch on complex rims.
+- **Param names**: `copy_bodies` / `move_bodies` take `delta` (not `offset`);
+  `delete_bodies` takes `ids` (not `bodyIds`); `create_cylinder` takes `base` (not
+  `position`); `move_bodies` returns `changed` (list of moved bodies), not `bodies`.
+- **Never filter bodies by name for deletion** — a name like "rook_master" matches the
+  master and every copy. Keep explicit id lists in a JSON file and delete by id.
+- **Never trust the order of a persisted id list either.** Before a batch move or
+  delete over ids from a saved JSON file, re-derive what each id is from
+  `list_bodies` (name + `boundsMm` center) and give each body its own delta to its
+  own target. A list written in a different order than assumed moves the wrong
+  bodies silently — sometimes straight off the model. After the move, verify by
+  recomputing every center from the new bounds against the expected slot; the
+  success flag says nothing about which bodies landed where.
+- **Standard chess layout** (placing a set from a description): the back rank sits in
+  the outer row, closest to the board edge; the pawns stand one row inward, between
+  the back rank and the board center. The player side is the board-edge side.
 
 ## Free-form surfacing
 
