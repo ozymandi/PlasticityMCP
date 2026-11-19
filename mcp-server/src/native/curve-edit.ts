@@ -8,6 +8,7 @@ import {
   Continuity,
   CurvePoints,
   CurveRebuild,
+  DeformOptions,
   ExtensionShape,
   FaceRef,
   GapFill,
@@ -15,6 +16,19 @@ import {
   SlideDirection,
   Vec3,
 } from "./types.js";
+
+/** Deform options in native units (the normal offset in metres). */
+export const deformArgs = (o: DeformOptions) => ({
+  scaleU: o.scaleU,
+  scaleV: o.scaleV,
+  scaleNormal: o.scaleNormal,
+  offsetU: o.offsetU,
+  offsetV: o.offsetV,
+  offsetNormal: o.offsetNormalMm === undefined ? undefined : o.offsetNormalMm * MM,
+  flipUV: o.flipUV,
+  flipNormal: o.flipNormal,
+  mirror: o.mirror,
+});
 
 // Native codes, read from the running 26.1.3 app.
 export const GAP_FILL_CODES: Record<GapFill, number> = { round: 21220, linear: 21221, natural: 21222 };
@@ -313,17 +327,21 @@ export class CurveEditTools extends ProfileTools {
     source: FaceRef,
     target: FaceRef,
     keepOriginals = false,
+    options: DeformOptions = {},
   ): Promise<MutationResult> {
     const setup = `
         const face = (ref) => pick(typed(ref.id, 'Solid', 'Sheet').high.faces, [ref.faceId], 'face')[0];
         ${CURVES}
         factory.sourceFace = face(args.source);
         factory.targetFace = face(args.target);
-        factory.keepTools = args.keepOriginals;`;
+        factory.keepTools = args.keepOriginals;
+        for (const key of ['scaleU', 'scaleV', 'scaleNormal', 'offsetU', 'offsetV', 'offsetNormal', 'flipUV', 'flipNormal', 'mirror']) {
+          if (args.options?.[key] !== undefined) factory[key] = args.options[key];
+        }`;
     return this.mutate(
       commandFunction("DeformCurveCommand", [], setup, true),
       ["DeformCurveFactory", "DeformCurveCommand"],
-      [{ ids, source, target, keepOriginals }],
+      [{ ids, source, target, keepOriginals, options: deformArgs(options) }],
     );
   }
 

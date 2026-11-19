@@ -63,19 +63,25 @@ async function main() {
   const baselineIds = baseline.bodies.map((b) => b.id).join(",");
   const baselineReferences = (await native.listReferenceMeshes()).length;
 
+  // SMOKE_ONLY=surfacing,solid runs only those groups (names without "Checks"); default: all.
+  const only = (process.env.SMOKE_ONLY ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  const groups: Array<[string, () => Promise<void>]> = [
+    ["run", () => runChecks(native, target.title)],
+    ["solid", () => solidChecks(native)],
+    ["face", () => faceChecks(native)],
+    ["curve", () => curveChecks(native)],
+    ["curveEdit", () => curveEditChecks(native)],
+    ["projection", () => projectionChecks(native)],
+    ["surface", () => surfaceChecks(native)],
+    ["instance", () => instanceChecks(native)],
+    ["scene", () => sceneChecks(native)],
+    ["measure", () => measureChecks(native)],
+    ["environment", () => environmentChecks(native)],
+    ["listing", () => listingChecks(native)],
+    ["surfacing", () => surfacingChecks(native)],
+  ];
   try {
-    await runChecks(native, target.title);
-    await solidChecks(native);
-    await faceChecks(native);
-    await curveChecks(native);
-    await curveEditChecks(native);
-    await projectionChecks(native);
-    await surfaceChecks(native);
-    await instanceChecks(native);
-    await sceneChecks(native);
-    await measureChecks(native);
-    await environmentChecks(native);
-    await listingChecks(native);
+    for (const [name, run] of groups) if (only.length === 0 || only.includes(name)) await run();
   } catch (err) {
     console.error("SMOKE ERROR:", (err as Error).message);
     process.exitCode = 1;
@@ -954,12 +960,19 @@ async function solidChecks(native: NativeSession): Promise<void> {
   await native.undo();
   const openCurve = await failure(native.patch({ curveIds: [elbow.id] }));
   check("patch rejects an open curve", /not closed/.test(openCurve?.message ?? ""), openCurve?.message);
-  const ringRegion = (await native.listRegions()).find((r) =>
-    Math.abs(r.boundsMm.min[0]! - (X + 90)) < 0.01 && Math.abs(r.boundsMm.max[0]! - (X + 110)) < 0.01);
-  const fromRegion = await native.patch({ regionIds: [ringRegion!.id] });
-  check("patch a region makes a Sheet", fromRegion.created.length === 1 &&
-    fromRegion.created[0]?.type === "Sheet", brief(fromRegion));
-  await native.undo();
+  const allRegions = await native.listRegions();
+  // Region bounds come from the display mesh: 0.015 mm off was seen, so allow 0.05.
+  const ringRegion = allRegions.find((r) =>
+    Math.abs(r.boundsMm.min[0]! - (X + 90)) < 0.05 && Math.abs(r.boundsMm.max[0]! - (X + 110)) < 0.05);
+  if (!ringRegion) {
+    check("patch a region makes a Sheet (the ring's region was found)", false,
+      JSON.stringify(allRegions.map((r) => [r.id, r.boundsMm.min, r.boundsMm.max])));
+  } else {
+    const fromRegion = await native.patch({ regionIds: [ringRegion.id] });
+    check("patch a region makes a Sheet", fromRegion.created.length === 1 &&
+      fromRegion.created[0]?.type === "Sheet", brief(fromRegion));
+    await native.undo();
+  }
 
   // A through hole in a Solid: patching its rim gives a separate Sheet.
   const drill = (await native.createCylinder([X + 20, 15, -5], 5, 30)).created[0]!;
@@ -1421,7 +1434,7 @@ async function curveEditChecks(native: NativeSession): Promise<void> {
   // --- regions and redundant vertices ---
   await native.createCircle([X + 500, 0, 0], 10);
   const disc = (await native.listRegions()).find((r) =>
-    Math.abs(r.boundsMm.min[0]! - (X + 490)) < 0.01 && Math.abs(r.boundsMm.max[0]! - (X + 510)) < 0.01)!;
+    Math.abs(r.boundsMm.min[0]! - (X + 490)) < 0.05 && Math.abs(r.boundsMm.max[0]! - (X + 510)) < 0.05)!;
   const halo = await native.offsetRegions([disc.id], 2);
   check("offset a region: a curve around its outline", boundsMatch(wire(halo), [X + 488, -12, 0], [X + 512, 12, 0], 0.01),
     brief(halo) + " " + fmt(wire(halo)));
@@ -1930,6 +1943,271 @@ async function listingChecks(native: NativeSession): Promise<void> {
   const vertical = await failure(native.setView([0, 0, 2]));
   check("a direction along Z is refused", /top or bottom/.test(vertical?.message ?? ""), vertical?.message);
   await native.setView("isometric");
+}
+
+// Free-form surfacing (change add-freeform-surfacing) — drawn around x = 13000.
+async function surfacingChecks(native: NativeSession): Promise<void> {
+  const X = 13000;
+  const openEdges = async (id: number) =>
+    (await native.topology(id, "edges")).edges!.filter((e) => e.faceIds.length === 1).map((e) => e.id);
+  const openTop = async (id: number) => {
+    const t = await native.topology(id, "faces");
+    await native.deleteFaces(id, [faceBy(t, [0, 0, 1])], false);
+    return openEdges(id);
+  };
+  const seamsAt = async (id: number, z: number) => {
+    const edges = (await native.topology(id, "edges")).edges!.filter((e) =>
+      e.faceIds.length === 2 && [e.startMm, e.midMm, e.endMm].every((p) => Math.abs(p[2]! - z) < 1e-3));
+    return edges.length ? native.measureContinuity(id, edges.map((e) => e.id)) : [];
+  };
+
+  // --- patch: continuity, topology, smoothness, fill, guides ---
+  const can = (await native.createCylinder([X, 0, 0], 20, 30)).created[0]!;
+  const canRim = await openTop(can.id);
+  const dome = await native.patch({ id: can.id, edgeIds: canRim }, { continuity: "G1" });
+  const domeSeams = await seamsAt(can.id, 30);
+  check("patch G1 caps a cylinder tangent to its wall", changed(dome, can.id)?.type === "Solid" &&
+    domeSeams.length > 0 && domeSeams.every((r) => r.continuity === "G1" || r.continuity === "G2"),
+    JSON.stringify(domeSeams.map((r) => r.continuity)));
+  await native.undo();
+  const single = await native.patch({ id: can.id, edgeIds: canRim }, { continuity: "G2", topology: "single" });
+  check("patch G2 single on a smooth boundary is one face", changed(single, can.id)?.faceCount === 3,
+    brief(single));
+  await native.undo();
+
+  const box = (await native.createBox([X + 60, -20, 0], [40, 40, 30])).created[0]!;
+  const boxRim = await openTop(box.id);
+  const flat = await native.patch({ id: box.id, edgeIds: boxRim });
+  check("patch without continuity is flat at the rim (unchanged default)",
+    boundsMatch(changed(flat, box.id), [X + 60, -20, 0], [X + 100, 20, 30]), fmt(changed(flat, box.id)));
+  await native.undo();
+  const cushion = await native.patch({ id: box.id, edgeIds: boxRim }, { continuity: "G2" });
+  const cushionSeams = await seamsAt(box.id, 30);
+  check("patch G2 caps a box with curvature-continuous seams", changed(cushion, box.id)?.type === "Solid" &&
+    cushionSeams.length === 4 && cushionSeams.every((r) => r.continuity === "G2"),
+    JSON.stringify(cushionSeams.map((r) => r.continuity)));
+  await native.undo();
+  const cornered = await failure(native.patch({ id: box.id, edgeIds: boxRim }, { continuity: "G1", topology: "single" }));
+  check("patch G1 single on a cornered boundary is refused with a hint",
+    /without corners/.test(cornered?.message ?? ""), cornered?.message);
+
+  const diagonal = (await native.createSpline(
+    [[X + 60, -20, 30], [X + 60, -20, 46], [X + 100, 20, 46], [X + 100, 20, 30]], false, undefined, true)).created[0]!;
+  const guided = await native.patch({ id: box.id, edgeIds: boxRim }, { continuity: "G1", guideIds: [diagonal.id] });
+  check("patch follows a guide that ends at boundary corners", changed(guided, box.id)?.type === "Solid",
+    brief(guided));
+  await native.undo();
+  const midEdge = (await native.createSpline(
+    [[X + 60, 0, 30], [X + 60, 0, 46], [X + 100, 0, 46], [X + 100, 0, 30]], false, undefined, true)).created[0]!;
+  const offVertex = await failure(native.patch({ id: box.id, edgeIds: boxRim }, { continuity: "G1", guideIds: [midEdge.id] }));
+  check("patch refuses a guide ending inside an edge, with a hint",
+    /boundary vertices|vertices of the opening/.test(offVertex?.message ?? ""), offVertex?.message);
+  const noOptions = await failure(native.patch({ id: box.id }, { continuity: "G1" }));
+  check("capping every hole of a Sheet refuses options", /edgeIds of one opening/.test(noOptions?.message ?? ""),
+    noOptions?.message);
+
+  // A loft's flat end caps replaced by G1 patches (the aircraft nose of the spike). Measured:
+  // near-tangent, 0.04–0.45° — inside 1°, but not always inside Plasticity's 0.1° G1 tolerance.
+  const secs: number[] = [];
+  for (const [x, a, b] of [[0, 3, 3], [25, 12, 11], [80, 16, 15], [150, 10, 9]] as const) {
+    secs.push((await native.createEllipse([X + x, 100, 0], Math.max(a, b), Math.min(a, b), [1, 0, 0], [0, 1, 0])).created[0]!.id);
+  }
+  const hull = (await native.loftProfiles(secs)).created[0]!;
+  const caps = (await native.topology(hull.id, "faces")).faces!.filter((f) => f.planar).map((f) => f.id);
+  await native.deleteFaces(hull.id, caps, false);
+  for (const end of ["nose", "tail"]) {
+    const rim = (await native.topology(hull.id, "edges")).edges!.filter((e) =>
+      e.faceIds.length === 1 && (end === "nose" ? e.midMm[0]! < X + 75 : e.midMm[0]! >= X + 75)).map((e) => e.id);
+    await native.patch({ id: hull.id, edgeIds: rim }, { continuity: "G1" });
+  }
+  const ends = (await native.topology(hull.id, "edges")).edges!.filter((e) => e.faceIds.length === 2 &&
+    [e.startMm, e.midMm, e.endMm].every((p) => Math.abs(p[0]! - X) < 1e-3 || Math.abs(p[0]! - X - 150) < 1e-3));
+  const endSeams = await native.measureContinuity(hull.id, ends.map((e) => e.id));
+  check("G1 patches on loft ends are near-tangent (< 1°)", endSeams.length > 0 &&
+    endSeams.every((r) => r.continuity !== "none" && (r.angleDeg ?? 90) < 1),
+    endSeams.map((r) => `${r.continuity}/${r.angleDeg}°`).join(" "));
+
+  // --- loft between edges ---
+  const tube = async (base: Vec3, axis: Vec3, cap: Vec3) => {
+    const id = (await native.createCylinder(base, 10, 30, axis)).created[0]!.id;
+    const t = await native.topology(id, "faces");
+    await native.deleteFaces(id, [faceBy(t, cap)], false);
+    return { id, edgeId: (await openEdges(id))[0]! };
+  };
+  const low = await tube([X, 200, 0], [0, 0, 1], [0, 0, 1]);
+  const high = await tube([X + 40, 200, 70], [0, 0, 1], [0, 0, -1]);
+  const sBend = await native.loftEdges([low, high]);
+  check("loft_edges spans two open tube ends and leaves them", sBend.created[0]?.type === "Sheet" &&
+    sBend.changed.length === 0, brief(sBend));
+  await native.undo();
+  const sJoined = await native.loftEdges([low, high], { join: true });
+  const sSeams = [...(await seamsAt(low.id, 30)), ...(await seamsAt(low.id, 70))];
+  check("loft_edges join makes one body; no false 'none' seams on the split circles",
+    sJoined.removedIds.includes(high.id) && sSeams.length > 0 && sSeams.every((r) => r.continuity !== "none"),
+    sSeams.map((r) => `${r.continuity}/${r.angleDeg}°`).join(" "));
+  await native.undo();
+
+  const side = await tube([X + 60, 260, 60], [1, 0, 0], [-1, 0, 0]);
+  const tooLong = await failure(native.loftEdges([low, side], { tangency: "clamped", startMagnitude: 1.5, endMagnitude: 1.5 }));
+  check("loft_edges refuses a tangent too long for the bend, with a hint", /lower startMagnitude/.test(tooLong?.message ?? ""),
+    tooLong?.message);
+  const elbow = await native.loftEdges([low, side], { tangency: "clamped", startMagnitude: 0.6, endMagnitude: 0.6, join: true });
+  const elbowSeams = (await native.measureContinuity(low.id, (await native.topology(low.id, "edges")).edges!
+    .filter((e) => e.faceIds.length === 2 && e.kind !== "circle" &&
+      [e.startMm, e.midMm, e.endMm].every((p) => Math.abs(p[2]! - 30) < 1e-3 || Math.abs(p[0]! - X - 60) < 1e-3))
+    .map((e) => e.id)));
+  check("clamped elbow joins into one valid body with seams G1 or better",
+    elbow.removedIds.includes(side.id) && (await native.checkBodies([low.id]))[0]!.valid &&
+    elbowSeams.length > 0 && elbowSeams.every((r) => r.continuity === "G1" || r.continuity === "G2"),
+    elbowSeams.map((r) => `${r.continuity}/${r.angleDeg}°`).join(" "));
+
+  // --- sweep rails and options, revolve shell ---
+  const S = X + 300;
+  const disc = (await native.createCircle([S, 0, 0], 10)).created[0]!;
+  const spine = (await native.createPolyline([[S, 0, 0], [S, 0, 80]])).created[0]!;
+  const railOut = (await native.createSpline([[S + 10, 0, 0], [S + 10, 0, 20], [S + 28, 0, 40], [S + 10, 0, 60], [S + 10, 0, 80]], false, undefined, true)).created[0]!;
+  const railIn = (await native.createSpline([[S - 10, 0, 0], [S - 10, 0, 20], [S - 28, 0, 40], [S - 10, 0, 60], [S - 10, 0, 80]], false, undefined, true)).created[0]!;
+  const oneRail = await native.sweepProfile(disc.id, spine.id, 0, 1, { guideIds: [railOut.id] });
+  const ob = oneRail.created[0]?.boundsMm;
+  check("sweep with one rail widens that side only", !!ob && ob.max[0]! > S + 15 && Math.abs(ob.min[0]! - (S - 10)) < 0.1,
+    fmt(oneRail.created[0]));
+  await native.undo();
+  const twoRails = await native.sweepProfile(disc.id, spine.id, 0, 1, { guideIds: [railOut.id, railIn.id] });
+  const tb = twoRails.created[0]?.boundsMm;
+  check("sweep between two opposite rails scales the section evenly", !!tb &&
+    Math.abs(tb.max[0]! - S - (S - tb.min[0]!)) < 0.2 && tb.max[1]! > 15, fmt(twoRails.created[0]));
+  await native.undo();
+  const walled = await native.sweepProfile(disc.id, spine.id, 0, 1, { thicknessMm: 2 });
+  check("sweep with thickness makes a wall", walled.created[0]?.type === "Solid" && (walled.created[0]?.faceCount ?? 0) >= 4,
+    brief(walled));
+  await native.undo();
+  const bentPath = (await native.createPolyline([[S + 100, 0, 0], [S + 100, 0, 60], [S + 160, 0, 60]])).created[0]!;
+  const ring = (await native.createCircle([S + 100, 0, 0], 6)).created[0]!;
+  const mitred = await native.sweepProfile(ring.id, bentPath.id);
+  const mitreFaces = mitred.created[0]?.faceCount;
+  await native.undo();
+  const rounded = await native.sweepProfile(ring.id, bentPath.id, 0, 1, { corners: "round" });
+  check("sweep corners round turns the corner with a rounded piece", rounded.created[0]?.type === "Solid" &&
+    (rounded.created[0]?.faceCount ?? 0) > (mitreFaces ?? 0), `mitre ${mitreFaces} faces, round ${rounded.created[0]?.faceCount}`);
+  await native.undo();
+  // Open at the bottom (does not touch the axis there): a Sheet without thickness.
+  const ogive = (await native.createSpline([[S + 240, 0, 0], [S + 240, 0, 35], [S + 229, 0, 70], [S + 220, 0, 70]], false, undefined, true)).created[0]!;
+  const skin = await native.revolveProfile(ogive.id, [S + 220, 0, 0], [0, 0, 1], 360);
+  const skinType = skin.created[0]?.type;
+  await native.undo();
+  const shell = await native.revolveShell(ogive.id, [S + 220, 0, 0], [0, 0, 1], 360, 1.5);
+  const outside = (await native.createCylinder([S + 220, 0, 5], 30, 25)).created[0]!;
+  const bore = (await native.createCylinder([S + 220, 0, 0], 20.05, 40)).created[0]!;
+  await native.boolean("difference", [outside.id], [bore.id]);
+  const overlap = await failure(native.boolean("intersection", [shell.created[0]!.id], [outside.id], true));
+  check("revolve with thickness turns an open skin into a Solid shell with the wall inside", skinType === "Sheet" &&
+    shell.created[0]?.type === "Solid" && (shell.created[0]?.faceCount ?? 0) >= 3 && /no effect/.test(overlap?.message ?? ""),
+    `without: ${skinType}; with: ${brief(shell)}; ring outside r20: ${overlap?.message ?? "overlaps"}`);
+  for (let i = 0; i < (overlap ? 5 : 6); i += 1) await native.undo();
+
+  const block = (await native.createPolyline([[S + 300, 0, 0], [S + 310, 0, 0], [S + 310, 0, 20], [S + 300, 0, 20]], true)).created[0]!;
+  const closedShell = await failure(native.revolveShell(block.id, [S + 280, 0, 0], [0, 0, 1], 360, 1));
+  check("revolve thickness refuses a closed profile and points to hollow", /hollow/.test(closedShell?.message ?? ""),
+    closedShell?.message);
+
+  // --- blend shapes ---
+  const B = X + 700;
+  const slab = (await native.createBox([B, 0, 0], [40, 40, 30])).created[0]!;
+  const frontTop = async () => (await native.topology(slab.id, "edges")).edges!.find((e) =>
+    Math.abs(e.midMm[2]! - 30) < 1e-3 && Math.abs(e.midMm[1]!) < 1e-3)!.id;
+  const blendSeams = async () => {
+    const t = await native.topology(slab.id);
+    const blend = t.faces!.find((f) => !f.planar)!;
+    return native.measureContinuity(slab.id, blend.edgeIds.filter((id) => {
+      const e = t.edges!.find((x) => x.id === id)!;
+      return e.lengthMm > 30;
+    }));
+  };
+  await native.filletEdges(slab.id, [await frontTop()], 6, { shape: "g2" });
+  const g2Seams = await blendSeams();
+  check("fillet shape g2 meets both faces G2", g2Seams.length === 2 && g2Seams.every((r) => r.continuity === "G2"),
+    g2Seams.map((r) => r.continuity).join(","));
+  await native.undo();
+  await native.filletEdges(slab.id, [await frontTop()], 6, { shape: "conic", rho: 0.3 });
+  const conicFace = (await native.topology(slab.id, "faces")).faces!.find((f) => !f.planar);
+  const conicSeams = await blendSeams();
+  check("fillet shape conic rho 0.3 is a spline face meeting G1", conicFace?.surface === "BSurf" &&
+    conicSeams.every((r) => r.continuity === "G1" || r.continuity === "G2"), `${conicFace?.surface} ${conicSeams.map((r) => r.continuity)}`);
+  await native.undo();
+  await native.chamferEdges(slab.id, [await frontTop()], 2, 5);
+  const bevel = (await native.topology(slab.id, "faces")).faces!.find((f) => f.normal[1]! < -1e-3 && f.normal[2]! > 1e-3);
+  const ratio = bevel ? Math.abs(bevel.normal[2]! / bevel.normal[1]!) : 0;
+  check("chamfer with distance2 bevels 2 into one face and 5 into the other",
+    Math.abs(ratio - 2.5) < 0.01 || Math.abs(ratio - 0.4) < 0.01, JSON.stringify(bevel?.normal));
+  await native.undo();
+  const rhoAlone = await failure(native.filletEdges(slab.id, [await frontTop()], 6, { rho: 0.3 }));
+  check("rho without shape conic is refused", /conic only/.test(rhoAlone?.message ?? ""), rhoAlone?.message);
+
+  const sheetOf = async (points: Vec3[]) => {
+    const outline = (await native.createPolyline(points, true)).created[0]!;
+    const sheet = (await native.patch({ curveIds: [outline.id] })).created[0]!;
+    return { id: sheet.id, faceId: (await native.topology(sheet.id, "faces")).faces![0]!.id };
+  };
+  const floor = await sheetOf([[B + 100, 0, 0], [B + 140, 0, 0], [B + 140, 30, 0], [B + 100, 30, 0]]);
+  const upright = await sheetOf([[B + 150, 0, 10], [B + 150, 30, 10], [B + 150, 30, 40], [B + 150, 0, 40]]);
+  const sides = [{ ...floor, nearMm: [B + 130, 15, 0] as Vec3 }, { ...upright, nearMm: [B + 150, 15, 20] as Vec3 }] as const;
+  const loose = await native.bridgeSurface(sides[0], sides[1], 15, "g2", 1, { trimWalls: false });
+  check("bridge_surface trimWalls false gives a separate blend Sheet", loose.created.length === 1 &&
+    loose.created[0]?.type === "Sheet" && loose.changed.length === 0 && loose.removedIds.length === 0, brief(loose));
+  await native.undo();
+  const round = await native.bridgeSurface(sides[0], sides[1], 15, "conic");
+  const roundFaces = (await native.topology(floor.id, "faces")).faces!.map((f) => f.surface);
+  check("bridge_surface shape conic gives a cylindrical blend", roundFaces.includes("Cylinder"), JSON.stringify(roundFaces) + " " + brief(round));
+  await native.undo();
+
+  // --- feature parameters: extrude both ways / as a wall, polygon pipe, deform offset ---
+  const F = X + 1000;
+  const coin = (await native.createCircle([F, 0, 0], 10)).created[0]!;
+  const both = await native.extrudeProfile(coin.id, 20, { backMm: 8 });
+  check("extrude with distanceBack spans both ways", boundsMatch(both.created[0], [F - 10, -10, -8], [F + 10, 10, 20]),
+    fmt(both.created[0]));
+  await native.undo();
+  const sleeve = await native.extrudeProfile(coin.id, 20, { thicknessMm: 2 });
+  check("extrude with thickness makes a wall around the profile", boundsMatch(sleeve.created[0], [F - 12, -12, 0], [F + 12, 12, 20]) &&
+    (sleeve.created[0]?.faceCount ?? 0) === 4, `${fmt(sleeve.created[0])} ${brief(sleeve)}`);
+  await native.undo();
+  const rail2 = (await native.createPolyline([[F + 50, 0, 0], [F + 50, 0, 40]])).created[0]!;
+  const hexBar = await native.pipe([rail2.id], 10, 0, { sides: 6 });
+  check("pipe with sides 6 is a hexagonal bar", hexBar.created[0]?.faceCount === 8, brief(hexBar));
+  await native.undo();
+  const deck = (await native.createBox([F + 100, 0, 0], [60, 40, 10])).created[0]!;
+  const drum = (await native.createCylinder([F + 300, 0, 0], 15, 40)).created[0]!;
+  const deckTop = { id: deck.id, faceId: faceBy(await native.topology(deck.id, "faces"), [0, 0, 1]) };
+  const drumWall = { id: drum.id, faceId: (await native.topology(drum.id, "faces")).faces!.find((f) => !f.planar)!.id };
+  const stud = (await native.createBox([F + 110, 10, 10], [10, 5, 3])).created[0]!;
+  const radius = (b: BodyInfo | undefined) => b?.boundsMm ? Math.hypot((b.boundsMm.max[0]! + b.boundsMm.min[0]!) / 2 - F - 300, b.boundsMm.max[1]!) : 0;
+  const wrapped = await native.deformBodies([stud.id], deckTop, drumWall);
+  const r0 = radius(changed(wrapped, stud.id));
+  await native.undo();
+  const lifted = await native.deformBodies([stud.id], deckTop, drumWall, false, { offsetNormalMm: 3 });
+  const r1 = radius(changed(lifted, stud.id));
+  check("deform offsetNormal lands the body 3 mm farther out", r1 - r0 > 2.5 && r1 - r0 < 3.5, `${r0.toFixed(2)} → ${r1.toFixed(2)}`);
+  await native.undo();
+
+  const crate = (await native.createBox([X + 200, 0, 0], [10, 10, 10])).created[0]!;
+  check("a plain box is not flagged with approximate bounds", !(await native.state()).bodies.find((b) => b.id === crate.id)?.boundsApproximate);
+  const loop = (await native.topology(crate.id, "edges")).edges!.filter((e) =>
+    Math.abs(e.startMm[2]! - 10) < 1e-3 && Math.abs(e.endMm[2]! - 10) < 1e-3).map((e) => e.id);
+  const softened = await native.filletEdges(crate.id, loop, 2, { shape: "g2" });
+  check("a G2-filleted box is flagged: its bounds come from control polygons",
+    changed(softened, crate.id)?.boundsApproximate === true, fmt(changed(softened, crate.id)));
+  await native.undo();
+  const corner = await native.measureContinuity(crate.id, [(await native.topology(crate.id, "edges")).edges![0]!.id]);
+  check("a box corner still measures G0 at 90°", corner[0]?.continuity === "G0" && Math.abs((corner[0]?.angleDeg ?? 0) - 90) < 1e-3,
+    JSON.stringify(corner[0]));
+
+  const square = (await native.createPolyline(
+    [[X + 140, -20, 0], [X + 180, -20, 0], [X + 180, 20, 0], [X + 140, 20, 0]], true)).created[0]!;
+  const plate = await native.patch({ curveIds: [square.id] }, { fill: "planeOnly" });
+  const plateFaces = plate.created[0] ? (await native.topology(plate.created[0].id, "faces")).faces! : [];
+  check("patch a planar curve with fill planeOnly gives one planar face",
+    plateFaces.length === 1 && plateFaces[0]!.planar, JSON.stringify(plateFaces.map((f) => f.surface)));
+  await native.undo();
 }
 
 main().catch((err) => {

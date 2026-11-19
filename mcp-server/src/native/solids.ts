@@ -2,6 +2,13 @@
 
 import { withHint } from "./core.js";
 import { CurveEditTools } from "./curve-edit.js";
+import {
+  BLEND_SHAPE_CODES,
+  CONTINUITY_CODES,
+  FILL_PREFERENCE_CODES,
+  FILL_SMOOTHNESS_CODES,
+  FILL_TOPOLOGY_CODES,
+} from "./enums.js";
 import { MM } from "./math.js";
 import { FIND_VIEW, commandFunction } from "./snippets.js";
 import {
@@ -11,10 +18,37 @@ import {
   EdgeInfo,
   FilletConvexity,
   MutationResult,
+  PatchOptions,
   PatchSource,
   TopologyFilter,
   Vec3,
 } from "./types.js";
+
+// Fill options shared by the patch factories; a field left undefined keeps the native default.
+// The kernel applies one continuity to the whole loop, so it is set on every edge alike.
+const PATCH_OPTIONS = `
+        if (args.topology !== undefined) factory.topology = args.topology;
+        if (args.smoothness !== undefined) factory.internalSmoothness = args.smoothness;
+        if (args.fill !== undefined) factory.fillPreference = args.fill;
+        if (args.continuity !== undefined) {
+          factory.continuity = args.continuity;
+          if (typeof factory.setContinuityForEdge === 'function') {
+            for (const edge of factory.edges ?? []) factory.setContinuityForEdge(edge, args.continuity);
+          }
+        }
+        if (args.guideIds?.length) factory.guides = args.guideIds.map((id) => typed(id, 'Wire'));`;
+
+/** Explains the patch failures met in docs/surfacing-spike.md. */
+const patchHints = <T>(operation: Promise<T>): Promise<T> =>
+  withHint(
+    withHint(
+      operation,
+      "grid_not_on_boundary",
+      "Guide curves must end exactly at vertices of the opening's boundary (corners), not inside an edge.",
+    ),
+    /FillHole failed with error `22093`/,
+    "A tangent (G1 / G2) patch with topology single or smoothness smooth needs a smooth boundary without corners; use topology multiple or minimal.",
+  );
 
 // Native operation codes, read from the running 26.1.3 app.
 export const BOOLEAN_CODES: Record<BooleanOperation, number> = {
@@ -232,26 +266,55 @@ export class SolidTools extends CurveEditTools {
   }
 
   /** Round the given edges of one body with `radiusMm`. */
-  filletEdges(id: number, edgeIds: string[], radiusMm: number): Promise<MutationResult> {
-    return this.blendEdges(id, edgeIds, radiusMm * MM);
+  filletEdges(
+    id: number,
+    edgeIds: string[],
+    radiusMm: number,
+    options: { shape?: "round" | "conic" | "g2"; rho?: number } = {},
+  ): Promise<MutationResult> {
+    if (options.rho !== undefined && options.shape !== "conic") {
+      return Promise.reject(new Error("rho applies to shape conic only"));
+    }
+    if (options.rho !== undefined && !(options.rho > 0 && options.rho < 1)) {
+      return Promise.reject(new Error("rho must be between 0 and 1"));
+    }
+    // Round is the native conic with rho 0.5 (a circular section); conic sets another rho.
+    const shape = options.shape === "g2" ? BLEND_SHAPE_CODES.g2 : options.shape ? BLEND_SHAPE_CODES.conic : undefined;
+    const rho = options.shape === "conic" ? options.rho ?? 0.5 : options.shape === "round" ? 0.5 : undefined;
+    return this.blendEdges(id, edgeIds, radiusMm * MM, { shape, rho });
   }
 
   /** Bevel the given edges of one body by `distanceMm`. */
-  chamferEdges(id: number, edgeIds: string[], distanceMm: number): Promise<MutationResult> {
-    // Same native factory as fillet: a negative distance makes a chamfer.
-    return this.blendEdges(id, edgeIds, -distanceMm * MM);
+  chamferEdges(id: number, edgeIds: string[], distanceMm: number, distance2Mm?: number): Promise<MutationResult> {
+    // Same native factory as fillet: a negative distance makes a chamfer. Two distances need
+    // lockDistances off; which face gets which follows the direction of each edge.
+    return this.blendEdges(id, edgeIds, -distanceMm * MM, {
+      distance2: distance2Mm === undefined ? undefined : -distance2Mm * MM,
+    });
   }
 
-  private blendEdges(id: number, edgeIds: string[], distance: number): Promise<MutationResult> {
+  private blendEdges(
+    id: number,
+    edgeIds: string[],
+    distance: number,
+    options: { shape?: number; rho?: number; distance2?: number } = {},
+  ): Promise<MutationResult> {
     const setup = `
         const view = find(args.id);
         factory.shell = view;
         factory.edges = pick(view.high?.edges, args.edgeIds, 'edge');
-        factory.distance = args.distance;`;
+        factory.distance = args.distance;
+        if (args.shape !== undefined) factory.shape = args.shape;
+        if (args.rho !== undefined) factory.rho = args.rho;
+        if (args.distance2 !== undefined) {
+          factory.lockDistances = false;
+          factory.distance1 = args.distance;
+          factory.distance2 = args.distance2;
+        }`;
     return this.mutate(
       commandFunction("FilletShellCommand", [], setup),
       ["FilletShellFactory"],
-      [{ id, edgeIds, distance }],
+      [{ id, edgeIds, distance, ...options }],
     );
   }
 
@@ -420,7 +483,19 @@ export class SolidTools extends CurveEditTools {
    * `edgeIds` (a closed loop of edges) picks one hole; without them every hole of a Sheet is
    * capped. A Sheet that becomes watertight turns into a Solid.
    */
-  patch(source: PatchSource): Promise<MutationResult> {
+  patch(source: PatchSource, options: PatchOptions = {}): Promise<MutationResult> {
+    const fill = {
+      continuity: options.continuity && CONTINUITY_CODES[options.continuity],
+      topology: options.topology && FILL_TOPOLOGY_CODES[options.topology],
+      smoothness: options.smoothness && FILL_SMOOTHNESS_CODES[options.smoothness],
+      fill: options.fill && FILL_PREFERENCE_CODES[options.fill],
+      guideIds: options.guideIds ?? [],
+    };
+    const hasOptions = Object.values(options).some((v) => v !== undefined && !(Array.isArray(v) && v.length === 0));
+    const refuse = (message: string) => Promise.reject(new Error(message));
+    if (fill.guideIds.length > 0 && !("id" in source && source.edgeIds)) {
+      return refuse("guideIds work only for the edges of one opening in a Sheet (id + edgeIds)");
+    }
     if ("curveIds" in source) {
       const setup = `
         factory.curves = args.curveIds.map((id) => {
@@ -428,21 +503,28 @@ export class SolidTools extends CurveEditTools {
           typed(id, 'Wire');
           if (!item.model?.IsClosed?.()) throw new Error('Curve ' + id + ' is not closed');
           return item.view;
-        });`;
-      return this.mutate(
+        });
+        ${PATCH_OPTIONS}`;
+      return patchHints(this.mutate(
         commandFunction("PatchHoleInCurveCommand", [], setup, true),
         ["PatchHoleInWireFactory", "PatchHoleInCurveCommand"],
-        [source],
-      );
+        [{ ...source, ...fill }],
+      ));
     }
     if ("regionIds" in source) {
-      return this.mutate(
-        commandFunction("PatchRegionCommand", [], `factory.regions = pickRegions(args.regionIds);`, true),
+      return patchHints(this.mutate(
+        commandFunction("PatchRegionCommand", [], `factory.regions = pickRegions(args.regionIds); ${PATCH_OPTIONS}`, true),
         ["PatchRegionFactory", "PatchRegionCommand"],
-        [source],
-      );
+        [{ ...source, ...fill }],
+      ));
     }
     if (!source.edgeIds) {
+      if (hasOptions) {
+        return refuse(
+          "Capping every hole of a Sheet takes no options: pass the edgeIds of one opening to set " +
+            "continuity, topology, smoothness, fill or guides.",
+        );
+      }
       return withHint(
         this.mutate(
           commandFunction("PatchHolesInSheetCommand", [], `factory.sheets = [typed(args.id, 'Sheet')];`, true),
@@ -462,21 +544,29 @@ export class SolidTools extends CurveEditTools {
         throw new Error(`Body ${source.id} is a ${type === "Wire" ? "curve" : type}, not a Solid or Sheet`);
       }
       const onSheet = type === "Sheet";
+      if (!onSheet && fill.guideIds.length > 0) {
+        throw new Error("guideIds work only for an opening in a Sheet, not for edges of a Solid");
+      }
+      if (onSheet && fill.fill !== undefined) {
+        throw new Error("fill applies to curves, regions and edges of a Solid, not to an opening in a Sheet");
+      }
       const setup = onSheet
         ? `const view = typed(args.id, 'Sheet');
         factory.sheet = view;
-        factory.edges = pick(view.high.edges, args.edgeIds, 'edge');`
+        factory.edges = pick(view.high.edges, args.edgeIds, 'edge');
+        ${PATCH_OPTIONS}`
         : `const view = typed(args.id, 'Solid');
-        factory.edges = pick(view.high.edges, args.edgeIds, 'edge');`;
+        factory.edges = pick(view.high.edges, args.edgeIds, 'edge');
+        ${PATCH_OPTIONS}`;
       return withHint(
-        this.mutate(
+        patchHints(this.mutate(
           commandFunction(onSheet ? "PatchHoleInSheetCommand" : "PatchHoleInSolidCommand", [], setup, true),
           onSheet
             ? ["PatchHoleInSheetFactory", "PatchHoleInSheetCommand"]
             : ["PatchHoleInSolidFactory", "PatchHoleInSolidCommand"],
-          [source],
-        ),
-        "fill_hole",
+          [{ ...source, ...fill }],
+        )),
+        /fill_hole(?!.*grid_not_on_boundary)/,
         "The edges must form one closed loop around an opening.",
       );
     });
@@ -487,15 +577,25 @@ export class SolidTools extends CurveEditTools {
    * `wallThicknessMm` the rod becomes a tube: the bore keeps `diameterMm` and the wall is
    * added around it.
    */
-  pipe(ids: number[], diameterMm: number, wallThicknessMm = 0): Promise<MutationResult> {
+  pipe(
+    ids: number[],
+    diameterMm: number,
+    wallThicknessMm = 0,
+    options: { sides?: number; twistDeg?: number } = {},
+  ): Promise<MutationResult> {
+    if (options.sides !== undefined && !(Number.isInteger(options.sides) && options.sides >= 3)) {
+      return Promise.reject(new Error("sides must be a whole number of at least 3"));
+    }
     const setup = `
         factory.spines = args.ids.map((id) => typed(id, 'Wire'));
         factory.diameter = args.diameter;
-        factory.thickness = args.thickness;`;
+        factory.thickness = args.thickness;
+        if (args.sides !== undefined) factory.vertexCount = args.sides;
+        if (args.twist !== undefined) factory.twistDegrees = args.twist;`;
     return this.mutate(
       commandFunction("PipeCommand", [], setup),
       ["PipeFactory"],
-      [{ ids, diameter: diameterMm * MM, thickness: wallThicknessMm * MM }],
+      [{ ids, diameter: diameterMm * MM, thickness: wallThicknessMm * MM, sides: options.sides, twist: options.twistDeg }],
     );
   }
 

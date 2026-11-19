@@ -248,7 +248,39 @@ export class NativeCore {
   }
 
   state(): Promise<NativeState> {
-    return this.enqueue(() => this.call<NativeState>(READ_STATE));
+    return this.enqueue(async () => {
+      const state = await this.call<NativeState>(READ_STATE);
+      await this.markApproximateBounds(state.bodies);
+      return state;
+    });
+  }
+
+  /**
+   * Flag bodies whose bounds come from control polygons (any face that is not a plane,
+   * cylinder, cone, sphere or torus). Not part of READ_STATE, which runs around every command.
+   */
+  protected async markApproximateBounds(bodies: BodyInfo[]): Promise<void> {
+    const ids = bodies.filter((b) => b.type === "Solid" || b.type === "Sheet").map((b) => b.id);
+    if (ids.length === 0) return;
+    const approximate = await this.call<number[]>(`function (args) {
+      const analytic = new Set(['Plane', 'Cylinder', 'Cone', 'Sphere', 'Torus']);
+      const wanted = new Set(args.ids);
+      const out = [];
+      for (const [versionId, item] of this.geo.geometryModel) {
+        const id = this.db.lookupStableId(versionId);
+        if (!wanted.has(id)) continue;
+        try {
+          const faces = item.model.GetFaces();
+          for (let i = 0; i < faces.Size(); i += 1) {
+            const name = faces.Get(i).GetSurface()?.surface?.constructor?.name ?? 'Unknown';
+            if (!analytic.has(name)) { out.push(id); break; }
+          }
+        } catch {}
+      }
+      return out;
+    }`, [], [{ ids }]).catch(() => [] as number[]);
+    const flagged = new Set(approximate);
+    for (const body of bodies) if (flagged.has(body.id)) body.boundsApproximate = true;
   }
 
   /**
@@ -269,13 +301,16 @@ export class NativeCore {
       const after = await this.call<NativeState>(READ_STATE);
       const beforeById = new Map(before.bodies.map((b) => [b.id, b]));
       const afterIds = new Set(after.bodies.map((b) => b.id));
+      const created = after.bodies.filter((b) => !beforeById.has(b.id));
+      const changed = after.bodies.filter((b) => {
+        const previous = beforeById.get(b.id);
+        return previous !== undefined &&
+          (fingerprint(previous) !== fingerprint(b) || before.versions[b.id] !== after.versions[b.id]);
+      });
+      await this.markApproximateBounds([...created, ...changed]);
       return {
-        created: after.bodies.filter((b) => !beforeById.has(b.id)),
-        changed: after.bodies.filter((b) => {
-          const previous = beforeById.get(b.id);
-          return previous !== undefined &&
-            (fingerprint(previous) !== fingerprint(b) || before.versions[b.id] !== after.versions[b.id]);
-        }),
+        created,
+        changed,
         removedIds: before.bodies.filter((b) => !afterIds.has(b.id)).map((b) => b.id),
         bodyCount: after.bodies.length,
         undoDepth: after.undoDepth,

@@ -343,17 +343,38 @@ export class MeasureTools extends InstanceTools {
             } catch {}
             const result = views[0];
             if (!result) { out.push({ edgeId: args.edgeIds[i], continuity: null }); continue; }
+            // Own angle: both face normals at the same points along the edge. Plasticity's own
+            // sampler pairs the wrong points on some pieces of split closed curves (a false gap
+            // of a whole chord), so it is trusted only when its gap is within tolerance.
+            let ownAngle = null;
+            try {
+              const model = this.db.lookupTopologyItem(edges[i]);
+              let worst = 0;
+              for (let k = 0; k <= 16; k += 1) {
+                const n = model.EvalFaceNormal(0.01 + 0.98 * (k / 16));
+                const a = n.faceNormal1, b = n.faceNormal2;
+                if (!a || !b) { worst = null; break; }
+                const dot = Math.max(-1, Math.min(1, (a.x * b.x + a.y * b.y + a.z * b.z) /
+                  (Math.hypot(a.x, a.y, a.z) * Math.hypot(b.x, b.y, b.z))));
+                worst = Math.max(worst, Math.acos(dot));
+              }
+              ownAngle = worst;
+            } catch {}
             const g0 = Number(result.g0max), g1 = Number(result.g1max), g2 = Number(result.g2max);
-            const isG0 = g0 <= tolerance.g0;
-            const isG1 = isG0 && g1 <= tolerance.g1;
-            const isG2 = isG1 && g2 <= tolerance.g2;
-            out.push({
+            const sampled = g0 <= tolerance.g0;
+            const angle = ownAngle ?? g1;
+            const isG0 = sampled || ownAngle !== null;
+            const isG1 = isG0 && angle <= tolerance.g1;
+            const isG2 = isG1 && sampled && g2 <= tolerance.g2;
+            const report = {
               edgeId: args.edgeIds[i],
               continuity: isG2 ? 'G2' : isG1 ? 'G1' : isG0 ? 'G0' : 'none',
-              gapMm: Math.round(g0 * 1e9) / 1e6,
-              angleDeg: Math.round((g1 * 180 / Math.PI) * 1e6) / 1e6,
-              curvatureChange: Math.round(g2 * 1e6) / 1e6,
-            });
+              gapMm: sampled ? Math.round(g0 * 1e9) / 1e6 : 0,
+              angleDeg: Math.round((angle * 180 / Math.PI) * 1e6) / 1e6,
+            };
+            if (sampled) report.curvatureChange = Math.round(g2 * 1e6) / 1e6;
+            else report.note = 'curvature not measured on this edge (Plasticity sampled it inconsistently); G2 cannot be confirmed';
+            out.push(report);
           }
           return out;
         }`,

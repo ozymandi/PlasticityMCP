@@ -1,6 +1,6 @@
 # plasticity-mcp
 
-MCP server for [Plasticity](https://www.plasticity.xyz/) 26.1.3: 144 tools over two independent channels.
+MCP server for [Plasticity](https://www.plasticity.xyz/) 26.1.3: 145 tools over two independent channels.
 
 - **Native channel (CDP)** — real B-Rep modelling through Plasticity's own factories and history. Almost all tools; described first.
 - **Bridge channel (WebSocket)** — the built-in protocol of the official Blender bridge: scene listing, change events, retessellation. Read side only on 26.1.x.
@@ -84,7 +84,7 @@ Real B-Rep operations through Plasticity's own factories and history. Unofficial
 | `find_boundary_edges` | Open edges of a Solid / Sheet (the rims of its openings); `select` optional. |
 | `add_measurement` | A measurement kept in the document: straight distance between two attachable points (`from`, `to`), or the radius of a circular edge (`id` + `edgeId`). |
 | `list_measurements` / `delete_measurements` | Measurements of the document with their values; delete by id. |
-| `measure_continuity` | Gap, angle and curvature change between the faces along edges, and the continuity (G0 / G1 / G2). |
+| `measure_continuity` | Gap, angle and curvature change between the faces along edges, and the continuity (G0 / G1 / G2). The angle comes from both face normals at the same points; where Plasticity samples an edge inconsistently the curvature is left out with a `note`. |
 | `set_section_view` / `clear_section_view` | Cut the view (not the model) with a plane, for screenshots of the inside. |
 
 ### Transforms
@@ -120,8 +120,8 @@ Real B-Rep operations through Plasticity's own factories and history. Unofficial
 |------|-------------|
 | `get_body_topology` | What a body is made of, with ids: faces and edges of a Solid / Sheet (`include`: faces / edges / all) plus the control points of its spline faces, or segments, vertices and control points of a curve. On a detailed body ask for a part: `box` ({min, max}) keeps what lies inside it, `kinds` (line / circle / curve) keeps edges of those kinds. |
 | `boolean` | `union` / `difference` / `intersection` of `toolIds` against `targetIds`; `keepTools` optional. |
-| `fillet` | Round with `radius`: edges of a body (`edgeIds`), corner vertices of a curve (`vertexIds`), or every corner of a curve. |
-| `chamfer` | Bevel by `distance`: edges of a body, or corners of a curve, the same way. |
+| `fillet` | Round with `radius`: edges of a body (`edgeIds`), corner vertices of a curve (`vertexIds`), or every corner of a curve. On edges `shape` round / conic (+ `rho`) / g2. |
+| `chamfer` | Bevel by `distance`: edges of a body, or corners of a curve, the same way. On edges `distance2` makes it asymmetric. |
 | `extrude_faces` | Push / pull faces of a Solid by `distance`: positive adds outward, negative cuts in. On a Sheet the extrusion becomes a new Solid. |
 
 ### Solids
@@ -134,8 +134,8 @@ Real B-Rep operations through Plasticity's own factories and history. Unofficial
 | `draft_faces` | Tilt faces by `angle` degrees about the plane of `referenceFaceId`. |
 | `delete_faces` | Remove faces and heal the gap (removes a fillet, hole or boss); `heal: false` leaves an open Sheet. |
 | `remove_fillets` | Remove the fillets of bodies; optional `maxRadius` and `convexity` (any / convex / concave). |
-| `patch` | Close with a surface: closed curves (`curveIds`), regions (`regionIds`), all holes of a Sheet (`id`) or one opening by its edges (`id` + `edgeIds`). |
-| `pipe` | Round tubes along curves: `diameter`, optional `wallThickness` (added outside the bore). |
+| `patch` | Close with a surface: closed curves (`curveIds`), regions (`regionIds`), all holes of a Sheet (`id`) or one opening by its edges (`id` + `edgeIds`). Options: `continuity` (G0 / G1 / G2), `topology`, `smoothness`, `fill`, `guideIds`. |
+| `pipe` | Round tubes along curves: `diameter`, optional `wallThickness` (added outside the bore), `sides` (polygon section), `twist`. |
 | `join` | Curves that touch end to end → one curve; Sheets that share edges → one Sheet, or a Solid when closed (`ids`, keeps the first id). Faces of one body on the same surface → one face (`id` + `faceIds`). |
 | `unjoin` | A curve → its segments, a body → one Sheet per face (`ids`); or detach chosen faces (`id` + `faceIds`). |
 
@@ -193,13 +193,13 @@ Real B-Rep operations through Plasticity's own factories and history. Unofficial
 | `slide` | Slide control points of a spline curve or surface along (`forward` / `backward`, `forward_v` / `backward_v`) or across (`normal`) the control polygon. |
 | `delete_control_points` | Delete control points of a spline. |
 | `curves_from_edges` | Copy edges of a body as curves. |
-| `deform` | Wrap curves (`curveIds`) or whole bodies (`ids`) from a `source` face onto a `target` face. |
+| `deform` | Wrap curves (`curveIds`) or whole bodies (`ids`) from a `source` face onto a `target` face; optional scale / offset along U, V and the normal, `flipUV`, `flipNormal`, `mirror`. |
 
 ### Surfaces
 
 | Tool | Description |
 |------|-------------|
-| `bridge_surface` | Blend two Sheets into one with a transition `width` wide between a face of each; `shape` g2 / chamfer. |
+| `bridge_surface` | Blend two Sheets into one with a transition `width` wide between a face of each; `shape` g2 / conic / chamfer, `trimWalls`, `trimBlend`. |
 | `constrained_surface` | A Sheet through at least four `points`, optional `normals`, `tolerance`, `optimize`. |
 | `remove_nominal_surface` | Reveal the hidden spans of control points of spline faces. |
 
@@ -216,10 +216,11 @@ Real B-Rep operations through Plasticity's own factories and history. Unofficial
 | Tool | Description |
 |------|-------------|
 | `list_regions` | Regions Plasticity built from closed loops of curves: id, bounds, normal, boundary length, holes. |
-| `extrude_profile` | Closed planar curve → Solid, open curve → Sheet, by `distance` along the plane normal. Takes a curve `id` or `regionIds`. |
-| `revolve_profile` | Revolve a curve around an axis (`axisOrigin`, `axis`, `angle`): closed → Solid, open → Sheet. |
-| `sweep_profile` | Sweep a profile curve along a path curve; optional `twist` and end `scale`. |
+| `extrude_profile` | Closed planar curve → Solid, open curve → Sheet, by `distance` along the plane normal; `distanceBack` the other way, `thickness` for a wall. Takes a curve `id` or `regionIds`. |
+| `revolve_profile` | Revolve a curve around an axis (`axisOrigin`, `axis`, `angle`): closed → Solid, open → Sheet; `thickness` turns an open profile into a shell (wall inside). |
+| `sweep_profile` | Sweep a profile curve along a path curve; optional `twist` and end `scale`, rails `guideIds`, `alignment`, `corners`, `thickness`. |
 | `loft_profiles` | Loft through ordered profiles; optional `guideIds`, `closed`. Closed profiles → Solid, open → Sheet. |
+| `loft_edges` | Loft a Sheet between Sheet boundary edges and curves; `tangency` natural / free / clamped, `startMagnitude` / `endMagnitude`, `join`. |
 
 ### Export
 
@@ -280,7 +281,7 @@ A full `get_body_topology` of a detailed body is very long — 337 edges come to
 
 Results are plain JSON printed compactly: whatever fits on one line stays on one line (one body, edge or region per line), and a body is printed without the fields at their usual value — no `name` means unnamed, no `visible` shown, no `locked` / `selected` not locked / not selected, no `materialId` no material; a curve has no `faceCount` / `edgeCount`; a group lists only the kinds of members it has. The group tools return what they touched, not the whole tree (`list_groups` gives the tree). `list_regions` takes a `box` like `get_body_topology`.
 
-Mutating tools return `created` and `changed` bodies (stable id, type, name, bounds, …) and `removedIds`. Transforms keep body ids, so their result is in `changed`. A body is reported as changed whenever its geometry was rewritten, also when bounds and counts stay the same (a reversed Sheet, a new fillet radius).
+Mutating tools return `created` and `changed` bodies (stable id, type, name, bounds, …) and `removedIds`. A body with spline faces carries `boundsApproximate: true`: its bounds come from control polygons and can be larger than the surface. Transforms keep body ids, so their result is in `changed`. A body is reported as changed whenever its geometry was rewritten, also when bounds and counts stay the same (a reversed Sheet, a new fillet radius).
 
 Live check — mutates the document, so it only runs in a fresh "Untitled" one and undoes everything:
 
@@ -350,7 +351,7 @@ node dist/index.js --catalog=compact
 - `call_tool` runs any tool by `name` with its `arguments` — same checks, same result as a direct call.
 - A model that connects without having called `modelling_guide` gets the rules together with the answer of `native_connect`, once per server process — so no model builds without having seen them. (The full catalog does not do this.)
 
-Without the argument (or with `--catalog=full`) the server lists all 144 tools, as before.
+Without the argument (or with `--catalog=full`) the server lists all 145 tools, as before.
 
 ## Wiring into Claude Code
 

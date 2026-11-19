@@ -30,7 +30,7 @@ Order of work — finish a stage for the whole model before the next one
 Rules
 - Take sizes from the drawing or the description. Where there is none, estimate and say that it is an estimate.
 - Before building anything of more than a few parts, tell the user the plan: the parts, their sizes and where the sizes come from, what will be left out.
-- Choose the way to build a form by its kind: straight walls - extrude a profile; round - revolve; sections that change along the length - loft; one section along a path - sweep. Boxes and cylinders are only for boxy and round parts.
+- Choose the way to build a form by its kind: straight walls - extrude a profile; round - revolve; sections that change along the length - loft; one section along a path - sweep; free forms - curves and patches. Boxes and cylinders are only for boxy and round parts.
 - No sharp edges on a finished model: fillet for cast and moulded shapes, chamfer for machined rims and holes. About 1-3 % of the part size; 0.3-0.5 mm on small rims.
 - Face, edge and region ids change after every change of a body: read get_body_topology / list_regions again before each call that takes them.
 - After every boolean, fillet or chamfer read the returned bounds and face count, then call check_bodies. An operation that succeeded can still give a wrong shape.
@@ -45,9 +45,57 @@ Before saying it is done
 - Screenshots from the same sides as the reference were compared with it, and the differences are corrected or named.
 - What is estimated or left out is said, not left for the user to find.
 
-More: modelling_guide with topic "drawing", "blocking", "edges", "merge" or "detail" — read the topic before that stage.`;
+More: modelling_guide with topic "drawing", "blocking", "edges", "merge", "detail", "surfacing" (free forms) or "tools" (tool per job) — read the topic before that stage.`;
 
 const TOPICS = {
+  surfacing: `Free-form surfacing (Indie licence)
+When: a loft through closed sections is fine for one body that does not branch, with sections close together. Use curves and patches when the form branches (a wing out of a body), must flow tangentially into another surface, needs a cap or dome, or when sparse sections bulge.
+
+Curves carry the tangents
+- create_spline with controlPoints: true. The curve leaves its first point along the first leg of the control polygon (the tangent); the leg length is the tension; the third point sets the curvature. To leave a symmetry plane at a right angle, put the second point on the plane's normal.
+- Two curves meet tangentially when the last-but-one point of one, the shared point and the second point of the other lie on one line. bridge joins curve ends with G1 / G2.
+- A spline through points (without controlPoints) overshoots between far points: use it only through dense points.
+
+Surfaces
+- Opening in a Sheet: patch with id + edgeIds and continuity "G1" (tangent dome) or "G2". One value for the whole loop. Single topology and smooth smoothness only on a boundary without corners. guideIds must end exactly at boundary vertices.
+- From the edge of one surface to the edge of another: loft_edges with tangency "clamped" and join: true. On a tight bend lower startMagnitude / endMagnitude (0.6 for a 90° elbow of 10 mm tubes).
+- Section changing along a path: sweep_profile with 1-3 rails (guideIds); alignment "parallel" keeps the end face parallel to the start.
+- Shells: revolve_profile or extrude_profile with thickness; thicken a Sheet.
+- Blend two Sheets: bridge_surface (width larger than the gap; shape "conic" for a round blend; trimWalls: false for a separate Sheet).
+- Close the volume with join; symmetric forms: one half, mirror_bodies, join.
+
+Edges and checks
+- fillet with shape "g2" for moulded edges (G2 seams); on many edges at once it can fail where a round fillet works - fewer edges per call.
+- Fillet only sharp edges: measure_continuity, keep the edges G0 with an angle above about 5°.
+- Check seams with measure_continuity. A body with boundsApproximate: true has spline faces - check its size with a boolean or set_section_view, not with the bounds.
+
+Recipes
+- Tangent nose or dome on a tube: control-polygon spline whose second point is straight above the first, revolve_profile, then join with the tube whose top face was removed (delete_faces with heal: false). The seam is G1.
+- Fins, wings, handles: boolean union first, then a G2 root blend (fillet shape "g2" on the edges between a body face and a part face), then round the outer edges. Rounding the outer edges first makes the root blend fail.
+- Rounded ends of a lofted body: delete_faces the flat ends with heal: false, patch each opening with continuity "G1".
+- Quick car or product body: extrude the side outline, the plan outline and a cross-section through each other, one boolean intersection, round the sharp edges; cut wheel arches no deeper than the sill.
+- Pipe elbow or branch: open tube ends, loft_edges clamped, join.`,
+  tools: `Which tool for which job
+- Straight walls from an outline: extrude_profile (distanceBack, thickness for a wall).
+- Round part from a half section: revolve_profile (thickness for a shell).
+- Sections that change along the length: loft_profiles (guideIds).
+- Surface from edge to edge, tangent to the neighbours: loft_edges.
+- One section along a path: sweep_profile (rails, alignment, corners).
+- Bar or tube along a curve: pipe (sides for a polygon bar, twist).
+- Close an opening, a dome, a cap: patch (continuity, topology, guideIds).
+- Blend two Sheets: bridge_surface.
+- Copies along a curve (chain links, rivets, ribs): array_curve. Around an axis: array_radial. In a grid: array_rectangular.
+- Mirror a half: mirror_bodies.
+- Split a body with a curve or a face: cut.
+- Sheets into one or into a Solid, curves end to end: join; take apart: unjoin.
+- Shell a Solid: hollow. Give a Sheet or faces a thickness: thicken.
+- Parallel copy of curves or faces: offset.
+- More control points on a curve or face: raise_degree. Clean up or lighten: rebuild.
+- Project curves onto a body: project. Put curves or a body into faces as edges: imprint, then complete_edges.
+- Round or bevel edges: fillet (shape round / conic / g2), chamfer (distance2 for an asymmetric bevel).
+- Draft angle for moulding: draft_faces. Make faces flush with a reference face: match_faces.
+- Continue a Sheet past its edge: extend.
+- Wrap a flat detail onto a curved face: unwrap_faces, then deform (offsetNormal lifts it off the face).`,
   drawing: `Working from a drawing
 - Read the overall sizes first: width, height, depth. Then the sizes and positions of the main parts.
 - Choose the origin on a feature the drawing dimensions from (an axis of symmetry, the axis of the main round feature, a base face) and keep it.
@@ -109,7 +157,9 @@ const tools: Tool[] = [
       "Read this first: the rules of modelling with this server — order of work, edges, ids, " +
       "checking the result. Call it once before building anything; no arguments. With `topic` " +
       "it gives the detailed rules of one stage: drawing (working from a drawing), blocking, " +
-      "edges, merge, detail (knurling, text, threads). Changes nothing, needs no connection.",
+      "edges, merge, detail (knurling, text, threads), surfacing (free forms: curves, patches, " +
+      "tangents, combined recipes), tools (which tool for which job). Changes nothing, needs no " +
+      "connection.",
     inputSchema: {
       type: "object",
       properties: { topic: { type: "string", enum: TOPIC_NAMES } },

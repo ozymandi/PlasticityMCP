@@ -28,6 +28,8 @@ const ExtrudeProfileArgs = z
     id: BodyId.optional(),
     regionIds: RegionIds.optional(),
     distance: z.number().refine((d) => d !== 0, "distance must be non-zero"),
+    distanceBack: z.number().positive().optional(),
+    thickness: z.number().positive().optional(),
   })
   .refine(oneProfile, ONE_PROFILE_MESSAGE);
 
@@ -44,6 +46,7 @@ const RevolveProfileArgs = z
       .refine((a) => a !== 0, "angle must be non-zero")
       .optional()
       .default(360),
+    thickness: z.number().positive().optional(),
   })
   .refine(oneProfile, ONE_PROFILE_MESSAGE);
 
@@ -54,6 +57,10 @@ const SweepProfileArgs = z
     pathId: BodyId,
     twist: z.number().optional().default(0),
     scale: z.number().positive().optional().default(1),
+    guideIds: z.array(BodyId).max(3).optional(),
+    alignment: z.enum(["normal", "parallel"]).optional(),
+    corners: z.enum(["mitre", "round"]).optional(),
+    thickness: z.number().positive().optional(),
   })
   .refine(oneProfile, ONE_PROFILE_MESSAGE);
 
@@ -102,13 +109,18 @@ const tools: Tool[] = [
       "returned bounds. A curve `id` is refused when its profile is ambiguous (other curves " +
       "in the same plane cross it or lie inside it); in that case, or for a profile made of " +
       "several curves, pass `regionIds` from list_regions instead of `id` — several regions " +
-      "are extruded as one profile. Undoable.",
+      "are extruded as one profile. `distanceBack` (millimetres) extrudes the other way too, so " +
+      "the body spans distance + distanceBack across the plane. `thickness` (millimetres) makes a " +
+      "wall of that thickness around the profile instead of a filled section — a tube from a " +
+      "circle, a thin plate from an open curve. Undoable.",
     inputSchema: {
       type: "object",
       required: ["distance"],
       properties: {
         id: { type: "number", description: "Stable id of the curve (Wire)" },
         regionIds: REGION_IDS_SCHEMA,
+        distanceBack: { type: "number", description: "Millimetres extruded the other way" },
+        thickness: { type: "number", description: "Wall thickness in millimetres" },
         distance: { type: "number" },
       },
     },
@@ -122,7 +134,10 @@ const tools: Tool[] = [
       "through it. `angle` in degrees (default 360) follows the right-hand rule around `axis`; " +
       "negative turns the other way. A curve `id` is refused when its profile is ambiguous " +
       "(other curves in its plane cross it or lie inside it); pass `regionIds` from " +
-      "list_regions instead to choose the regions. Undoable.",
+      "list_regions instead to choose the regions. `thickness` (millimetres, open profiles " +
+      "only) gives the revolved surface a wall inside it, keeping its outer size — a revolve " +
+      "then a thicken, two undo steps. For a section that changes on its way round use " +
+      "sweep_profile with rails along a circular path. Undoable.",
     inputSchema: {
       type: "object",
       required: ["axisOrigin", "axis"],
@@ -132,6 +147,7 @@ const tools: Tool[] = [
         axisOrigin: VEC3_SCHEMA,
         axis: { ...VEC3_SCHEMA, description: "Axis direction [x, y, z]" },
         angle: { type: "number", default: 360, description: "Degrees, -360..360, non-zero" },
+        thickness: { type: "number", description: "Wall thickness in millimetres (open profiles)" },
       },
     },
   },
@@ -146,7 +162,13 @@ const tools: Tool[] = [
       "A curve `profileId` is refused when its profile is ambiguous — note that a path lying " +
       "in the profile's own plane and crossing it makes it so; pass `regionIds` from " +
       "list_regions instead to choose the regions. A path made of several pieces must first " +
-      "be merged with join. Undoable.",
+      "be merged with join. Rails (`guideIds`, 1–3 curves starting on the profile and running " +
+      "along the path) reshape the section: one rail pulls its side out, two opposite rails " +
+      "scale it evenly, a third controls the other direction; rails override twist and scale. " +
+      "`alignment` normal (default; the section turns with the path) / parallel (it keeps its " +
+      "start orientation, so the end face stays parallel to the start); " +
+      "`corners` mitre (default) / round at the corners of a polyline path; `thickness` " +
+      "(millimetres) sweeps a wall instead of a full section. Undoable.",
     inputSchema: {
       type: "object",
       required: ["pathId"],
@@ -155,6 +177,10 @@ const tools: Tool[] = [
         regionIds: REGION_IDS_SCHEMA,
         pathId: { type: "number", description: "Stable id of the path curve (Wire)" },
         twist: { type: "number", default: 0 },
+        guideIds: { type: "array", items: { type: "number" }, maxItems: 3, description: "Rail curves" },
+        alignment: { type: "string", enum: ["normal", "parallel"] },
+        corners: { type: "string", enum: ["mitre", "round"] },
+        thickness: { type: "number", description: "Wall thickness in millimetres" },
         scale: { type: "number", default: 1 },
       },
     },
@@ -204,19 +230,19 @@ const handlers: ToolFamily["handlers"] = {
 
   extrude_profile: async (rawArgs) => {
     const args = ExtrudeProfileArgs.parse(rawArgs ?? {});
-    return ok(await native.extrudeProfile((args.id ?? args.regionIds)!, args.distance));
+    return ok(await native.extrudeProfile((args.id ?? args.regionIds)!, args.distance, {
+      backMm: args.distanceBack,
+      thicknessMm: args.thickness,
+    }));
   },
 
   revolve_profile: async (rawArgs) => {
     const args = RevolveProfileArgs.parse(rawArgs ?? {});
-    return ok(
-      await native.revolveProfile(
-        (args.id ?? args.regionIds)!,
-        args.axisOrigin,
-        args.axis,
-        args.angle,
-      ),
-    );
+    const profile = (args.id ?? args.regionIds)!;
+    if (args.thickness !== undefined) {
+      return ok(await native.revolveShell(profile, args.axisOrigin, args.axis, args.angle, args.thickness));
+    }
+    return ok(await native.revolveProfile(profile, args.axisOrigin, args.axis, args.angle));
   },
 
   sweep_profile: async (rawArgs) => {
@@ -227,6 +253,12 @@ const handlers: ToolFamily["handlers"] = {
         args.pathId,
         args.twist,
         args.scale,
+        {
+          guideIds: args.guideIds,
+          alignment: args.alignment,
+          corners: args.corners,
+          thicknessMm: args.thickness,
+        },
       ),
     );
   },

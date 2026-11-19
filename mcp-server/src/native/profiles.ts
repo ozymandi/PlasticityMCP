@@ -2,9 +2,25 @@
 
 import { withHint } from "./core.js";
 import { CurveTools } from "./curves.js";
+import { SWEEP_ALIGNMENT_CODES, SWEEP_CORNER_CODES } from "./enums.js";
 import { MM, toMeters } from "./math.js";
 import { FIND_VIEW, USE_PROFILE, commandFunction } from "./snippets.js";
-import { MutationResult, ProfileRef, RegionInfo, Vec3 } from "./types.js";
+import { MutationResult, ProfileRef, RegionInfo, SweepOptions, Vec3 } from "./types.js";
+
+// Rails and options of sweep. Revolve has the same fields natively, but on 26.1.3 they change
+// nothing there (rails and thickness were tried), so revolve does not take them.
+const SWEEP_OPTIONS = `
+        if (args.guideIds?.length) factory.guides = args.guideIds.map((id) => typed(id, 'Wire'));
+        if (args.alignment !== undefined) factory.alignment = args.alignment;
+        if (args.corners !== undefined) factory.cornerType = args.corners;
+        if (args.thickness !== undefined) factory.thickness = args.thickness;`;
+
+const sweepOptionArgs = (options: SweepOptions) => ({
+  guideIds: options.guideIds ?? [],
+  alignment: options.alignment && SWEEP_ALIGNMENT_CODES[options.alignment],
+  corners: options.corners && SWEEP_CORNER_CODES[options.corners],
+  thickness: options.thicknessMm === undefined ? undefined : options.thicknessMm * MM,
+});
 
 export const profileArgs = (profile: ProfileRef) =>
   typeof profile === "number" ? { id: profile } : { regionIds: profile };
@@ -64,14 +80,27 @@ export class ProfileTools extends CurveTools {
    * Refuses a closed curve whose profile is ambiguous (nested or overlapping closed curves in
    * the same plane).
    */
-  extrudeProfile(profile: ProfileRef, distanceMm: number): Promise<MutationResult> {
+  extrudeProfile(
+    profile: ProfileRef,
+    distanceMm: number,
+    options: { backMm?: number; thicknessMm?: number } = {},
+  ): Promise<MutationResult> {
+    // distance2 is the start offset of the extrusion: negative extrudes back past the plane.
+    // thickness1 turns the section into a wall of that thickness around the profile.
     const setup = `
         ${USE_PROFILE}
-        factory.distance1 = args.distance;`;
+        factory.distance1 = args.distance;
+        if (args.back !== undefined) factory.distance2 = -args.back;
+        if (args.thickness !== undefined) factory.thickness1 = args.thickness;`;
     return this.mutate(
       commandFunction("ExtrudeCommand", [], setup),
       ["ExtrudeFactory"],
-      [{ ...profileArgs(profile), distance: distanceMm * MM }],
+      [{
+        ...profileArgs(profile),
+        distance: distanceMm * MM,
+        back: options.backMm === undefined ? undefined : options.backMm * MM,
+        thickness: options.thicknessMm === undefined ? undefined : options.thicknessMm * MM,
+      }],
     );
   }
 
@@ -110,6 +139,7 @@ export class ProfileTools extends CurveTools {
     pathId: number,
     twistDeg = 0,
     scale = 1,
+    options: SweepOptions = {},
   ): Promise<MutationResult> {
     if (profile === pathId) {
       return Promise.reject(new Error("The sweep path must be a different curve than the profile"));
@@ -122,11 +152,19 @@ export class ProfileTools extends CurveTools {
         ${USE_PROFILE}
         factory.spine = path;
         factory.twistDegrees = args.twist;
-        factory.scale = args.scale;`;
-    return this.mutate(
-      commandFunction("SweepCommand", [], setup),
-      ["SweepFactory"],
-      [{ ...profileArgs(profile), pathId, twist: twistDeg, scale }],
+        factory.scale = args.scale;
+        ${SWEEP_OPTIONS}`;
+    if ((options.guideIds ?? []).some((id) => id === pathId || id === profile)) {
+      return Promise.reject(new Error("A rail must be a different curve than the profile and the path"));
+    }
+    return withHint(
+      this.mutate(
+        commandFunction("SweepCommand", [], setup),
+        ["SweepFactory"],
+        [{ ...profileArgs(profile), pathId, twist: twistDeg, scale, ...sweepOptionArgs(options) }],
+      ),
+      "make_swept_body",
+      "Rails must start on the profile and run along the path; alignment transport is not supported.",
     );
   }
 
