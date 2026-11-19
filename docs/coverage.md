@@ -2,7 +2,7 @@
 
 What the server can do compared with Plasticity itself: which Plasticity command is behind which tool, what is missing, and where a tool behaves differently from the command in the window.
 
-State on 2026-10-04: **144 tools** (143 for Plasticity, plus `modelling_guide`, which serves the modelling rules), Plasticity **26.1.3**, Indie licence, Windows. Parameters of each tool are in [mcp-server/README.md](../mcp-server/README.md); how each was built and tested is in [task.md](../task.md).
+State on 2026-11-19: **145 tools** (144 for Plasticity, plus `modelling_guide`, which serves the modelling rules), Plasticity **26.1.3**, Indie licence, Windows. Parameters of each tool are in [mcp-server/README.md](../mcp-server/README.md); how each was built and tested is in [task.md](../task.md).
 
 ## How to read this
 
@@ -19,6 +19,7 @@ State on 2026-10-04: **144 tools** (143 for Plasticity, plus `modelling_guide`, 
 - **The window must not be minimized.** A covered window works at full speed; a minimized one does not draw: `set_view` and `screenshot` refuse, the rest slows down to about two seconds per operation.
 - **Millimetres and degrees**, whatever units the window displays.
 - **Ids of faces, edges, curve segments, vertices, control points and regions are valid only until the body changes.** Re-read `get_body_topology` / `list_regions` after every operation; stale ids are refused.
+- **Bounds of free-form bodies are approximate.** For a body with spline (or other non-analytic) faces the bounds come from the control polygons and can be millimetres larger than the surface; such bodies carry `boundsApproximate: true`. Check their size with a boolean or `set_section_view`.
 - **Face and edge tools take one body per call.**
 - **A full `get_body_topology` of a detailed body is very long** (337 edges are about 130 thousand characters). It takes a `box` and edge `kinds` to list only a part; there is no filter by convexity.
 - **Instances and reference meshes are not bodies.** They have ids of their own; `list_bodies`, the transform tools and the modelling tools do not see them.
@@ -78,7 +79,7 @@ A primitive is always a new body. Drawing a primitive on a body so that it cuts 
 | Delete vertex / control point | `delete_control_points` | — |
 | Reverse | `reverse` | — |
 | Curve from edges | `curves_from_edges` | — |
-| Deform (curves) | `deform` | Source face → target face; no Scale / Offset / Flip options. |
+| Deform (curves) | `deform` | Source face → target face; scale U / V / normal, offset U / V / normal, flip UV, flip normal, mirror. |
 | Delete redundant vertices | `dissolve_edges` | With a curve id. |
 | Split Segment, Insert Knot | — | Not available, see below. |
 
@@ -86,9 +87,10 @@ A primitive is always a new body. Drawing a primitive on a body so that it cuts 
 
 | Plasticity | Tool | Limits |
 |------------|------|--------|
-| Extrude (curve, region) | `extrude_profile` | One distance along the plane normal; the other options of the command are not exposed. The profile curve is kept. |
-| Revolve | `revolve_profile` | Axis and angle. |
-| Sweep | `sweep_profile` | `twist` and end `scale`; alignment and corner style at their defaults. |
+| Extrude (curve, region) | `extrude_profile` | A distance along the plane normal, `distanceBack` the other way, `thickness` for a wall around the profile. The draft angle is not exposed: on 26.1.3 it changed nothing. The profile curve is kept. |
+| Revolve | `revolve_profile` | Axis and angle; `thickness` (open profiles) makes a shell with the wall inside — a revolve then a thicken, because revolve's own rail and thickness fields change nothing on 26.1.3. No rails: use a sweep along a circular path. |
+| Sweep | `sweep_profile` | `twist` and end `scale`; rails `guideIds` (1–3; they override twist and scale), `alignment` normal / parallel (transport fails in the kernel), `corners` mitre / round, `thickness`. The native guide method is not exposed: point, chord and curve gave identical bodies. |
+| Loft between edges | `loft_edges` | Ends are Sheet boundary edges or curves. `tangency` natural / free / clamped is one value for the loft (the kernel takes no per-end value); `startMagnitude` / `endMagnitude` scale the tangents — a tight bend needs less than 1, too long a tangent fails (21555). The factory's own join fails, so `join: true` joins in a separate step. |
 | Loft, Loft Guide | `loft_profiles` | Guides through `guideIds`. Kernel limits: a closed loop of closed profiles fails, and so do profiles turning through more than about half a circle — use sweep or revolve for ring shapes. |
 
 A closed curve → Solid, an open one → Sheet. A curve id is refused when other curves in its plane cross it or lie inside it; then the profile is picked as regions (`list_regions` → `regionIds`).
@@ -98,16 +100,16 @@ A closed curve → Solid, an open one → Sheet. A curve id is refused when othe
 | Plasticity | Tool | Limits |
 |------------|------|--------|
 | Boolean: union, difference, intersection | `boolean` | Union of a Sheet target with a Solid tool fails in the kernel. |
-| Fillet, Chamfer (edges) | `fillet`, `chamfer` | Constant radius / distance. **An oversized fillet does not fail** — it silently gives another shape; check the returned bounds. |
+| Fillet, Chamfer (edges) | `fillet`, `chamfer` | Constant radius / distance; fillet `shape` round / conic (`rho`) / g2 (G2 seams; fails on large sets where round works), chamfer `distance2` (asymmetric; the face that gets each distance follows the edge direction). Two-distance fillets, variable radius and the Chordal / Full shapes are not exposed. **An oversized fillet does not fail** — it silently gives another shape; check the returned bounds. |
 | Extrude (faces, push / pull) | `extrude_faces` | On a Sheet the extrusion becomes a new Solid. |
 | Cut | `cut` | Cutters are curves or faces of another body. **No plane cutter** — Plasticity's Cut has none either; a plane cut is a straight line with `direction` and `extend`. |
-| Hollow | `hollow` | One Solid per call. |
+| Hollow | `hollow` | One Solid per call. The native `local` option is not exposed: it failed in the kernel (`cant_hollow`). |
 | Thicken, Thicken Face | `thicken` | Method (Offset / Punch) at its default. |
-| Draft Face | `draft_faces` | The reference is a planar face of the same body. |
+| Draft Face | `draft_faces` | The reference is a planar face of the same body. The taper method is not exposed: Normal gave the default result and Offset is not implemented in the kernel. |
 | Delete Face, Dissolve | `delete_faces` | See [differences](#where-a-tool-differs-from-the-command). |
 | Remove Fillets | `remove_fillets` | — |
-| Patch | `patch` | Continuity, fill preference and guide curves at their defaults. |
-| Pipe | `pipe` | Diameter and wall thickness; round section only. |
+| Patch | `patch` | `continuity` G0 / G1 / G2 (one value for the whole loop — the kernel ignores per-edge values), `topology` multiple / minimal / single, `smoothness` sharp / smooth (single and smooth with G1 / G2 only on a boundary without corners), `fill` for curves, regions and Solid edges, `guideIds` for an opening in a Sheet (guides must end at boundary vertices). Capping every hole of a Sheet takes no options. |
+| Pipe | `pipe` | Diameter and wall thickness; `sides` for a regular polygon section, `twist` along the path. |
 | Join, Unjoin | `join`, `unjoin` | Curves or Sheets in one call, not a mix. |
 
 ### Faces and edges
@@ -142,13 +144,13 @@ A closed curve → Solid, an open one → Sheet. A curve id is refused when othe
 
 | Plasticity | Tool | Limits |
 |------------|------|--------|
-| Bridge Surface | `bridge_surface` | Works only when the two surfaces would meet at an angle if extended; parallel and coplanar Sheets are refused. |
+| Bridge Surface | `bridge_surface` | Works only when the two surfaces would meet at an angle if extended; parallel and coplanar Sheets are refused; the width must exceed the gap. `shape` g2 / conic (cylindrical) / chamfer, `trimWalls`, `trimBlend`. `propagate` and the senses stay at their defaults (no visible effect in the tests). |
 | Constrained Surface | `constrained_surface` | At least four points. The Sheet is an untrimmed patch that reaches beyond the points. |
 | Raise Surface Degree | `raise_degree` | — |
-| Rebuild Face | `rebuild` | Refit by tolerance, one face per call. Explicit control is Studio-only. |
+| Rebuild Face | `rebuild` | Refit by tolerance, one face per call. Degrees and spans are not exposed: they need explicit control, which is Studio-only. |
 | Remove Nominal Surface | `remove_nominal_surface` | — |
 | Surface control points: move, rotate, scale, Slide | `move_control_points`, `rotate_control_points`, `scale_control_points`, `slide` | Control points exist only on spline faces; `raise_degree` on a face creates them. |
-| Deform (bodies) | `deform` | No Scale / Offset / Flip options. |
+| Deform (bodies) | `deform` | Scale U / V / normal, offset U / V / normal (the normal offset in millimetres, U / V in the face's own units), flip UV, flip normal, mirror. |
 
 ### Transforms and copies
 
@@ -183,7 +185,7 @@ A closed curve → Solid, an open one → Sheet. A curve id is refused when othe
 | Measure distance | `add_measurement` | **Straight distance only**, between snap points of bodies (vertex, edge end / quarter / middle, circle centre, face centre). The axis-aligned distance of the window is chosen by the pointer. |
 | Measure radius | `add_measurement` | A circular edge. |
 | Measurements of the document | `list_measurements`, `delete_measurements` | No renaming, no moving of the label. |
-| Measure Continuity | `measure_continuity` | Plasticity's own tolerances. |
+| Measure Continuity | `measure_continuity` | Plasticity's own tolerances. The angle is measured by the server from both face normals at the same points along the edge; on edges Plasticity samples inconsistently (pieces of split closed curves) the gap is 0 and the curvature is not reported (`note`), so G2 cannot be confirmed there. |
 | Section Analysis | `set_section_view`, `clear_section_view` | One plane. |
 | Dimension | — | Not available, see below. |
 

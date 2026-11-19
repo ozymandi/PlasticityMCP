@@ -14,14 +14,14 @@ The server SHALL provide a `loft_edges` tool that builds a Sheet through two or 
 - **THEN** a new Sheet spans the two edges and the source bodies are unchanged
 
 ### Requirement: End tangency
-`loft_edges` SHALL accept `tangency` per end with the values `natural`, `free` and `clamped`, where `clamped` continues the face adjacent to the edge, and `magnitude` per end (a positive number, default 1) that scales the clamped tangent.
+`loft_edges` SHALL accept `tangency` for the whole loft with the values `natural`, `free` (default) and `clamped`, where `clamped` continues the face adjacent to each edge. It SHALL also accept `startMagnitude` and `endMagnitude` (positive, default 1) that scale the tangent at each end. The kernel takes one tangency for all ends.
 
 #### Scenario: Clamped elbow
-- **WHEN** two tubes at 90° are lofted with `tangency: "clamped"` and `magnitude: 0.6` at both ends and the result is joined to both tubes
+- **WHEN** two tubes at 90° are lofted with `tangency: "clamped"` and both magnitudes 0.6 and the result is joined to both tubes
 - **THEN** the joined body is valid and the two seams measure G1 or better
 
 #### Scenario: Tangent too long
-- **WHEN** the same elbow is lofted with `magnitude: 1.5`
+- **WHEN** the same elbow is lofted with both magnitudes 1.5
 - **THEN** the call fails with a message suggesting a lower `magnitude`
 
 ### Requirement: Join to the sources

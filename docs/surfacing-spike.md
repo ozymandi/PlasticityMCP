@@ -38,7 +38,7 @@ All tests ran live in an Untitled document. They used the server's own NativeSes
 | Guide curve, ends at mid-edge | FAIL `PK_ERROR_grid_not_on_boundary` |
 | Guide curve, ends at boundary **vertices** (corner to corner) | OK, the surface follows it and creases along it |
 | `factory.curves` (internal curve) | FAIL 22085 |
-| Loft end caps deleted and re-patched G1 (aircraft fuselage) | OK, nose and tail close with a bulge; `measure_continuity` reports 90° on the seam, G1 **not confirmed** |
+| Loft end caps deleted and re-patched G1 (aircraft fuselage) | OK, nose and tail close with a bulge. The "90°" seen in the spike was the `measure_continuity` bug. Re-measured after its fix (task 2.2): **near-tangent, 0.04–0.45°**; half of the edges exceed Plasticity's 0.1° G1 tolerance and report G0 |
 
 ## Loft
 

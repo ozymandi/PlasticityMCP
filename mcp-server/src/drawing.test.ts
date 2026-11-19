@@ -63,13 +63,9 @@ const hidden = "Edge-Hidden-NotSmooth";
   const split = buildDrawing([view(apart, [{ category: visible, type: 3009, offset: 0, count: 8 }])], true);
   check("pieces that do not meet: a new start", split.svg.includes('d="M 0 0 C 0 1 1 1 1 0 M 5 0 C 5 1 6 1 6 0"'));
 
-  let refused = "";
-  try {
-    buildDrawing([view([0, 0, 1, 1, 2, 0, 3, 1, 4, 0], [{ category: visible, type: 3009, offset: 0, count: 5 }])], true);
-  } catch (err) {
-    refused = (err as Error).message;
-  }
-  check("another number of control points is refused", refused.includes("5 control points"), refused);
+  // Since 1ad2115 another number of control points falls back to a polyline through them.
+  const odd = buildDrawing([view([0, 0, 1, 1, 2, 0, 3, 1, 4, 0], [{ category: visible, type: 3009, offset: 0, count: 5 }])], true);
+  check("another number of control points becomes a polyline", odd.svg.includes('d="M 0 0 L 1 1 L 2 0 L 3 1 L 4 0"'), odd.svg);
 }
 
 {

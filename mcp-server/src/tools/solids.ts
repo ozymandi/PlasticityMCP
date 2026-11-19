@@ -42,8 +42,11 @@ const FilletArgs = z
     edgeIds: TopologyIds.optional(),
     vertexIds: TopologyIds.optional(),
     radius: z.number().positive(),
+    shape: z.enum(["round", "conic", "g2"]).optional(),
+    rho: z.number().gt(0).lt(1).optional(),
   })
-  .refine(oneCornerKind, ONE_CORNER_KIND_MESSAGE);
+  .refine(oneCornerKind, ONE_CORNER_KIND_MESSAGE)
+  .refine((a) => (a.shape === undefined && a.rho === undefined) || a.edgeIds !== undefined, "shape and rho apply to edges of a Solid / Sheet");
 
 const ChamferArgs = z
   .object({
@@ -51,8 +54,10 @@ const ChamferArgs = z
     edgeIds: TopologyIds.optional(),
     vertexIds: TopologyIds.optional(),
     distance: z.number().positive(),
+    distance2: z.number().positive().optional(),
   })
-  .refine(oneCornerKind, ONE_CORNER_KIND_MESSAGE);
+  .refine(oneCornerKind, ONE_CORNER_KIND_MESSAGE)
+  .refine((a) => a.distance2 === undefined || a.edgeIds !== undefined, "distance2 applies to edges of a Solid / Sheet");
 
 const ExtrudeFacesArgs = z.object({
   id: BodyId,
@@ -115,6 +120,11 @@ const PatchArgs = z
     regionIds: RegionIds.optional(),
     id: BodyId.optional(),
     edgeIds: TopologyIds.optional(),
+    continuity: z.enum(["G0", "G1", "G2"]).optional(),
+    topology: z.enum(["multiple", "minimal", "single"]).optional(),
+    smoothness: z.enum(["sharp", "smooth"]).optional(),
+    fill: z.enum(["smooth", "preferPlane", "planeOnly", "nonSmooth"]).optional(),
+    guideIds: BodyIds.optional(),
   })
   .refine(
     (a) => [a.curveIds, a.regionIds, a.id].filter((v) => v !== undefined).length === 1,
@@ -126,6 +136,8 @@ const PipeArgs = z.object({
   ids: BodyIds,
   diameter: z.number().positive(),
   wallThickness: z.number().nonnegative().optional().default(0),
+  sides: z.number().int().min(3).optional(),
+  twist: z.number().optional(),
 });
 
 const RemoveFilletsArgs = z.object({
@@ -215,7 +227,11 @@ const tools: Tool[] = [
       "Round corners with a constant `radius` in millimetres. On a Solid / Sheet: the edges " +
       "`edgeIds`. On a curve: the corner vertices `vertexIds`, or every corner of the curve " +
       "when neither list is given. The ids come from get_body_topology of the same body or " +
-      "curve, read after its last change. Undoable.",
+      "curve, read after its last change. On edges, `shape`: round (default, a circular " +
+      "section), conic with `rho` between 0 and 1 (lower is flatter, higher is fuller), or g2 " +
+      "(curvature-continuous: the seams with the neighbouring faces measure G2 — for moulded, " +
+      "class-A looking edges; on many edges at once it can fail where round works, so blend " +
+      "fewer edges per call). Undoable.",
     inputSchema: {
       type: "object",
       required: ["id", "radius"],
@@ -224,6 +240,8 @@ const tools: Tool[] = [
         edgeIds: { ...TOPOLOGY_IDS_SCHEMA, description: "Edges of a Solid / Sheet" },
         vertexIds: { ...TOPOLOGY_IDS_SCHEMA, description: "Corner vertices of a curve" },
         radius: { type: "number" },
+        shape: { type: "string", enum: ["round", "conic", "g2"] },
+        rho: { type: "number", description: "Conic only, between 0 and 1" },
       },
     },
   },
@@ -233,7 +251,9 @@ const tools: Tool[] = [
       "Bevel corners by `distance` in millimetres, measured along each side. On a Solid / " +
       "Sheet: the edges `edgeIds`. On a curve: the corner vertices `vertexIds`, or every " +
       "corner when neither list is given. The ids come from get_body_topology of the same " +
-      "body or curve, read after its last change. Undoable.",
+      "body or curve, read after its last change. On edges, `distance2` makes an asymmetric " +
+      "chamfer: `distance` into one face and `distance2` into the other (which face gets " +
+      "which follows the edge's direction — swap the values if it comes out reversed). Undoable.",
     inputSchema: {
       type: "object",
       required: ["id", "distance"],
@@ -242,6 +262,7 @@ const tools: Tool[] = [
         edgeIds: { ...TOPOLOGY_IDS_SCHEMA, description: "Edges of a Solid / Sheet" },
         vertexIds: { ...TOPOLOGY_IDS_SCHEMA, description: "Corner vertices of a curve" },
         distance: { type: "number" },
+        distance2: { type: "number", description: "Second distance for an asymmetric chamfer (edges only)" },
       },
     },
   },
@@ -370,7 +391,14 @@ const tools: Tool[] = [
       "Sheet (holes are filled separately, not left open); `id` of a Sheet — all its holes are " +
       "capped; `id` + `edgeIds` — the closed loop of edges around one opening is filled, in " +
       "place on a Sheet, as a separate Sheet on a Solid. A Sheet that becomes watertight turns " +
-      "into a Solid. The curves stay. Undoable.",
+      "into a Solid. The curves stay. Options (not for capping all holes of a Sheet): " +
+      "`continuity` G0 (flat, default) / G1 (tangent to the neighbouring faces, a dome) / G2 " +
+      "(curvature-continuous), one value for the whole loop; `topology` multiple (default — a " +
+      "cornered opening is split into triangles meeting in the middle) / minimal / single (one " +
+      "face; with G1 / G2 only on a boundary without corners); `smoothness` sharp / smooth " +
+      "(same limit as single); `fill` smooth / preferPlane / planeOnly / nonSmooth for curves, " +
+      "regions and Solid edges; `guideIds` — curves the surface follows, for an opening in a " +
+      "Sheet only, each ending exactly at boundary vertices. Undoable.",
     inputSchema: {
       type: "object",
       properties: {
@@ -378,6 +406,11 @@ const tools: Tool[] = [
         regionIds: { ...TOPOLOGY_IDS_SCHEMA, description: "Region ids from list_regions" },
         id: { type: "number" },
         edgeIds: { ...TOPOLOGY_IDS_SCHEMA, description: "Edges around one opening of body `id`" },
+        continuity: { type: "string", enum: ["G0", "G1", "G2"] },
+        topology: { type: "string", enum: ["multiple", "minimal", "single"] },
+        smoothness: { type: "string", enum: ["sharp", "smooth"] },
+        fill: { type: "string", enum: ["smooth", "preferPlane", "planeOnly", "nonSmooth"] },
+        guideIds: { ...BODY_IDS_SCHEMA, description: "Guide curves ending at boundary vertices" },
       },
     },
   },
@@ -387,7 +420,9 @@ const tools: Tool[] = [
       "Round tubes along curves. `diameter` (millimetres) is the diameter of a solid rod. With " +
       "`wallThickness` the result is hollow: the bore keeps `diameter` and the wall is added " +
       "around it, so the outer diameter is diameter + 2 × wallThickness. One Solid per curve, " +
-      "in `created`; the curves stay. Undoable.",
+      "in `created`; the curves stay. `sides` (3 or more) makes a regular polygon section " +
+      "of that diameter instead of a circle (a hexagonal bar), `twist` (degrees) turns the " +
+      "section along the path. Undoable.",
     inputSchema: {
       type: "object",
       required: ["ids", "diameter"],
@@ -395,6 +430,8 @@ const tools: Tool[] = [
         ids: { ...BODY_IDS_SCHEMA, description: "Curves to run the tubes along" },
         diameter: { type: "number" },
         wallThickness: { type: "number", default: 0 },
+        sides: { type: "number", description: "Polygon section with this many sides" },
+        twist: { type: "number", description: "Degrees along the path" },
       },
     },
   },
@@ -466,13 +503,15 @@ const handlers: ToolFamily["handlers"] = {
 
   fillet: async (rawArgs) => {
     const args = FilletArgs.parse(rawArgs ?? {});
-    if (args.edgeIds) return ok(await native.filletEdges(args.id, args.edgeIds, args.radius));
+    if (args.edgeIds) {
+      return ok(await native.filletEdges(args.id, args.edgeIds, args.radius, { shape: args.shape, rho: args.rho }));
+    }
     return ok(await native.filletCurve(args.id, args.radius, args.vertexIds));
   },
 
   chamfer: async (rawArgs) => {
     const args = ChamferArgs.parse(rawArgs ?? {});
-    if (args.edgeIds) return ok(await native.chamferEdges(args.id, args.edgeIds, args.distance));
+    if (args.edgeIds) return ok(await native.chamferEdges(args.id, args.edgeIds, args.distance, args.distance2));
     // On a curve the native fillet with a negative radius is the chamfer.
     return ok(await native.filletCurve(args.id, -args.distance, args.vertexIds));
   },
@@ -512,14 +551,16 @@ const handlers: ToolFamily["handlers"] = {
 
   patch: async (rawArgs) => {
     const args = PatchArgs.parse(rawArgs ?? {});
-    if (args.curveIds) return ok(await native.patch({ curveIds: args.curveIds }));
-    if (args.regionIds) return ok(await native.patch({ regionIds: args.regionIds }));
-    return ok(await native.patch({ id: args.id!, edgeIds: args.edgeIds }));
+    const { continuity, topology, smoothness, fill, guideIds } = args;
+    const options = { continuity, topology, smoothness, fill, guideIds };
+    if (args.curveIds) return ok(await native.patch({ curveIds: args.curveIds }, options));
+    if (args.regionIds) return ok(await native.patch({ regionIds: args.regionIds }, options));
+    return ok(await native.patch({ id: args.id!, edgeIds: args.edgeIds }, options));
   },
 
   pipe: async (rawArgs) => {
     const args = PipeArgs.parse(rawArgs ?? {});
-    return ok(await native.pipe(args.ids, args.diameter, args.wallThickness));
+    return ok(await native.pipe(args.ids, args.diameter, args.wallThickness, { sides: args.sides, twistDeg: args.twist }));
   },
 
   remove_fillets: async (rawArgs) => {

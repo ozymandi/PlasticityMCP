@@ -2,45 +2,38 @@
 
 ## Purpose
 
-Expose the remaining native parameters of everyday features (extrude, pipe, draft, hollow, rebuild, deform) that the server left at their defaults.
+Expose the remaining native parameters of everyday features (extrude, pipe, deform) that the server left at their defaults and that change the result on 26.1.3.
 
 ## ADDED Requirements
 
-### Requirement: Extrude draft and two sides
-`extrude_profile` SHALL accept `draftAngle` (degrees) and `distanceBack` (millimetres, extruding the other way too); without them the result is unchanged.
-
-#### Scenario: Drafted boss
-- **WHEN** a circle is extruded 20 mm with `draftAngle: 5`
-- **THEN** the top of the boss is smaller than its base
+### Requirement: Extrude both ways and as a wall
+`extrude_profile` SHALL accept `distanceBack` (millimetres, extruding the other way too) and `thickness` (millimetres, a wall of that thickness around the profile instead of a filled section); without them the result is unchanged.
 
 #### Scenario: Both directions
-- **WHEN** a profile is extruded with distance 10 and `distanceBack: 4`
-- **THEN** the body spans 14 mm across the profile plane
+- **WHEN** a circle is extruded with distance 20 and `distanceBack: 8`
+- **THEN** the body spans 28 mm across the profile plane
+
+#### Scenario: Thin wall
+- **WHEN** a circle of radius 10 is extruded with `thickness: 2`
+- **THEN** the body is a tube whose outer radius is 12 mm
 
 ### Requirement: Pipe section and twist
-`pipe` SHALL accept `sides` (a polygon section instead of a circle) and `twist` (degrees along the path).
+`pipe` SHALL accept `sides` (a regular polygon section instead of a circle) and `twist` (degrees along the path).
 
 #### Scenario: Hexagonal bar
 - **WHEN** a curve is piped with `sides: 6`
-- **THEN** the bar has six flat side faces
-
-### Requirement: Draft method and hollow locality
-`draft_faces` SHALL accept `method` (`isocline`, `normal`, `offset`), and `hollow` SHALL accept `local: true` to shell only around the chosen faces.
-
-#### Scenario: Default draft unchanged
-- **WHEN** `draft_faces` is called without `method`
-- **THEN** the result is the same as before this change
-
-### Requirement: Rebuild controls
-`rebuild` SHALL accept, for curves, `degree`, `pointCount` and `spans`, and for faces `uDegree`, `vDegree`, `uSpans`, `vSpans`; without them it behaves as today.
-
-#### Scenario: Lighter curve
-- **WHEN** a spline is rebuilt with `pointCount: 6` and `degree: 3`
-- **THEN** the curve has six control points
+- **THEN** the bar has six side faces and two end faces
 
 ### Requirement: Deform options
-`deform` SHALL accept `scaleU`, `scaleV`, `scaleNormal`, `offsetU`, `offsetV`, `offsetNormal`, `flipUV`, `flipNormal` and `mirror`.
+`deform` SHALL accept `scaleU`, `scaleV`, `scaleNormal`, `offsetU`, `offsetV`, `offsetNormal` (millimetres), `flipUV`, `flipNormal` and `mirror`.
 
 #### Scenario: Lifted decal
-- **WHEN** a flat decal is deformed onto a cylinder with `offsetNormal: 0.3`
-- **THEN** the decal stands 0.3 mm off the wall
+- **WHEN** a body is deformed from a flat face onto a cylinder wall with `offsetNormal: 3`
+- **THEN** it lands 3 mm farther from the wall than without the option
+
+### Requirement: Parameters left out
+The server SHALL NOT expose native parameters that changed nothing or failed in the kernel on 26.1.3 (extrude draft angle, draft method, hollow `local`, face rebuild degrees and spans, which need the Studio-only explicit control). It SHALL list them in the coverage document with the reason.
+
+#### Scenario: Coverage names the gaps
+- **WHEN** the coverage document is read
+- **THEN** it names each left-out parameter and why

@@ -135,6 +135,15 @@ const DeformArgs = z
     source: FaceRef,
     target: FaceRef,
     keepOriginals: z.boolean().optional().default(false),
+    scaleU: z.number().positive().optional(),
+    scaleV: z.number().positive().optional(),
+    scaleNormal: z.number().positive().optional(),
+    offsetU: z.number().optional(),
+    offsetV: z.number().optional(),
+    offsetNormal: z.number().optional(),
+    flipUV: z.boolean().optional(),
+    flipNormal: z.boolean().optional(),
+    mirror: z.boolean().optional(),
   })
   .refine((a) => (a.curveIds === undefined) !== (a.ids === undefined), "pass either curveIds or ids (bodies)");
 
@@ -382,7 +391,11 @@ const tools: Tool[] = [
       "the `target` face and bent to follow it, keeping their place in the face's own " +
       "coordinates. Text, a pattern or an embossed detail made flat goes onto a cylinder wall " +
       "this way. What is wrapped is replaced by the result (in `changed`); with " +
-      "`keepOriginals` the flat originals stay and the result is in `created`. Undoable.",
+      "`keepOriginals` the flat originals stay and the result is in `created`. Options: " +
+      "`offsetNormal` (millimetres) lifts it off the target face, `scaleNormal` scales its height, " +
+      "`scaleU` / `scaleV` stretch it along the face, `offsetU` / `offsetV` shift it (in the " +
+      "face's own parameter units — check the result), `flipUV` swaps the face directions, " +
+      "`flipNormal` puts it on the other side, `mirror` mirrors it. Undoable.",
     inputSchema: {
       type: "object",
       required: ["source", "target"],
@@ -392,6 +405,15 @@ const tools: Tool[] = [
         source: FACE_REF_SCHEMA,
         target: FACE_REF_SCHEMA,
         keepOriginals: { type: "boolean", default: false },
+        scaleU: { type: "number" },
+        scaleV: { type: "number" },
+        scaleNormal: { type: "number" },
+        offsetU: { type: "number" },
+        offsetV: { type: "number" },
+        offsetNormal: { type: "number", description: "Millimetres off the target face" },
+        flipUV: { type: "boolean" },
+        flipNormal: { type: "boolean" },
+        mirror: { type: "boolean" },
       },
     },
   },
@@ -487,8 +509,10 @@ const handlers: ToolFamily["handlers"] = {
 
   deform: async (rawArgs) => {
     const args = DeformArgs.parse(rawArgs ?? {});
-    if (args.ids) return ok(await native.deformBodies(args.ids, args.source, args.target, args.keepOriginals));
-    return ok(await native.deformCurves(args.curveIds!, args.source, args.target, args.keepOriginals));
+    const { scaleU, scaleV, scaleNormal, offsetU, offsetV, flipUV, flipNormal, mirror } = args;
+    const options = { scaleU, scaleV, scaleNormal, offsetU, offsetV, offsetNormalMm: args.offsetNormal, flipUV, flipNormal, mirror };
+    if (args.ids) return ok(await native.deformBodies(args.ids, args.source, args.target, args.keepOriginals, options));
+    return ok(await native.deformCurves(args.curveIds!, args.source, args.target, args.keepOriginals, options));
   },
 };
 

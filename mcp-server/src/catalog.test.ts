@@ -124,7 +124,7 @@ const fails = async (run: () => Promise<unknown>, part: string) => {
   const rules = await text(guide.handlers.modelling_guide({}));
   check("the rules name the four stages", ["Blocking", "Refining", "Merge", "Fine detail"].every((s) => rules.includes(s)));
   check("the rules are short", rules.length < 3000, String(rules.length));
-  const topics = ["drawing", "blocking", "edges", "merge", "detail"];
+  const topics = ["drawing", "blocking", "edges", "merge", "detail", "surfacing", "tools"];
   check("the rules name every topic", topics.every((t) => rules.includes(`"${t}"`)));
   const texts = await Promise.all(topics.map((topic) => text(guide.handlers.modelling_guide({ topic }))));
   check("each topic has its own text", new Set(texts).size === topics.length && texts.every((t) => t.length > 300));

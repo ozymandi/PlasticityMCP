@@ -1,6 +1,7 @@
 /** Shapes of the data the native tools return. */
 
 import { Drawing } from "../drawing.js";
+import type { Continuity as PatchContinuity, FillPreference, FillSmoothness, FillTopology } from "./enums.js";
 
 export type Vec3 = [number, number, number];
 
@@ -9,6 +10,11 @@ export interface BodyInfo {
   type: string;
   name: string | null;
   boundsMm: { min: Vec3; max: Vec3 } | null;
+  /**
+   * True when the body has spline (or other free-form) faces: their bounds come from the
+   * control polygon and can be larger than the surface. Check sizes with a boolean or a section.
+   */
+  boundsApproximate?: boolean;
   /** Topology counts; 0 for a Wire. */
   faceCount: number;
   edgeCount: number;
@@ -212,7 +218,7 @@ export type Continuity = "G0" | "G1" | "G2" | "G3";
 /** Along the control polygon (U), across a surface's other direction (V), or along the normal. */
 export type SlideDirection = "forward" | "backward" | "forward_v" | "backward_v" | "normal";
 
-export type BlendShape = "g2" | "chamfer";
+export type BlendShape = "g2" | "conic" | "chamfer";
 
 /** How `rebuild` refits a curve. */
 export type CurveRebuild =
@@ -234,6 +240,18 @@ export type PatchSource =
   | { curveIds: number[] }
   | { regionIds: string[] }
   | { id: number; edgeIds?: string[] };
+
+/**
+ * How a patch fills its opening. Without a field the native default applies (a flat-tangent
+ * G0 fill of an opening in a Sheet, as before these options existed).
+ */
+export interface PatchOptions {
+  continuity?: PatchContinuity;
+  topology?: FillTopology;
+  smoothness?: FillSmoothness;
+  fill?: FillPreference;
+  guideIds?: number[];
+}
 
 export type FilletConvexity = "any" | "convex" | "concave";
 
@@ -321,6 +339,8 @@ export interface ContinuityReport {
   gapMm?: number;
   angleDeg?: number;
   curvatureChange?: number;
+  /** Why a value is missing (curvature on an edge Plasticity samples inconsistently). */
+  note?: string;
 }
 
 export interface SectionView {
@@ -418,4 +438,29 @@ export interface CameraInfo {
   mode: string;
   /** True for the six axis views: Plasticity shows them in X-ray with a view label. */
   aligned: boolean;
+}
+
+/** One end of a loft between edges: a curve id, or a boundary edge of a Sheet. */
+export type LoftEnd = number | { id: number; edgeId: string };
+
+/** Rails and options of sweep_profile. */
+export interface SweepOptions {
+  guideIds?: number[];
+  alignment?: import("./enums.js").SweepAlignment;
+  corners?: import("./enums.js").SweepCorners;
+  thicknessMm?: number;
+}
+
+/** Options of deform: scale and offset in the target face's U / V directions and along its
+ * normal (offsetNormalMm in millimetres; U / V offsets in the face's own parameter units). */
+export interface DeformOptions {
+  scaleU?: number;
+  scaleV?: number;
+  scaleNormal?: number;
+  offsetU?: number;
+  offsetV?: number;
+  offsetNormalMm?: number;
+  flipUV?: boolean;
+  flipNormal?: boolean;
+  mirror?: boolean;
 }

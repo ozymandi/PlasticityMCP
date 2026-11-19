@@ -6,9 +6,9 @@ The skill and the server build free-form objects badly: the rules know one way f
 
 ## What Changes
 
-- `patch` gains `continuity` (G0 / G1 / G2), `topology` (multiple / minimal / single), `smoothness` (sharp / smooth), `fillPreference` and `guideIds`, for every source it takes (curves, regions, a Sheet's holes, edges of a Sheet or a Solid). The default stays G0, so existing calls build the same result.
+- `patch` gains `continuity` (G0 / G1 / G2), `topology` (multiple / minimal / single), `smoothness` (sharp / smooth), `fill` and `guideIds`, for curves, regions and the edges of one opening (capping every hole of a Sheet at once takes no options — its factory has none). The default stays G0, so existing calls build the same result.
 - New tool for loft between body edges (`loft_edges`): two or more boundary edges or curves, with `tangency` per end (natural / free / clamped) and `magnitude` per end.
-- `sweep_profile` and `revolve_profile` gain `guideIds` (rails), `alignment`, `guideMethod`, `corners` and `thickness`.
+- `sweep_profile` gains `guideIds` (rails), `alignment`, `corners` and `thickness`; `revolve_profile` gains `thickness` (a shell, made by revolve + thicken, since revolve's own rail and thickness fields do nothing).
 - `fillet` / `chamfer` gain `shape` (round / conic with `rho` / g2) and two-distance chamfers; `bridge_surface` gains `shape: conic`, `trimWalls`, `trimBlend`.
 - Other unused feature parameters are exposed where the spike or a quick probe shows they work: extrude draft angle and two-sided distance, pipe polygon section and twist, draft method, hollow `local`, rebuild degree / spans / point count, deform scale / offset / flip.
 - `measure_continuity` stops reporting "none" with a false gap on edges of circles split into pieces; results state when a body's bounds come from control hulls.

@@ -18,7 +18,7 @@ Shape swept and revolved bodies with rails and sweep options, so a section can c
 - **THEN** the section scales uniformly between them
 
 ### Requirement: Sweep options
-`sweep_profile` SHALL accept `alignment` (`normal`, `parallel`), `guideMethod` (`point`, `chord`, `curve`), `corners` (`mitre`, `round`) and `thickness` (millimetres, a wall instead of a full section), each defaulting to today's behaviour.
+`sweep_profile` SHALL accept `alignment` (`normal`, `parallel`), `corners` (`mitre`, `round`) and `thickness` (millimetres, a wall instead of a full section), each defaulting to today's behaviour. The native guide method is not exposed: its values gave identical bodies.
 
 #### Scenario: Rounded corners on a polyline path
 - **WHEN** a profile is swept along a polyline path with `corners: "round"`
@@ -28,9 +28,13 @@ Shape swept and revolved bodies with rails and sweep options, so a section can c
 - **WHEN** a closed profile is swept with `thickness: 2`
 - **THEN** the result is a tube with a 2 mm wall
 
-### Requirement: Revolve rails and thickness
-`revolve_profile` SHALL accept `guideIds` and `thickness` with the same meaning as for `sweep_profile`.
+### Requirement: Revolve thickness
+`revolve_profile` SHALL accept `thickness` for an open profile and return a Solid shell with the wall inside the revolved surface. Revolve takes no rails: the native rail and thickness fields of revolve change nothing on 26.1.3, so the shell is a revolve followed by a thicken.
 
 #### Scenario: Revolved shell
 - **WHEN** an open profile is revolved with `thickness: 1.5`
-- **THEN** the result is a Solid shell 1.5 mm thick
+- **THEN** the result is a Solid shell 1.5 mm thick whose wall lies inside the revolved surface
+
+#### Scenario: Closed profile
+- **WHEN** a closed profile is revolved with `thickness`
+- **THEN** the call fails and suggests revolving it and using hollow
