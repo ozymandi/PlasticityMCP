@@ -45,9 +45,18 @@ Before saying it is done
 - Screenshots from the same sides as the reference were compared with it, and the differences are corrected or named.
 - What is estimated or left out is said, not left for the user to find.
 
-More: modelling_guide with topic "drawing", "blocking", "edges", "merge", "detail", "surfacing" (free forms) or "tools" (tool per job) — read the topic before that stage.`;
+More: modelling_guide topic "drawing", "blocking", "edges", "merge", "detail", "surfacing" (free forms), "tools" (tool per job), "pitfalls" — read it before that stage.`;
 
 const TOPICS = {
+  pitfalls: `Pitfalls (field-tested)
+- extrude_profile does not consume the source curve: the Wire stays in the scene. Delete every helper curve at the end.
+- A default create_polygon (normal +Z) extrudes toward -Z. For an upward extrude pass normal [0, 0, -1]. Always check the returned bounds.
+- A boolean union with a tool that does not touch the target does nothing ("Operation has no effect") and is not an error. After several unions check that the bounds grew; a missing part shows as bounds that never grew.
+- Chamfering all edges of a box in one call can fail (error 1033) on good geometry: chamfer in groups - long parallel edges first, then the rim loops - or edge by edge.
+- A chamfer over a long polygon rim (8-12 edges) with a large distance can give an invalid body without an error. Then chamfer that rim one edge at a time, long edges first, a smaller distance on short pieces, and run check_bodies after every chamfer batch on complex rims.
+- Parameter names: copy_bodies and move_bodies take delta (not offset); delete_bodies takes ids (not bodyIds); create_cylinder takes base (not position); move_bodies returns changed, not bodies.
+- Never delete bodies by name: one name can match the original and every copy. Keep explicit id lists and delete by id.
+- Never trust the order of a saved id list: before a batch move or delete, check what each id is in list_bodies (name and the centre of its bounds) and give each body its own move; afterwards check every centre against its target. A success flag says nothing about which body went where.`,
   surfacing: `Free-form surfacing (Indie licence)
 When: a loft through closed sections is fine for one body that does not branch, with sections close together. Use curves and patches when the form branches (a wing out of a body), must flow tangentially into another surface, needs a cap or dome, or when sparse sections bulge.
 
@@ -158,7 +167,8 @@ const tools: Tool[] = [
       "checking the result. Call it once before building anything; no arguments. With `topic` " +
       "it gives the detailed rules of one stage: drawing (working from a drawing), blocking, " +
       "edges, merge, detail (knurling, text, threads), surfacing (free forms: curves, patches, " +
-      "tangents, combined recipes), tools (which tool for which job). Changes nothing, needs no " +
+      "tangents, combined recipes), tools (which tool for which job), pitfalls (known traps: " +
+      "silent no-ops, chamfer batches, parameter names, id lists). Changes nothing, needs no " +
       "connection.",
     inputSchema: {
       type: "object",
