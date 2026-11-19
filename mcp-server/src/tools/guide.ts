@@ -30,7 +30,7 @@ Order of work — finish a stage for the whole model before the next one
 Rules
 - Take sizes from the drawing or the description. Where there is none, estimate and say that it is an estimate.
 - Before building anything of more than a few parts, tell the user the plan: the parts, their sizes and where the sizes come from, what will be left out.
-- Choose the way to build a form by its kind: straight walls - extrude a profile; round - revolve; sections that change along the length - loft; one section along a path - sweep; a free form that branches or must flow tangentially into another - curves and patches (topic "surfacing"). Boxes and cylinders are only for boxy and round parts.
+- Choose the way to build a form by its kind: straight walls - extrude a profile; round - revolve; sections that change along the length - loft; one section along a path - sweep; free forms - curves and patches. Boxes and cylinders are only for boxy and round parts.
 - No sharp edges on a finished model: fillet for cast and moulded shapes, chamfer for machined rims and holes. About 1-3 % of the part size; 0.3-0.5 mm on small rims.
 - Face, edge and region ids change after every change of a body: read get_body_topology / list_regions again before each call that takes them.
 - After every boolean, fillet or chamfer read the returned bounds and face count, then call check_bodies. An operation that succeeded can still give a wrong shape.
@@ -45,7 +45,7 @@ Before saying it is done
 - Screenshots from the same sides as the reference were compared with it, and the differences are corrected or named.
 - What is estimated or left out is said, not left for the user to find.
 
-More: modelling_guide with topic "drawing", "blocking", "edges", "merge" or "detail" — read the topic before that stage. Free forms (car bodies, hulls, handles, branching parts): topic "surfacing". Which tool for which job: topic "tools".`;
+More: modelling_guide with topic "drawing", "blocking", "edges", "merge", "detail", "surfacing" (free forms) or "tools" (tool per job) — read the topic before that stage.`;
 
 const TOPICS = {
   surfacing: `Free-form surfacing (Indie licence)
