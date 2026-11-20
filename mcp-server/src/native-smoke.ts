@@ -80,6 +80,8 @@ async function main() {
     ["listing", () => listingChecks(native)],
     ["surfacing", () => surfacingChecks(native)],
     ["display", () => displayChecks(native)],
+    // Replaces the test document, so it runs last and only where it can restore the baseline.
+    ["document", () => documentChecks(native, baselineIds)],
   ];
   try {
     for (const [name, run] of groups) if (only.length === 0 || only.includes(name)) await run();
@@ -2105,6 +2107,11 @@ async function surfacingChecks(native: NativeSession): Promise<void> {
   const viaEdges = await failure(native.loftEdges([...rim, { id: roundId, edgeId: roundEdge }], { guideIds: [edgeGuide] }));
   check("a curved guide between Sheet edges fails with the curves_from_edges hint",
     /curves_from_edges/.test(viaEdges?.message ?? ""), viaEdges?.message);
+  const countBefore = (await native.state()).bodies.length;
+  const selfGuide = await failure(native.loftEdges([lower, upper], { guideIds: [lower] }));
+  check("a curve given as an end and as a guide is refused before anything is built",
+    /different curve than the ends/.test(selfGuide?.message ?? "") && (await native.state()).bodies.length === countBefore,
+    selfGuide?.message);
 
   // --- sweep rails and options, revolve shell ---
   const S = X + 300;
@@ -2319,6 +2326,43 @@ async function displayChecks(native: NativeSession): Promise<void> {
     `${shaded.png.length} vs ${xrayShot.png.length} bytes`);
   await native.setXray(initial);
   await native.undo();
+}
+
+/**
+ * The X-ray state is saved with a document and a new document starts in X-ray; a plain-ASCII
+ * path opens in place of the test document. It ends in a new document, which matches the
+ * baseline only when that was the startup document: one default cube with id 1.
+ */
+async function documentChecks(native: NativeSession, baselineIds: string): Promise<void> {
+  const folder = mkdtempSync(join(tmpdir(), "plasticity-mcp-doc-"));
+  if (baselineIds !== "1" || /[^\x00-\x7f]/.test(folder)) {
+    console.log("  skip document checks: they need the startup document (one cube, id 1) and an ASCII temp path");
+    rmSync(folder, { recursive: true, force: true });
+    return;
+  }
+  const initial = (await native.state()).xray;
+  try {
+    const file = join(folder, "xray-on.plasticity");
+    await native.setXray(true);
+    const savedCount = (await native.state()).bodies.length;
+    await native.saveCopy(file);
+    await native.setXray(false);
+    const opened = await native.openDocument(file, true);
+    const afterOpen = await native.state();
+    check("open_document opens a plain-ASCII path in place of the test document",
+      opened.document.title === "xray-on.plasticity" && opened.bodyCount === savedCount,
+      `${opened.bodyCount} of ${savedCount} bodies`);
+    check("the X-ray state saved with a document comes back when it is opened", afterOpen.xray === true);
+    await native.setXray(false);
+    await native.newDocument();
+    const fresh = await native.state();
+    check("a new document starts in X-ray", fresh.xray === true);
+    check("the new document is the startup one again", fresh.bodies.map((b) => b.id).join(",") === "1",
+      `${fresh.bodies.length} bodies`);
+  } finally {
+    await native.setXray(initial);
+    rmSync(folder, { recursive: true, force: true });
+  }
 }
 
 main().catch((err) => {
