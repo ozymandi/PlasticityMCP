@@ -30,9 +30,10 @@ const tools: Tool[] = [
       "direction along Z is refused — that is top / bottom; the call fails when the camera " +
       "ends elsewhere, e.g. the viewport was moved by hand meanwhile). `fit` (default true) also " +
       "frames all bodies — hidden and isolated-away ones included — or, with `ids`, only " +
-      "those bodies: the way to look closely at one part of a scene. The six axis views are " +
-      "shown by Plasticity in X-ray. Not an undo step. Use before screenshot to look at the " +
-      "model from a chosen side.",
+      "those bodies: the way to look closely at one part of a scene. X-ray or shaded follows " +
+      "the window's X-ray toggle, which this server does not switch — if screenshots come out " +
+      "X-ray, ask the user to turn it off. Not an undo step. Use before screenshot to look at " +
+      "the model from a chosen side.",
     inputSchema: {
       type: "object",
       properties: {

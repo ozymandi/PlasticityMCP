@@ -56,7 +56,10 @@ const TOPICS = {
 - A chamfer over a long polygon rim (8-12 edges) with a large distance can give an invalid body without an error. Then chamfer that rim one edge at a time, long edges first, a smaller distance on short pieces, and run check_bodies after every chamfer batch on complex rims.
 - Parameter names: copy_bodies and move_bodies take delta (not offset); delete_bodies takes ids (not bodyIds); create_cylinder takes base (not position); move_bodies returns changed, not bodies.
 - Never delete bodies by name: one name can match the original and every copy. Keep explicit id lists and delete by id.
-- Never trust the order of a saved id list: before a batch move or delete, check what each id is in list_bodies (name and the centre of its bounds) and give each body its own move; afterwards check every centre against its target. A success flag says nothing about which body went where.`,
+- Never trust the order of a saved id list: before a batch move or delete, check what each id is in list_bodies (name and the centre of its bounds) and give each body its own move; afterwards check every centre against its target. A success flag says nothing about which body went where.
+- A sweep rail steers the whole section: an edge free between the rails can be lifted or dropped (a windscreen's bottom edge at 830 instead of 765). Check the edges that matter after a rail sweep and correct them with scale_bodies or one more rail.
+- The full inner loop of a deep pocket (a wheel well) refuses a fillet (16063): fillet the visible rim alone and say the hidden edges stay sharp.
+- loft_edges takes one edge per end: an opening bounded by several edges cannot be an end - fill it with patch, or loft from a curve made with curves_from_edges and join.`,
   surfacing: `Free-form surfacing (Indie licence)
 When: a loft through closed sections is fine for one body that does not branch, with sections close together. Use curves and patches when the form branches (a wing out of a body), must flow tangentially into another surface, needs a cap or dome, or when sparse sections bulge.
 
@@ -111,7 +114,7 @@ Recipes
 - Views to axes: the front view is the XZ plane seen along +Y (X to the right, Z up); the top view is the XY plane; the side view is the YZ plane.
 - Before building, write the list of parts: name, shape, size, position. Mark every number that is not on the drawing as an estimate.
 - What the drawing does not show (the back, hidden sides) — ask the user or look for references; do not invent in silence.
-- Check: set_view front / top / right (these three are X-ray views) and screenshot; compare outlines and positions with the drawing view by view.`,
+- Check: set_view front / top / right and screenshot; compare outlines and positions with the drawing view by view. If the screenshots come out X-ray, the window's X-ray toggle is on - ask the user to turn it off.`,
 
   blocking: `Blocking
 - One simple body per main volume: create_box, create_cylinder, or a closed create_polyline + extrude_profile for an outline that is not a rectangle.

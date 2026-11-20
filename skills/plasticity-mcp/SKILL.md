@@ -194,6 +194,15 @@ How to keep to it:
   bodies silently — sometimes straight off the model. After the move, verify by
   recomputing every center from the new bounds against the expected slot; the
   success flag says nothing about which bodies landed where.
+- **A sweep rail steers the whole section, not only the point it touches.** An edge of the
+  section that is free between the rails can be lifted or dropped (a windscreen's bottom
+  edge came out at 830 mm instead of 765). After a rail sweep check the edges that matter
+  and correct them (`scale_bodies` about the edge that is right, or one more rail).
+- **The full inner loop of a deep pocket refuses a fillet** (a wheel well: 16063). Fillet
+  the visible rim alone and say that the hidden inner edges are left sharp.
+- **`loft_edges` takes one edge per end.** An opening bounded by several edges (a radiator
+  mouth of four) cannot be an end: fill it with `patch`, or loft from a curve made with
+  `curves_from_edges` + `join`.
 - **Standard chess layout** (placing a set from a description): the back rank sits in
   the outer row, closest to the board edge; the pawns stand one row inward, between
   the back rank and the board center. The player side is the board-edge side.
@@ -312,7 +321,9 @@ Every command of Plasticity's modelling menu, by what it is for:
   `get_body_topology` / `list_regions` before each operation that takes them.
 - After risky steps (booleans, fillets, deleted faces): `check_bodies`, and a `screenshot`
   from `set_view` to see the result. To look closely at one part of a scene pass its
-  bodies as `ids` to `set_view` — without them it frames everything. The named axis views
-  are X-ray; for a shaded look from any other side pass `direction` (model → camera, e.g.
+  bodies as `ids` to `set_view` — without them it frames everything. Whether a view is
+  X-ray or shaded follows the X-ray toggle of the window, which the server cannot switch: look
+  at the first screenshot, and if it is X-ray ask the user to turn the toggle off before
+  taking the rest. To look from any other side pass `direction` (model → camera, e.g.
   [1, 1, 1] from behind) instead of `view`.
 - Undo only your own steps: the history may hold the user's work from before.

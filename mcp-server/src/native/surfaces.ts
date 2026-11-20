@@ -7,7 +7,7 @@ import { commandFunction } from "./snippets.js";
 import { deformArgs } from "./curve-edit.js";
 import { PICK_FACES } from "./solids.js";
 import { BLEND_SHAPE_CODES, BLEND_TRIM_CODES, BlendTrim, LOFT_TANGENCY_CODES, LoftTangency } from "./enums.js";
-import { BlendShape, DeformOptions, FaceRef, LoftEnd, MutationResult, ProfileRef, Vec3 } from "./types.js";
+import { BlendShape, DeformOptions, FaceRef, LoftEnd, MutationResult, ProfileRef, SweepOptions, Vec3 } from "./types.js";
 
 // Native codes, read from the running 26.1.3 app.
 const SURFACE_OPTIMIZATION = { performance: 24870, smoothness: 24871 };
@@ -211,6 +211,45 @@ export class SurfaceTools extends ProjectionTools {
       };
     } catch (err) {
       return { ...loft, joinError: (err as Error).message };
+    }
+  }
+
+  /**
+   * Sweep with a wall `thicknessMm` thick. Plasticity's own sweep thickness fails in the
+   * kernel (PK_BODY_hollow_2) on some sweeps — seen on a rail-swept open windscreen. Then the
+   * section is swept as a surface and thickened, half the wall to each side of it (two undo
+   * steps); the result says `thickenedAfterSweep: true`. A closed section that fails is
+   * refused with a hint, since its swept Solid cannot be thickened.
+   */
+  async sweepWithThickness(
+    profile: ProfileRef,
+    pathId: number,
+    twistDeg: number,
+    scale: number,
+    options: SweepOptions & { thicknessMm: number },
+  ): Promise<MutationResult & { thickenedAfterSweep?: boolean }> {
+    try {
+      return await this.sweepProfile(profile, pathId, twistDeg, scale, options);
+    } catch (err) {
+      if (!/hollow/i.test((err as Error).message)) throw err;
+      const { thicknessMm, ...rest } = options;
+      const swept = await this.sweepProfile(profile, pathId, twistDeg, scale, rest);
+      const skin = swept.created[0];
+      if (!skin || skin.type !== "Sheet") {
+        if (skin) await this.undo();
+        throw new Error(`${(err as Error).message.trim()} Plasticity cannot give this sweep a wall. ` +
+          "For a closed section sweep it without thickness and use hollow, or sweep an open section.");
+      }
+      const walled = await this.thicken(skin.id, thicknessMm / 2, thicknessMm / 2);
+      return {
+        created: walled.changed.filter((b) => b.id === skin.id),
+        changed: walled.changed.filter((b) => b.id !== skin.id),
+        removedIds: walled.removedIds,
+        bodyCount: walled.bodyCount,
+        undoDepth: walled.undoDepth,
+        redoDepth: walled.redoDepth,
+        thickenedAfterSweep: true,
+      };
     }
   }
 
