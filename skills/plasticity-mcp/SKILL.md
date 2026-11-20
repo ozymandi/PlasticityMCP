@@ -2,7 +2,7 @@
 name: plasticity-mcp
 description: Model real CAD geometry in a running Plasticity window through the Plasticity MCP server (tools mcp__plasticity__*: native_connect, create_*, extrude_profile, boolean, fillet, chamfer, cut, get_body_topology, …). Use whenever the user asks to build, edit, measure or export a part or a model in Plasticity, to model something from a drawing or a description, or mentions Plasticity MCP.
 metadata:
-  version: "1.2.0"
+  version: "1.3.0"
   author: ozymandi
 ---
 
