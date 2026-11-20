@@ -164,15 +164,31 @@ export class SurfaceTools extends ProjectionTools {
    * `startMagnitude` / `endMagnitude` scale the tangent at the ends; a tight bend needs less
    * than 1. With `join` the loft is then joined to the source Sheets (the loft factory's own
    * join fails); a failed join keeps the loft and says why in `joinError`.
+   *
+   * An end can be several connected edges: list them all; the factory chains connected edges
+   * into one end by itself, in any order. `guideIds` are curves the surface follows from end
+   * to end; a curved guide works only between curve ends — with Sheet edges the kernel fails
+   * (22000), so convert the edges with curves_from_edges first.
    */
   async loftEdges(
     ends: LoftEnd[],
-    options: { tangency?: LoftTangency; startMagnitude?: number; endMagnitude?: number; join?: boolean } = {},
+    options: {
+      tangency?: LoftTangency;
+      startMagnitude?: number;
+      endMagnitude?: number;
+      join?: boolean;
+      guideIds?: number[];
+    } = {},
   ): Promise<MutationResult & { joinError?: string }> {
     if (ends.length < 2) throw new Error("A loft needs at least two ends");
     for (const m of [options.startMagnitude, options.endMagnitude]) {
       if (m !== undefined && !(m > 0)) throw new Error("Magnitudes must be positive");
     }
+    const guideIds = options.guideIds ?? [];
+    if (guideIds.some((id) => ends.includes(id))) {
+      throw new Error("A loft guide must be a different curve than the ends");
+    }
+    const edgeEnds = ends.some((end) => typeof end !== "number");
     const setup = `
         editor.selection.selected.removeAll();
         factory.profiles = args.ends.map((end) => typeof end === 'number'
@@ -181,6 +197,7 @@ export class SurfaceTools extends ProjectionTools {
         if (args.curvature !== undefined) factory.curvature = args.curvature;
         if (args.startMagnitude !== undefined) factory.startMagnitude = args.startMagnitude;
         if (args.endMagnitude !== undefined) factory.endMagnitude = args.endMagnitude;
+        if (args.guideIds.length > 0) factory.guides = args.guideIds.map((id) => typed(id, 'Wire'));
         factory.join = false;`;
     const loft = await withHint(
       this.mutate(
@@ -191,11 +208,20 @@ export class SurfaceTools extends ProjectionTools {
           curvature: options.tangency && LOFT_TANGENCY_CODES[options.tangency],
           startMagnitude: options.startMagnitude,
           endMagnitude: options.endMagnitude,
+          guideIds,
         }],
       ),
       /make_lofted_body.*21555|21555/,
       "The tangents are too long for this bend and the surface folds over itself: lower startMagnitude / endMagnitude (0.6 worked on a 90° elbow of 10 mm tubes).",
-    );
+    ).catch((err: Error) => {
+      if (guideIds.length > 0 && edgeEnds && /22000/.test(err.message)) {
+        throw new Error(
+          err.message +
+            " — a curved guide works only between curve ends: make the edge ends into curves with curves_from_edges and loft those.",
+        );
+      }
+      throw err;
+    });
     const sources = [...new Set(ends.filter((e): e is { id: number; edgeId: string } => typeof e !== "number").map((e) => e.id))];
     const loftId = loft.created[0]?.id;
     if (!options.join || loftId === undefined || sources.length === 0) return loft;

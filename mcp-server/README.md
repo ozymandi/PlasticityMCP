@@ -64,7 +64,7 @@ Real B-Rep operations through Plasticity's own factories and history. Unofficial
 | Tool | Description |
 |------|-------------|
 | `set_visibility` | Hide or show bodies. |
-| `unhide_all` | Show everything hidden. |
+| `unhide_all` | Show everything hidden — bodies of every kind and groups (Plasticity's own command fails when a curve is hidden, so the server clears the flags itself). |
 | `isolate` / `unisolate` | Show only the given bodies; return to the full scene. |
 | `set_locked` / `unlock_all` | Lock bodies against picking in the window; unlock everything. |
 
@@ -220,7 +220,7 @@ Real B-Rep operations through Plasticity's own factories and history. Unofficial
 | `revolve_profile` | Revolve a curve around an axis (`axisOrigin`, `axis`, `angle`): closed → Solid, open → Sheet; `thickness` turns an open profile into a shell (wall inside). |
 | `sweep_profile` | Sweep a profile curve along a path curve; optional `twist` and end `scale`, rails `guideIds`, `alignment`, `corners`, `thickness`. |
 | `loft_profiles` | Loft through ordered profiles; optional `guideIds`, `closed`. Closed profiles → Solid, open → Sheet. |
-| `loft_edges` | Loft a Sheet between Sheet boundary edges and curves; `tangency` natural / free / clamped, `startMagnitude` / `endMagnitude`, `join`. |
+| `loft_edges` | Loft a Sheet between Sheet boundary edges and curves; several connected edges make one end; `tangency` natural / free / clamped, `startMagnitude` / `endMagnitude`, `join`, `guideIds` (curved guides between curve ends). |
 
 ### Export
 

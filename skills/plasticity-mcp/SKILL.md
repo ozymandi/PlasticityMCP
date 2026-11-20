@@ -200,9 +200,10 @@ How to keep to it:
   and correct them (`scale_bodies` about the edge that is right, or one more rail).
 - **The full inner loop of a deep pocket refuses a fillet** (a wheel well: 16063). Fillet
   the visible rim alone and say that the hidden inner edges are left sharp.
-- **`loft_edges` takes one edge per end.** An opening bounded by several edges (a radiator
-  mouth of four) cannot be an end: fill it with `patch`, or loft from a curve made with
-  `curves_from_edges` + `join`.
+- **An opening of several edges is one `loft_edges` end.** List all its edges (a radiator
+  mouth of four): connected edges chain into one end by themselves, in any order. A curved
+  guide (`guideIds`) works only between curve ends — with Sheet edges the kernel fails
+  (22000): make the ends curves with `curves_from_edges` first and loft those.
 - **Standard chess layout** (placing a set from a description): the back rank sits in
   the outer row, closest to the board edge; the pawns stand one row inward, between
   the back rank and the board center. The player side is the board-edge side.
@@ -240,7 +241,8 @@ saddle grew from 130 to 164 mm between two sections).
 - Between two existing surfaces: `loft_edges` from boundary edge to boundary edge with
   `tangency: "clamped"` and `join: true` continues both neighbours (G1 or better). On a tight
   bend lower `startMagnitude` / `endMagnitude` (0.6 for a 90° elbow of 10 mm tubes); too long
-  a tangent fails. `natural` pinches.
+  a tangent fails. `natural` pinches. An end can be several connected edges (a square rim to a
+  circle edge works); `guideIds` steer a loft between curve ends.
 - A section that changes along a path: `sweep_profile` with 1–3 rails (`guideIds`) — one rail
   pulls its side out, two opposite rails scale the section, a third controls the other
   direction. `alignment: "parallel"` keeps the end face parallel to the start;

@@ -41,6 +41,7 @@ const LoftEdgesArgs = z.object({
   startMagnitude: z.number().positive().optional(),
   endMagnitude: z.number().positive().optional(),
   join: z.boolean().optional().default(false),
+  guideIds: z.array(BodyId).optional(),
 });
 
 const RemoveNominalSurfaceArgs = z.object({
@@ -119,7 +120,11 @@ const tools: Tool[] = [
       "Loft a Sheet between boundary edges of Sheets and curves, in the given order — to join " +
       "two open tubes, continue a panel, or bridge a gap so the new surface flows out of the " +
       "existing ones. Each of `ends` is a curve id or { id, edgeId } (an edge with one face, " +
-      "from get_body_topology). `tangency` (one value for the loft): `clamped` continues the " +
+      "from get_body_topology). An opening bounded by several edges is one end: list all its " +
+      "edges — connected edges are chained into one end, in any order (a square rim of four " +
+      "edges to a circle edge works). `guideIds`: curves the surface follows from end to end, " +
+      "touching each end; a curved guide works only between curve ends — with Sheet edges the " +
+      "kernel fails, so make them curves with curves_from_edges first. `tangency` (one value for the loft): `clamped` continues the " +
       "face next to each edge (smooth, G1 or better after join), `free` (default) or " +
       "`natural` (no tangency, can pinch). `startMagnitude` / `endMagnitude` (default 1) " +
       "scale the tangent at the ends: a tight bend needs less (0.6 for a 90° elbow of tubes " +
@@ -148,6 +153,7 @@ const tools: Tool[] = [
         startMagnitude: { type: "number" },
         endMagnitude: { type: "number" },
         join: { type: "boolean", default: false },
+        guideIds: { type: "array", items: { type: "number" }, description: "Guide curves" },
       },
     },
   },
@@ -181,8 +187,8 @@ const handlers: ToolFamily["handlers"] = {
 
   loft_edges: async (rawArgs) => {
     const args = LoftEdgesArgs.parse(rawArgs ?? {});
-    const { tangency, startMagnitude, endMagnitude, join } = args;
-    return ok(await native.loftEdges(args.ends, { tangency, startMagnitude, endMagnitude, join }));
+    const { tangency, startMagnitude, endMagnitude, join, guideIds } = args;
+    return ok(await native.loftEdges(args.ends, { tangency, startMagnitude, endMagnitude, join, guideIds }));
   },
 
   remove_nominal_surface: async (rawArgs) => {
