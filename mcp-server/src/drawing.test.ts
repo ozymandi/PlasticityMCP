@@ -66,6 +66,9 @@ const hidden = "Edge-Hidden-NotSmooth";
   // Since 1ad2115 another number of control points falls back to a polyline through them.
   const odd = buildDrawing([view([0, 0, 1, 1, 2, 0, 3, 1, 4, 0], [{ category: visible, type: 3009, offset: 0, count: 5 }])], true);
   check("another number of control points becomes a polyline", odd.svg.includes('d="M 0 0 L 1 1 L 2 0 L 3 1 L 4 0"'), odd.svg);
+  // The polyline's first point counts for the view's size too (found by te9no, PR #3).
+  check("the polyline fallback's bounds include its first point", odd.views[0]!.sizeMm.join(",") === "4,1",
+    odd.views[0]!.sizeMm.join(","));
 }
 
 {
