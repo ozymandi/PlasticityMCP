@@ -79,6 +79,7 @@ async function main() {
     ["environment", () => environmentChecks(native)],
     ["listing", () => listingChecks(native)],
     ["surfacing", () => surfacingChecks(native)],
+    ["display", () => displayChecks(native)],
   ];
   try {
     for (const [name, run] of groups) if (only.length === 0 || only.includes(name)) await run();
@@ -2220,6 +2221,41 @@ async function surfacingChecks(native: NativeSession): Promise<void> {
   const plateFaces = plate.created[0] ? (await native.topology(plate.created[0].id, "faces")).faces! : [];
   check("patch a planar curve with fill planeOnly gives one planar face",
     plateFaces.length === 1 && plateFaces[0]!.planar, JSON.stringify(plateFaces.map((f) => f.surface)));
+  await native.undo();
+}
+
+// Display: visibility refresh, the open_document path guard, fresh screenshots — x = 16000.
+async function displayChecks(native: NativeSession): Promise<void> {
+  const X = 16000;
+  const call = (native as unknown as { call: <T>(fn: string, b?: string[], v?: unknown[]) => Promise<T> }).call.bind(native);
+  const drawn = (id: number) => call<boolean>(`function (args) {
+    const all = this.scene.drawable.all; const list = Array.isArray(all) ? all : [...all];
+    for (const [version, item] of this.geo.geometryModel) {
+      if (this.db.lookupStableId(version) === args.id) return list.includes(item.view);
+    }
+    return null;
+  }`, [], [{ id }]);
+  const block = (await native.createBox([X, 0, 0], [40, 40, 40])).created[0]!;
+  await native.setVisibility([block.id], false);
+  const hiddenDrawn = await drawn(block.id);
+  await native.setVisibility([block.id], true);
+  const shownDrawn = await drawn(block.id);
+  check("set_visibility takes a hidden body off the window's scene and puts it back when shown",
+    hiddenDrawn === false && shownDrawn === true, `hidden drawn: ${hiddenDrawn}, shown drawn: ${shownDrawn}`);
+  await native.undo();
+  await native.undo();
+
+  const started = Date.now();
+  const refused = await failure(native.openDocument("C:/Temp/кирилиця/model.plasticity"));
+  check("open_document refuses a non-ASCII path at once, before Plasticity can hang",
+    /non-ASCII/.test(refused?.message ?? "") && Date.now() - started < 2000, refused?.message);
+
+  await native.setView([1, -1, 1], true, [block.id]);
+  const before = await native.screenshot();
+  await native.moveBodies([block.id], [0, 0, 30]);
+  const after = await native.screenshot();
+  check("screenshot right after a geometry change shows the change", !before.png.equals(after.png),
+    `${before.png.length} vs ${after.png.length} bytes`);
   await native.undo();
 }
 

@@ -112,6 +112,15 @@ export class EnvironmentTools extends MeasureTools {
    * the current document has unsaved changes, unless `discardChanges`.
    */
   async openDocument(path: string, discardChanges = false): Promise<Environment & { bodyCount: number }> {
+    // Seen on 26.1.3: opening from a path with Cyrillic letters never returns and leaves the
+    // window unresponsive, while saving to the same path works. Refuse before Plasticity hangs.
+    if (/[^\x00-\x7f]/.test(path)) {
+      throw new Error(
+        "Plasticity 26.1.3 hangs when it opens a file from a path with non-ASCII characters " +
+          "(Cyrillic letters, typographic apostrophes, accents): " + path + ". Copy the file to a " +
+          "path made of plain Latin letters, digits and punctuation, and open it from there.",
+      );
+    }
     const input = await checkInput(path, [".plasticity"]);
     return this.enqueue(async () => {
       await this.waitForBackup();
