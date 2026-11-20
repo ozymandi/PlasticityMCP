@@ -322,8 +322,9 @@ Every command of Plasticity's modelling menu, by what it is for:
 - After risky steps (booleans, fillets, deleted faces): `check_bodies`, and a `screenshot`
   from `set_view` to see the result. To look closely at one part of a scene pass its
   bodies as `ids` to `set_view` — without them it frames everything. Whether a view is
-  X-ray or shaded follows the X-ray toggle of the window, which the server cannot switch: look
-  at the first screenshot, and if it is X-ray ask the user to turn the toggle off before
-  taking the rest. To look from any other side pass `direction` (model → camera, e.g.
-  [1, 1, 1] from behind) instead of `view`.
+  X-ray or shaded follows the X-ray toggle of the window (`native_status` reports it as
+  `xray`): `set_xray` `on: false` before presentation screenshots, `on: true` to see
+  inner parts through the body. `new_document` starts in X-ray, and `open_document` brings
+  back the state the file was saved with. To look from any other side pass `direction`
+  (model → camera, e.g. [1, 1, 1] from behind) instead of `view`.
 - Undo only your own steps: the history may hold the user's work from before.

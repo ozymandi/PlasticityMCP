@@ -1,6 +1,6 @@
 # plasticity-mcp
 
-MCP server for [Plasticity](https://www.plasticity.xyz/) 26.1.3: 145 tools over two independent channels.
+MCP server for [Plasticity](https://www.plasticity.xyz/) 26.1.3: 146 tools over two independent channels.
 
 - **Native channel (CDP)** — real B-Rep modelling through Plasticity's own factories and history. Almost all tools; described first.
 - **Bridge channel (WebSocket)** — the built-in protocol of the official Blender bridge: scene listing, change events, retessellation. Read side only on 26.1.x.
@@ -23,7 +23,7 @@ Real B-Rep operations through Plasticity's own factories and history. Unofficial
 |------|-------------|
 | `native_launch` | Start Plasticity 26.1.3 with a loopback-only debugging endpoint (`127.0.0.1:9223`). Never closes a running instance — if Plasticity runs without native access, close it yourself first. |
 | `native_connect` | Attach to a window (`targetId` needed only with several windows). |
-| `native_status` | Connected window, busy flag, undo/redo depth, body count. |
+| `native_status` | Connected window, busy flag, undo/redo depth, body count, X-ray state, whether the window is visible. |
 
 ### Primitives
 
@@ -257,6 +257,7 @@ Real B-Rep operations through Plasticity's own factories and history. Unofficial
 | Tool | Description |
 |------|-------------|
 | `set_view` | Camera to a `view` (front / back / left / right / top / bottom / isometric) or, instead, to look from any `direction` (model → camera, e.g. [1, 1, 1] from behind) shaded like the isometric view; `fit` frames all bodies, or with `ids` only those — a close look at one part. |
+| `set_xray` | X-ray drawing of the viewport `on` (see-through, hidden edges shown) or off (shaded); `native_status` reports the state as `xray`. Not an undo step; a saved file keeps the state, so `open_document` brings back the file's own and `new_document` starts in X-ray. |
 | `screenshot` | PNG of the 3D viewport (longest side ≤ 1568 px), returned as an image; optional `path`. |
 
 ### Notes
@@ -351,7 +352,7 @@ node dist/index.js --catalog=compact
 - `call_tool` runs any tool by `name` with its `arguments` — same checks, same result as a direct call.
 - A model that connects without having called `modelling_guide` gets the rules together with the answer of `native_connect`, once per server process — so no model builds without having seen them. (The full catalog does not do this.)
 
-Without the argument (or with `--catalog=full`) the server lists all 145 tools, as before.
+Without the argument (or with `--catalog=full`) the server lists all 146 tools, as before.
 
 ## Wiring into Claude Code
 

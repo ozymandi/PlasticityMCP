@@ -34,6 +34,7 @@ export const READ_STATE = `function () {
   return {
     busy: Boolean(this.executor.isBusy),
     windowHidden: Boolean(document.hidden),
+    xray: Boolean(Array.from(this.viewports)[0]?.isXRay),
     undoDepth: this.history?.undoStack?.length ?? 0,
     redoDepth: this.history?.redoStack?.length ?? 0,
     bodies,

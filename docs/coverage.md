@@ -2,7 +2,7 @@
 
 What the server can do compared with Plasticity itself: which Plasticity command is behind which tool, what is missing, and where a tool behaves differently from the command in the window.
 
-State on 2026-11-19: **145 tools** (144 for Plasticity, plus `modelling_guide`, which serves the modelling rules), Plasticity **26.1.3**, Indie licence, Windows. Parameters of each tool are in [mcp-server/README.md](../mcp-server/README.md); how each was built and tested is in [task.md](../task.md).
+State on 2026-11-20: **146 tools** (145 for Plasticity, plus `modelling_guide`, which serves the modelling rules), Plasticity **26.1.3**, Indie licence, Windows. Parameters of each tool are in [mcp-server/README.md](../mcp-server/README.md); how each was built and tested is in [task.md](../task.md).
 
 ## How to read this
 
@@ -214,6 +214,7 @@ File tools take absolute paths, check the extension and do not replace an existi
 | Construction plane | `set_construction_plane` | The active plane only; saved planes of the document are not handled. |
 | Units, grid | `get_environment` | **Read only.** |
 | View orientation | `set_view` | Six axis views and isometric, optional fit. |
+| X-ray | `set_xray` | The first viewport's X-ray toggle, on or off; the state is in `native_status`. Not an undo step and does not mark the document changed, but a saved file keeps it: `open_document` brings back the file's own state, `new_document` starts in X-ray. |
 | Undo, Redo | `undo`, `redo` | — |
 
 ### Not commands of Plasticity

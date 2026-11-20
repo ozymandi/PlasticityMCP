@@ -2256,6 +2256,24 @@ async function displayChecks(native: NativeSession): Promise<void> {
   const after = await native.screenshot();
   check("screenshot right after a geometry change shows the change", !before.png.equals(after.png),
     `${before.png.length} vs ${after.png.length} bytes`);
+
+  // X-ray: switched both ways, reported by state(), drawn differently; the user's toggle is put back.
+  const initial = (await native.state()).xray;
+  const off = await native.setXray(false);
+  const shaded = await native.screenshot();
+  const on = await native.setXray(true);
+  const again = await native.setXray(true);
+  const onState = (await native.state()).xray;
+  const xrayShot = await native.screenshot();
+  const back = await native.setXray(false);
+  check("set_xray switches X-ray on and off and state() reports it",
+    off.xray === false && on.xray === true && on.changed && onState === true && back.xray === false &&
+      (await native.state()).xray === false,
+    JSON.stringify({ off, on, onState, back }));
+  check("set_xray to the state it is in changes nothing", again.xray === true && !again.changed, JSON.stringify(again));
+  check("an X-ray screenshot differs from the shaded one", !shaded.png.equals(xrayShot.png),
+    `${shaded.png.length} vs ${xrayShot.png.length} bytes`);
+  await native.setXray(initial);
   await native.undo();
 }
 
