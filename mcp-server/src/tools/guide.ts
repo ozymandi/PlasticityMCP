@@ -59,7 +59,7 @@ const TOPICS = {
 - Never trust the order of a saved id list: before a batch move or delete, check what each id is in list_bodies (name and the centre of its bounds) and give each body its own move; afterwards check every centre against its target. A success flag says nothing about which body went where.
 - A sweep rail steers the whole section: an edge free between the rails can be lifted or dropped (a windscreen's bottom edge at 830 instead of 765). Check the edges that matter after a rail sweep and correct them with scale_bodies or one more rail.
 - The full inner loop of a deep pocket (a wheel well) refuses a fillet (16063): fillet the visible rim alone and say the hidden edges stay sharp.
-- loft_edges takes one edge per end: an opening bounded by several edges cannot be an end - fill it with patch, or loft from a curve made with curves_from_edges and join.`,
+- loft_edges: an opening bounded by several edges is one end - list all its edges, connected edges chain by themselves. A curved guide (guideIds) works only between curve ends; with Sheet edges it fails (22000) - make the ends curves with curves_from_edges first.`,
   surfacing: `Free-form surfacing (Indie licence)
 When: a loft through closed sections is fine for one body that does not branch, with sections close together. Use curves and patches when the form branches (a wing out of a body), must flow tangentially into another surface, needs a cap or dome, or when sparse sections bulge.
 

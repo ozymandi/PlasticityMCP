@@ -1703,6 +1703,15 @@ async function sceneChecks(native: NativeSession): Promise<void> {
   check("unhide_all shows everything", changed(all, a.id)?.visible === true && (await body(b.id)).visible);
   await native.undo();
   await native.undo();
+  // Plasticity's own Unhide All fails with an empty error when a curve is hidden.
+  const loose = (await native.createPolyline([[X, 300, 0], [X + 50, 300, 0]])).created[0]!;
+  await native.setVisibility([loose.id, a.id], false);
+  const withCurve = await native.unhideAll();
+  check("unhide_all shows a hidden curve and the body hidden with it",
+    changed(withCurve, loose.id)?.visible === true && changed(withCurve, a.id)?.visible === true, brief(withCurve));
+  await native.undo();
+  await native.undo();
+  await native.undo();
 
   const alone = await native.isolate([a.id]);
   check("isolate leaves only the given bodies visible", changed(alone, b.id)?.visible === false &&
@@ -2061,6 +2070,41 @@ async function surfacingChecks(native: NativeSession): Promise<void> {
     elbow.removedIds.includes(side.id) && (await native.checkBodies([low.id]))[0]!.valid &&
     elbowSeams.length > 0 && elbowSeams.every((r) => r.continuity === "G1" || r.continuity === "G2"),
     elbowSeams.map((r) => `${r.continuity}/${r.angleDeg}°`).join(" "));
+
+  // An opening of several edges is one end; guides between curve ends.
+  const openBox = async (corner: Vec3, size: Vec3, cap: Vec3) => {
+    const id = (await native.createBox(corner, size)).created[0]!.id;
+    await native.deleteFaces(id, [faceBy(await native.topology(id, "faces"), cap)], false);
+    return { id, edges: await openEdges(id) };
+  };
+  const squareRim = await openBox([X, 400, 0], [40, 40, 40], [0, 0, 1]);
+  const roundId = (await native.createCylinder([X + 20, 420, 100], 15, 30)).created[0]!.id;
+  await native.deleteFaces(roundId, [faceBy(await native.topology(roundId, "faces"), [0, 0, -1])], false);
+  const roundEdge = (await openEdges(roundId))[0]!;
+  const rim = [squareRim.edges[2]!, squareRim.edges[0]!, squareRim.edges[3]!, squareRim.edges[1]!].map((edgeId) => ({ id: squareRim.id, edgeId }));
+  const toRound = await native.loftEdges([...rim, { id: roundId, edgeId: roundEdge }]);
+  const transition = toRound.created[0];
+  check("loft_edges takes a rim of four edges (any order) as one end, to a circle edge",
+    squareRim.edges.length === 4 && transition?.type === "Sheet" && transition.faceCount === 4 &&
+      Math.abs(transition.boundsMm!.min[2]! - 40) < 0.01 && Math.abs(transition.boundsMm!.max[2]! - 100) < 0.01,
+    brief(toRound));
+  await native.undo();
+  const toRoundJoined = await native.loftEdges([...rim, { id: roundId, edgeId: roundEdge }], { tangency: "clamped", join: true });
+  check("a four-edge end lofts clamped and joins into one valid Solid",
+    toRoundJoined.removedIds.includes(roundId) && changed(toRoundJoined, squareRim.id)?.type === "Solid" &&
+      (await native.checkBodies([squareRim.id]))[0]!.valid, brief(toRoundJoined));
+  await native.undo();
+  const lower = (await native.createPolyline([[X, 600, 40], [X + 40, 600, 40], [X + 40, 640, 40], [X, 640, 40]], true)).created[0]!.id;
+  const upper = (await native.createPolyline([[X, 600, 100], [X + 40, 600, 100], [X + 40, 640, 100], [X, 640, 100]], true)).created[0]!.id;
+  const bow = (await native.createSpline([[X, 600, 40], [X - 8, 592, 70], [X, 600, 100]])).created[0]!.id;
+  const guidedLoft = await native.loftEdges([lower, upper], { guideIds: [bow] });
+  check("loft_edges between curves follows a curved guide", (guidedLoft.created[0]?.boundsMm?.min[0] ?? X) < X - 3,
+    brief(guidedLoft));
+  await native.undo();
+  const edgeGuide = (await native.createSpline([[X, 400, 40], [X - 8, 392, 70], [X + 5, 405, 100]])).created[0]!.id;
+  const viaEdges = await failure(native.loftEdges([...rim, { id: roundId, edgeId: roundEdge }], { guideIds: [edgeGuide] }));
+  check("a curved guide between Sheet edges fails with the curves_from_edges hint",
+    /curves_from_edges/.test(viaEdges?.message ?? ""), viaEdges?.message);
 
   // --- sweep rails and options, revolve shell ---
   const S = X + 300;

@@ -289,9 +289,23 @@ export class OrganizeTools extends SceneTools {
     );
   }
 
-  /** Show everything that was hidden. */
+  /**
+   * Show everything that was hidden — bodies of every kind and groups — as Plasticity's
+   * Unhide All does: the hidden flag is cleared, the visibility toggle of the outliner is left
+   * as it is. Not through Plasticity's own command: on 26.1.3 it throws an empty error as soon
+   * as a curve is hidden and then shows nothing at all.
+   */
   unhideAll(): Promise<MutationResult> {
-    return this.mutate(nativeCommand("this.commands.UnhideAllCommand", "selected.removeAll();"), [], [{}]);
+    return this.mutate(
+      carrier(
+        "",
+        `const nodes = editor.db.nodes;
+            for (const item of [...nodes.allHidden]) nodes.setHidden(nodes.item2key(item), false);
+            ${REFRESH_SCENE}`,
+      ),
+      [],
+      [{}],
+    );
   }
 
   /** Show only the given bodies until `unisolate`; nothing is changed in what is hidden. */
