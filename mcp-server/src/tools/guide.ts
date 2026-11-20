@@ -114,7 +114,7 @@ Recipes
 - Views to axes: the front view is the XZ plane seen along +Y (X to the right, Z up); the top view is the XY plane; the side view is the YZ plane.
 - Before building, write the list of parts: name, shape, size, position. Mark every number that is not on the drawing as an estimate.
 - What the drawing does not show (the back, hidden sides) — ask the user or look for references; do not invent in silence.
-- Check: set_view front / top / right and screenshot; compare outlines and positions with the drawing view by view. If the screenshots come out X-ray, the window's X-ray toggle is on - ask the user to turn it off.`,
+- Check: set_view front / top / right and screenshot; compare outlines and positions with the drawing view by view. If the screenshots come out X-ray, the window's X-ray toggle is on - set_xray on: false.`,
 
   blocking: `Blocking
 - One simple body per main volume: create_box, create_cylinder, or a closed create_polyline + extrude_profile for an outline that is not a rectangle.

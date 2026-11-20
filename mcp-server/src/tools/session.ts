@@ -46,7 +46,8 @@ const tools: Tool[] = [
     name: "native_status",
     description:
       "Native connection state: connected window, whether Plasticity is busy with a command, " +
-      "undo/redo depth, body count, and windowVisible — false when the window is minimized or " +
+      "undo/redo depth, body count, xray — whether the viewport draws in X-ray (switch it with " +
+      "set_xray) — and windowVisible — false when the window is minimized or " +
       "completely covered by other windows, in which case set_view and screenshot cannot work " +
       "(modelling tools still do).",
     inputSchema: { type: "object", properties: {} },
@@ -99,6 +100,7 @@ const handlers: ToolFamily["handlers"] = {
       version: SUPPORTED_VERSION,
       busy: state.busy,
       windowVisible: !state.windowHidden,
+      xray: state.xray,
       bodyCount: state.bodies.length,
       undoDepth: state.undoDepth,
       redoDepth: state.redoDepth,

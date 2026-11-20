@@ -19,6 +19,8 @@ const SetViewArgs = z
   .refine((a) => (a.view === undefined) !== (a.direction === undefined), "pass either view or direction")
   .refine((a) => a.ids === undefined || a.fit, "ids frame the view: they need fit");
 
+const SetXrayArgs = z.object({ on: z.boolean() });
+
 const tools: Tool[] = [
   {
     name: "set_view",
@@ -31,9 +33,8 @@ const tools: Tool[] = [
       "ends elsewhere, e.g. the viewport was moved by hand meanwhile). `fit` (default true) also " +
       "frames all bodies — hidden and isolated-away ones included — or, with `ids`, only " +
       "those bodies: the way to look closely at one part of a scene. X-ray or shaded follows " +
-      "the window's X-ray toggle, which this server does not switch — if screenshots come out " +
-      "X-ray, ask the user to turn it off. Not an undo step. Use before screenshot to look at " +
-      "the model from a chosen side.",
+      "the window's X-ray toggle: switch it with set_xray. Not an undo step. Use before " +
+      "screenshot to look at the model from a chosen side.",
     inputSchema: {
       type: "object",
       properties: {
@@ -45,6 +46,22 @@ const tools: Tool[] = [
         fit: { type: "boolean", default: true },
         ids: { ...BODY_IDS_SCHEMA, description: "Frame only these bodies" },
       },
+    },
+  },
+  {
+    name: "set_xray",
+    description:
+      "Switch X-ray drawing of the viewport on (`on: true`: every face see-through, hidden " +
+      "edges shown — to see inner parts) or off (`on: false`: shaded, opaque — for " +
+      "presentation screenshots). Same as the window's X-ray toggle (Alt+Z), which the user " +
+      "may have left on: native_status reports it as xray. Returns the state and whether it " +
+      "changed. Not an undo step and does not mark the document changed, but a saved document " +
+      "keeps the state: open_document brings back the file's own, and new_document starts in " +
+      "X-ray (Plasticity's startup document).",
+    inputSchema: {
+      type: "object",
+      properties: { on: { type: "boolean", description: "true: X-ray, false: shaded" } },
+      required: ["on"],
     },
   },
   {
@@ -67,6 +84,11 @@ const handlers: ToolFamily["handlers"] = {
   set_view: async (rawArgs) => {
     const args = SetViewArgs.parse(rawArgs ?? {});
     return ok(await native.setView(args.direction ?? args.view!, args.fit, args.ids));
+  },
+
+  set_xray: async (rawArgs) => {
+    const args = SetXrayArgs.parse(rawArgs ?? {});
+    return ok(await native.setXray(args.on));
   },
 
   screenshot: async (rawArgs) => {

@@ -78,6 +78,31 @@ export class ViewTools extends ExchangeTools {
   }
 
   /**
+   * Switch the first viewport's X-ray drawing on or off (the window's X-ray toggle, Alt+Z).
+   * Not an undo step and does not mark the document changed, but a saved .plasticity file keeps
+   * the state: opening it brings it back, and the startup document (new_document) is in X-ray.
+   * Reports the state and whether it changed.
+   */
+  setXray(on: boolean): Promise<{ xray: boolean; changed: boolean }> {
+    return this.enqueue(() =>
+      this.call<{ xray: boolean; changed: boolean }>(
+        `function (on) {
+          const viewport = Array.from(this.viewports)[0];
+          if (!viewport) throw new Error('Plasticity viewport is unavailable');
+          const before = Boolean(viewport.isXRay);
+          if (before !== on) viewport.toggleXRay();
+          const after = Boolean(viewport.isXRay);
+          if (after !== on) throw new Error('Plasticity did not switch X-ray ' + (on ? 'on' : 'off'));
+          for (const v of this.viewports) v.setNeedsRender();
+          return { xray: after, changed: before !== after };
+        }`,
+        [],
+        [on],
+      ),
+    );
+  }
+
+  /**
    * Point the first viewport's camera at a standard view, or — with a direction instead of a
    * name — look at the model from that side (the vector from the model towards the camera),
    * shaded like the isometric view. `fit` also frames every body, or only the bodies `ids`.

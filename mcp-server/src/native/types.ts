@@ -87,6 +87,8 @@ export interface NativeState {
    * stops drawing it, so set_view and screenshot cannot work; modelling tools still do.
    */
   windowHidden: boolean;
+  /** The first viewport draws in X-ray (the window's X-ray toggle, Alt+Z). */
+  xray: boolean;
   undoDepth: number;
   redoDepth: number;
   bodies: BodyInfo[];
