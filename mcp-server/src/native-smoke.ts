@@ -2160,6 +2160,19 @@ async function surfacingChecks(native: NativeSession): Promise<void> {
   check("bridge_surface shape conic gives a cylindrical blend", roundFaces.includes("Cylinder"), JSON.stringify(roundFaces) + " " + brief(round));
   await native.undo();
 
+  // --- sweep thickness on a rail-swept open section (a windscreen) ---
+  const W = X + 1500;
+  const screenArc = (await native.createSpline([[W, -40, 0], [W, -20, 12], [W, 20, 12], [W, 40, 0]], false, undefined, true)).created[0]!;
+  // Plasticity's own wall fails here (PK_BODY_hollow_2), as on the Maserati windscreen.
+  const screenPath = (await native.createPolyline([[W, 0, 0], [W - 60, 0, 0]])).created[0]!;
+  const screenRail = (await native.createSpline([[W, 40, 0], [W - 30, 38, 0], [W - 60, 28, 0]], false, undefined, true)).created[0]!;
+  const screen = await native.sweepWithThickness(screenArc.id, screenPath.id, 0, 1, { guideIds: [screenRail.id], thicknessMm: 3 });
+  check("sweep with a rail and thickness falls back to a swept surface + thicken: a Solid wall",
+    screen.thickenedAfterSweep === true && screen.created[0]?.type === "Solid" && (await native.checkBodies([screen.created[0]!.id]))[0]!.valid,
+    brief(screen) + " thickenedAfterSweep " + screen.thickenedAfterSweep);
+  await native.undo();
+  await native.undo();
+
   // --- feature parameters: extrude both ways / as a wall, polygon pipe, deform offset ---
   const F = X + 1000;
   const coin = (await native.createCircle([F, 0, 0], 10)).created[0]!;

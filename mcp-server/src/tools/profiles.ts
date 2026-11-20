@@ -168,7 +168,9 @@ const tools: Tool[] = [
       "`alignment` normal (default; the section turns with the path) / parallel (it keeps its " +
       "start orientation, so the end face stays parallel to the start); " +
       "`corners` mitre (default) / round at the corners of a polyline path; `thickness` " +
-      "(millimetres) sweeps a wall instead of a full section. Undoable.",
+      "(millimetres) sweeps a wall instead of a full section; where Plasticity's own wall fails " +
+      "(seen on a rail-swept open section) the section is swept as a surface and thickened, half " +
+      "to each side (`thickenedAfterSweep: true`, two undo steps). Undoable.",
     inputSchema: {
       type: "object",
       required: ["pathId"],
@@ -247,6 +249,16 @@ const handlers: ToolFamily["handlers"] = {
 
   sweep_profile: async (rawArgs) => {
     const args = SweepProfileArgs.parse(rawArgs ?? {});
+    if (args.thickness !== undefined) {
+      return ok(
+        await native.sweepWithThickness((args.profileId ?? args.regionIds)!, args.pathId, args.twist, args.scale, {
+          guideIds: args.guideIds,
+          alignment: args.alignment,
+          corners: args.corners,
+          thicknessMm: args.thickness,
+        }),
+      );
+    }
     return ok(
       await native.sweepProfile(
         (args.profileId ?? args.regionIds)!,
