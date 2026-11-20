@@ -172,7 +172,7 @@ A closed curve → Solid, an open one → Sheet. A curve id is refused when othe
 | Delete | `delete_bodies` | — |
 | Rename | `rename_body` | — |
 | Group, Ungroup, Move to group | `group_bodies`, `ungroup`, `move_to_group`, `list_groups` | Bodies only. No renaming or deleting of a group, no groups of groups. |
-| Hide, Unhide All, Isolate | `set_visibility`, `unhide_all`, `isolate`, `unisolate` | Bodies only — not groups, instances or reference meshes. |
+| Hide, Unhide All, Isolate | `set_visibility`, `unhide_all`, `isolate`, `unisolate` | Bodies only — not groups, instances or reference meshes. `set_visibility` rebuilds and redraws the window's scene after changing the flags (without that a hidden body stayed drawn). |
 | Lock, Unlock All | `set_locked`, `unlock_all` | Bodies only. |
 | Materials: create, assign, remove | `create_material`, `set_material`, `remove_material`, `list_materials` | Per body, not per face. An existing material cannot be edited or deleted. |
 
@@ -197,12 +197,12 @@ A closed curve → Solid, an open one → Sheet. A curve id is refused when othe
 | Export Parasolid | `export_parasolid` | `.x_t`, `.x_b` |
 | Export STL, OBJ, 3MF | `export_mesh` | STL and OBJ in millimetres; 3MF in metres with the unit declared. |
 | Export SVG (hidden-line drawing) | `export_drawing` | Solids and Sheets. |
-| Export PNG | `screenshot` | The viewport as it is drawn, longest side ≤ 1568 px. |
+| Export PNG | `screenshot` | The viewport as it is drawn, longest side ≤ 1568 px; taken after the window has drawn three frames following the request. |
 | Import STEP, Parasolid | `import_step`, `import_parasolid` | Imported bounds can be a little inflated by the import tolerance. |
 | Import SVG | `import_svg` | `rect`, `circle`, `path`, `polyline`; into the XY plane, y flipped. |
 | Import STL, OBJ, 3MF | `import_mesh`, `list_reference_meshes`, `delete_reference_meshes` | A reference mesh, as in Plasticity — visible, but not a body. No moving or hiding. |
 | Save | `save_document` | **A copy only.** |
-| New, Open | `new_document`, `open_document` | In place of the open document. |
+| New, Open | `new_document`, `open_document` | In place of the open document. `open_document` takes only a plain-ASCII path: on 26.1.3 opening from a path with Cyrillic letters hangs the window (saving there works), so such a path is refused. |
 | Export / import IGES, SAT | — | Studio edition. |
 
 File tools take absolute paths, check the extension and do not replace an existing file without `overwrite: true`.

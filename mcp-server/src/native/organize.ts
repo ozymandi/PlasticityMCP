@@ -113,6 +113,13 @@ const FIND_GROUP = `const groupIds = Array.from(this.db.groups.snapshot().groupI
  * A native command with its body replaced: the way to make node changes an undo step.
  * `prepare` runs first and resolves ids, so that a bad one changes nothing.
  */
+/** Rebuild the window's scene from the document and redraw every viewport. */
+const REFRESH_SCENE = `
+            const updated = editor.scene.update();
+            if (updated && typeof updated.then === 'function') await updated;
+            editor.signals.sceneGraphChanged.dispatch();
+            for (const viewport of editor.viewports) viewport.setNeedsRender();`;
+
 const carrier = (prepare: string, body: string): string => `async function (args) {
         ${BUSY_GUARD}
         const editor = this;
@@ -262,7 +269,11 @@ export class OrganizeTools extends SceneTools {
 
   // ---------------- visibility, isolation, locking ----------------
 
-  /** Hide or show bodies. */
+  /**
+   * Hide or show bodies. The flags are set on the document's nodes directly, which the
+   * window's scene does not watch: the scene is rebuilt and redrawn afterwards, or a hidden
+   * body stays drawn and a body changed while hidden does not reappear.
+   */
   setVisibility(ids: number[], visible: boolean): Promise<MutationResult> {
     return this.mutate(
       carrier(
@@ -270,7 +281,8 @@ export class OrganizeTools extends SceneTools {
         `for (const key of keys) {
               editor.db.nodes.setHidden(key, !args.visible);
               if (args.visible) editor.db.nodes.setVisible(key, true);
-            }`,
+            }
+            ${REFRESH_SCENE}`,
       ),
       [],
       [{ ids, visible }],

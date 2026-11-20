@@ -33,18 +33,26 @@ export class ViewTools extends ExchangeTools {
       const output = path === undefined ? undefined : await checkOutput(path, [".png"], overwrite);
       const client = this.client;
       const area = await this.call<{ x: number; y: number; width: number; height: number; dpr: number }>(
-        `function () {
+        `async function () {
           if (document.hidden) {
             throw new Error('The Plasticity window is covered or minimized; bring it into view and retry');
           }
           const element = document.querySelector('plasticity-viewport');
           if (!element) throw new Error('Plasticity viewport element was not found');
           for (const viewport of this.viewports) viewport.setNeedsRender();
+          // Wait until the window has really drawn a few frames after the request, instead of a
+          // fixed pause that a heavy scene or a slow machine can outrun (capped at 2 s).
+          await new Promise((resolve) => {
+            let frames = 0;
+            const tick = () => (++frames >= 3 ? resolve() : requestAnimationFrame(tick));
+            requestAnimationFrame(tick);
+            setTimeout(resolve, 2000);
+          });
           const r = element.getBoundingClientRect();
           return { x: r.x, y: r.y, width: r.width, height: r.height, dpr: window.devicePixelRatio };
         }`,
       );
-      await delay(200); // let the requested frame render
+      await delay(50); // the compositor presents the last drawn frame
       const scale = Math.min(1, SCREENSHOT_MAX_SIDE / (Math.max(area.width, area.height) * area.dpr));
       const shot = await client!
         .send<{ data: string }>(

@@ -69,7 +69,9 @@ const tools: Tool[] = [
       "Open a `.plasticity` file (absolute `path`) in this window, IN PLACE OF the document " +
       "that is open. Refused while the open document has unsaved changes — save it first " +
       "with save_document, or pass `discardChanges: true` to drop them for good. Not " +
-      "undoable. Returns the environment and the number of bodies of the opened document.",
+      "undoable. Returns the environment and the number of bodies of the opened document. " +
+      "The path must be plain ASCII: Plasticity hangs on a path with Cyrillic letters or other " +
+      "non-ASCII characters, so such a path is refused — copy the file to a Latin-only path first.",
     inputSchema: {
       type: "object",
       required: ["path"],
