@@ -59,7 +59,13 @@ const TOPICS = {
 - Never trust the order of a saved id list: before a batch move or delete, check what each id is in list_bodies (name and the centre of its bounds) and give each body its own move; afterwards check every centre against its target. A success flag says nothing about which body went where.
 - A sweep rail steers the whole section: an edge free between the rails can be lifted or dropped (a windscreen's bottom edge at 830 instead of 765). Check the edges that matter after a rail sweep and correct them with scale_bodies or one more rail.
 - The full inner loop of a deep pocket (a wheel well) refuses a fillet (16063): fillet the visible rim alone and say the hidden edges stay sharp.
-- loft_edges: an opening bounded by several edges is one end - list all its edges, connected edges chain by themselves. A curved guide (guideIds) works only between curve ends; with Sheet edges it fails (22000) - make the ends curves with curves_from_edges first.`,
+- loft_edges: an opening bounded by several edges is one end - list all its edges, connected edges chain by themselves. A curved guide (guideIds) works only between curve ends; with Sheet edges it fails (22000) - make the ends curves with curves_from_edges first.
+- A fillet wider than half of a narrow end face makes the body invalid without an error (13808). Run check_bodies after every fillet near a narrow end.
+- Closed control-polygon splines are often "ambiguous" when passed by id to loft_profiles, extrude_profile or revolve_profile: pass regionIds from list_regions instead. An old helper curve in the same plane also makes a call by id refuse - delete helper curves right after use.
+- imprint and project along a direction mark only the first surface hit. To mark both sides of a body, do it from each side.
+- undo steps back through deletes too. Count the steps before undoing.
+- Edge and face ids keep their number across versions of a body; only the prefix before e / f changes. A fillet that trims an edge gives it a new number: read the topology again after fillets.
+- set_view reports "camera did not reach the asked direction" while the user moves the viewport: retry later and do not trust a screenshot taken right after it.`,
   surfacing: `Free-form surfacing (Indie licence)
 When: a loft through closed sections is fine for one body that does not branch, with sections close together. Use curves and patches when the form branches (a wing out of a body), must flow tangentially into another surface, needs a cap or dome, or when sparse sections bulge.
 
@@ -86,7 +92,12 @@ Recipes
 - Fins, wings, handles: boolean union first, then a G2 root blend (fillet shape "g2" on the edges between a body face and a part face), then round the outer edges. Rounding the outer edges first makes the root blend fail.
 - Rounded ends of a lofted body: delete_faces the flat ends with heal: false, patch each opening with continuity "G1".
 - Quick car or product body: extrude the side outline, the plan outline and a cross-section through each other, one boolean intersection, round the sharp edges; cut wheel arches no deeper than the sill.
-- Pipe elbow or branch: open tube ends, loft_edges clamped, join.`,
+- Pipe elbow or branch: open tube ends, loft_edges clamped, join.
+- Body of two skins meeting at an angle: at each station two open sections sharing an end point; loft each skin on its own with one shared guide through those points, join, mirror_bodies + join, close the open ends with planar patches. The edge between the skins stays sharp for a fillet later.
+- Tapered end of a loft: finish with a small but not zero planar section and close it with a G0 patch. A G1 patch on a narrow cornered opening gives triangle faces whose creases refuse every fillet.
+- Loft growing out of another body: put its end sections fully inside the receiving body, so no planar end face shows. A g2 fillet on that nearly tangent junction fails; a round one works.
+- Foil profile (legs, fins, struts, blades): one closed control-polygon spline - two points on the leading edge, the widest point at about a quarter of the chord, a very thin trailing edge; loft through a few such sections. A part repeated around an axis: one part from an outline with a thickness, turn it to its angle, array_radial, union, fillet the roots. A mirrored copy of such a group turns the other way.
+- Enlarging a part already united with the body: build the new shape so that it envelops the old one - one union replaces it. A boss that has to go comes off with delete_faces (heal), its faces together with its junction fillet and socket.`,
   tools: `Which tool for which job
 - Straight walls from an outline: extrude_profile (distanceBack, thickness for a wall).
 - Round part from a half section: revolve_profile (thickness for a shell).
@@ -133,6 +144,8 @@ Recipes
 - Go through all outer edges of a body, not only the ones facing the camera.
 - Picking edges on a detailed body: get_body_topology with include "edges" and a thin \`box\` around the plane or line where they are, and \`kinds\` (line / circle / curve). A full listing is very long.
 - Edges that meet in one vertex go into one fillet call with one radius. Corners first and the loop after is refused.
+- When a network of edges that meet in vertices refuses one call, fillet the main network first, then separately a chain that touches it only at its ends.
+- A thin edge limits the radius of the rims around it (next to a trailing edge about 2 mm thick only R2 passes). A shaft wider than the thin part it enters leaves ledges that refuse fillets - keep the shaft inside the profile.
 - A closed loop of edges takes a chamfer. An open chain that refuses a chamfer often takes a fillet of the same size.
 - A fillet that is too large does not fail — it gives another shape. Check the bounds, the face count and a screenshot.
 - Cheaper than filleting a solid: round the corners of the profile curve first (fillet / chamfer on the curve), then extrude.
@@ -152,6 +165,8 @@ Recipes
 - Chamfer the rim of engraved text (0.05-0.1 mm). Letters can hold a tiny segment that makes the whole call fail: leave it out of the chain.
 - Text on a flat face: create_text on that face, list_regions, extrude_profile the letter regions (not the holes inside letters) into the body, boolean difference. The region normal decides which way a positive distance goes: read it and the returned bounds.
 - Text on a cylinder: unwrap_faces the wall, make the letter solids on the flat sheet, deform them onto the wall, boolean difference.
+- Recess after an outline on a curved face (text, signs, panels): project the curves onto the body along a direction, imprint them, offset the faces inside the outline by minus the depth. To chamfer the rim, read the faces in a tight box around one outline at a time: each wall face has four edges - floor, two seams, rim; the rim is the one left.
+- Inlay in a groove (a light strip): imprint the outline, extrude_faces minus the depth for the groove, thicken the groove floor into the inlay and scale it down a little for a shadow gap.
 - Thread: create_spiral with a whole number of turns, a small triangle profile, sweep_profile, trim with a box (boolean intersection) where it sticks out, then boolean with the part.
 - Screws and other small hardware: revolve_profile, then copy_bodies to each place.
 - Delete helper curves and sheets when the detail is done.`,

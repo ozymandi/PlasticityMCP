@@ -2,7 +2,7 @@
 name: plasticity-mcp
 description: Model real CAD geometry in a running Plasticity window through the Plasticity MCP server (tools mcp__plasticity__*: native_connect, create_*, extrude_profile, boolean, fillet, chamfer, cut, get_body_topology, …). Use whenever the user asks to build, edit, measure or export a part or a model in Plasticity, to model something from a drawing or a description, or mentions Plasticity MCP.
 metadata:
-  version: "1.3.0"
+  version: "1.4.0"
   author: ozymandi
 ---
 
@@ -88,6 +88,15 @@ step of detailing.
      0.3 below it, extruded 0.6); `deform` them from the Sheet's face onto the wall; read
      from the returned bounds where and which way up they landed — the Sheet's axes may
      map reversed — and shift them along the axis with `move_bodies`; then subtract.
+   - **A recess after an outline on a curved face** (text, signs, panels): `project` the
+     curves onto the body (along a direction), `imprint` them, `offset` the faces inside the
+     outline by minus the depth. To chamfer the rim, read the faces in a tight `box` around
+     one outline at a time: each wall face has four edges — one on the floor, two seams with
+     the neighbouring walls and the rim; the rim is the one left. With hundreds of edges hand
+     this to a subagent so the topology reads stay out of the main context.
+   - **An inlay in a groove** (a light strip, a trim line): `imprint` the outline, make the
+     groove with `extrude_faces` minus the depth, `thicken` the groove floor into the inlay
+     and scale it down a little for a shadow gap.
    - **Screws** and other small hardware.
    - **Threads** (sockets, bushings, screw-in rings): a helix from `create_spiral`, a small
      thread profile swept along it with `sweep_profile`, then `boolean` into the part. Give
@@ -124,6 +133,11 @@ How to keep to it:
 - Edges that meet in one vertex go into **one call with one radius** (the side edges, the top
   loop and the corners of a block together). A loop whose corners are left sharp, or corners first
   and the loop after, is refused by the kernel (`PK_BODY_fix_blends`).
+- When a network of edges that meet in vertices refuses one call, fillet the main network
+  first and then, separately, a chain that touches it only at its ends.
+- A thin edge limits the radius of the rims around it: next to a trailing edge about 2 mm
+  thick only R2 passes. A shaft or axle wider than the thin part it enters leaves ledges
+  whose edges refuse fillets — keep the shaft inside the profile.
 - A **closed** junction loop takes a chamfer. An **open** junction chain often refuses the
   chamfer at its ends but takes a `fillet` of the same size — try that before giving up.
 - A junction can only be blended where the joined part ends **on** the body it joins. A
@@ -204,6 +218,15 @@ How to keep to it:
   mouth of four): connected edges chain into one end by themselves, in any order. A curved
   guide (`guideIds`) works only between curve ends — with Sheet edges the kernel fails
   (22000): make the ends curves with `curves_from_edges` first and loft those.
+- **A fillet wider than half of a narrow end face makes the body invalid without an error**
+  (13808). Run `check_bodies` after every fillet near a narrow end.
+- **Closed control-polygon splines are often "ambiguous" when passed by id** to
+  `loft_profiles`, `extrude_profile` or `revolve_profile`: pass `regionIds` from
+  `list_regions` instead. An old helper curve lying in the same plane also makes a call by id
+  refuse — delete helper curves right after use.
+- **`imprint` and `project` along a direction mark only the first surface hit.** To mark
+  both sides of a body, do it from each side.
+- **`undo` steps back through deletes too.** Count the steps before undoing.
 - **Standard chess layout** (placing a set from a description): the back rank sits in
   the outer row, closest to the board edge; the pawns stand one row inward, between
   the back rank and the board center. The player side is the board-edge side.
@@ -282,6 +305,26 @@ saddle grew from 130 to 164 mm between two sections).
   arches no deeper than the sill (a deeper cut splits the body into pieces). It gives a
   boxy body; for a real free form use curves and patches.
 - Pipe elbow or branch: open tube ends, `loft_edges` clamped, joined.
+- A body of two skins meeting at an angle: at each station two open sections sharing an end
+  point; loft each skin on its own with one shared guide through those points (an
+  interpolating spline through them), `join`, `mirror_bodies` + `join`, close the open ends
+  with planar patches. The edge between the skins stays sharp for a fillet later; the seam on
+  the symmetry plane measures G2.
+- A tapered end of a loft: finish with a small but not zero planar section and close it with
+  a G0 patch. A G1 patch on a narrow cornered opening gives triangle faces whose crease
+  edges refuse every fillet (16065 / 16067).
+- A loft that grows out of another body: put its end sections fully inside the receiving
+  body, so no planar end face shows. The junction is then nearly tangent at its tips: a
+  `g2` fillet there fails (16065), a round one works.
+- A foil profile (legs, fins, struts, blades): one closed control-polygon spline — two
+  points on the leading edge, the widest point at about a quarter of the chord, a very thin
+  trailing edge; loft through a few such sections. A part repeated around an axis: one part
+  from an outline with a thickness, turn it to its angle, `array_radial`, `union`, fillet the
+  roots. A mirrored copy of such a group turns the other way (left- and right-hand).
+- Enlarging a part already united with the body: build the new shape so that it envelops
+  the old one — one union replaces it without touching the details around. A boss that has to
+  go comes off with `delete_faces` (`heal`), its faces together with its junction fillet and
+  socket.
 
 ## Choosing the tool
 
@@ -330,3 +373,8 @@ Every command of Plasticity's modelling menu, by what it is for:
   back the state the file was saved with. To look from any other side pass `direction`
   (model → camera, e.g. [1, 1, 1] from behind) instead of `view`.
 - Undo only your own steps: the history may hold the user's work from before.
+- Edge and face ids keep their number across versions of a body; only the prefix before
+  `e` / `f` changes. A fillet that trims an edge gives it a new number, so read the topology
+  again after fillets.
+- `set_view` reports "camera did not reach the asked direction" while the user moves the
+  viewport: retry later, and do not trust a screenshot taken right after such an error.
