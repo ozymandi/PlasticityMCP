@@ -11,3 +11,24 @@ Thumbs.db
 .idea/
 .claude/
 plasticity-fork/
+
+# promo: renders, encoded videos, editor caches and backups (sources stay tracked)
+promo/renders/
+promo/videos/spectrum/
+promo/videos/surfacing/
+promo/videos/*/renders/
+promo/videos/*/.thumbnails/
+promo/videos/*/.waveform-cache/
+promo/videos/*/.hyperframes/
+promo/ae/Auto-Save/
+promo/ae/proxy/
+promo/ae/check/
+promo/ae/final/
+promo/ae/*Logs/
+promo/audio/Backup/
+promo/audio/*_media/
+promo/audio/*.wav
+promo/audio/*.pkf
+promo/assets/video/
+promo/assets/mesh/
+*.blend1
