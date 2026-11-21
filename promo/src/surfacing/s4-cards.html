@@ -1,0 +1,92 @@
+<!doctype html>
+<html>
+  <head><meta charset="UTF-8" /></head>
+  <body>
+    <template>
+      <style>
+        /*@common*/
+        .s4 .head { position: absolute; left: 120px; top: 150px; opacity: 0; }
+        .s4 .head .h1 { font-size: 112px; color: #ece9e2; }
+        .s4 .head .sub { font-family: "Owners", sans-serif; font-size: 24px; color: #8a8a8a; letter-spacing: 0.08em; margin-top: 18px; }
+        .s4 .head .sub b { color: #c9a57e; font-weight: 500; }
+        .s4 .cards { position: absolute; left: 120px; right: 120px; top: 470px; display: flex; gap: 24px; }
+        .s4 .card { flex: 1; height: 360px; border: 1px solid #3a3a3a; border-radius: 10px; background: rgba(30,30,30,0.72);
+          padding: 30px 28px; display: flex; flex-direction: column; opacity: 0; }
+        .s4 .card .k { font-family: "Owners", sans-serif; font-size: 26px; color: #c9a57e; }
+        .s4 .card .t { font-family: "Adhesive Nr. Eight", "Owners", sans-serif; font-weight: 400; font-synthesis: none; font-size: 44px; line-height: 1.0; color: #ece9e2; margin-top: 22px; }
+        .s4 .card .d { font-family: "Owners", sans-serif; font-size: 19px; line-height: 1.55; color: #9a978f; margin-top: auto; }
+        .s4 .card svg.mini { width: 100%; height: 70px; margin-top: 18px; }
+        .s4 .card svg.mini path { fill: none; stroke: #ece9e2; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+        .s4 .card svg.mini .a { stroke: #c9a57e; }
+        .s4 .wrap { position: absolute; inset: 0; }
+      </style>
+      <div id="root" data-composition-id="s4-cards" data-width="1920" data-height="1080">
+        <div class="s4">
+          <div class="wrap">
+            <div class="grid"></div>
+            <div class="head">
+              <div class="h1">Free-form surfacing</div>
+              <div class="sub">new in plasticity-mcp · <b>145 tools</b> · every parameter exposed</div>
+            </div>
+            <div class="cards">
+              <div class="card">
+                <div class="k">patch</div>
+                <div class="t">G0 · G1 · G2</div>
+                <svg class="mini" viewBox="0 0 240 70"><path d="M10 60 C 60 60, 90 12, 120 12 S 180 60, 230 60"/><path class="a" d="M70 44 C 95 20, 145 20, 170 44"/></svg>
+                <div class="d">fills an opening tangent or curvature-continuous to its neighbours</div>
+              </div>
+              <div class="card">
+                <div class="k">loft_edges</div>
+                <div class="t">clamped</div>
+                <svg class="mini" viewBox="0 0 240 70"><path d="M10 20 H 80"/><path d="M160 50 H 230"/><path class="a" d="M80 20 C 125 20, 115 50, 160 50"/></svg>
+                <div class="d">joins two surfaces along their edges, tangent at both ends</div>
+              </div>
+              <div class="card">
+                <div class="k">sweep_profile</div>
+                <div class="t">1–3 rails</div>
+                <svg class="mini" viewBox="0 0 240 70"><path d="M10 14 C 90 4, 150 24, 230 14"/><path d="M10 58 C 90 66, 150 46, 230 58"/><path class="a" d="M120 12 V 60"/></svg>
+                <div class="d">a section steered and scaled by rails, with a wall thickness</div>
+              </div>
+              <div class="card">
+                <div class="k">fillet</div>
+                <div class="t">round · conic · G2</div>
+                <svg class="mini" viewBox="0 0 240 70"><path d="M20 10 V 40"/><path d="M60 62 H 220"/><path class="a" d="M20 40 C 20 56, 30 62, 60 62"/></svg>
+                <div class="d">blends whose seam stays curvature-continuous</div>
+              </div>
+              <div class="card">
+                <div class="k">measure_continuity</div>
+                <div class="t">0.000002°</div>
+                <svg class="mini" viewBox="0 0 240 70"><path d="M10 50 C 70 50, 100 20, 120 20"/><path class="a" d="M120 20 C 140 20, 170 50, 230 50"/><path d="M120 6 V 34"/></svg>
+                <div class="d">angle between both face normals across a seam</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <script>
+        //@helpers
+        (() => {
+          const tl = gsap.timeline({ paused: true });
+          const q = (s) => document.querySelector(".s4 " + s);
+          tl.set(q(".head"), { opacity: 1 }, 0.15);
+          tl.fromTo(q(".head"), { y: 18 }, { y: 0, duration: 0.5, ease: "power3.out" }, 0.15);
+          const cards = Array.from(document.querySelectorAll(".s4 .card"));
+          cards.forEach((c, i) => {
+            const t = 0.6 + i * 0.16;
+            tl.set(c, { opacity: 1 }, t);
+            tl.fromTo(c, { y: 40, scale: 0.96 }, { y: 0, scale: 1, duration: 0.5, ease: "back.out(1.5)" }, t);
+          });
+          const minis = Array.from(document.querySelectorAll(".s4 svg.mini path"));
+          const lens = hfMeasure(minis);
+          minis.forEach((p, i) => {
+            const L = lens[i] * 1.02;
+            tl.fromTo(p, { strokeDasharray: L, strokeDashoffset: L }, { strokeDashoffset: 0, duration: 0.7, ease: "power2.out" }, 1.0 + Math.floor(i / 2) * 0.12);
+          });
+          tl.to(q(".wrap"), { opacity: 0, duration: 0.3, ease: "power1.in" }, 4.15);
+          window.__timelines["s4-cards"] = tl;
+          tl.seek(0);
+        })();
+      </script>
+    </template>
+  </body>
+</html>

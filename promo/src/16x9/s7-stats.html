@@ -1,0 +1,59 @@
+<!doctype html>
+<html>
+  <head><meta charset="UTF-8" /></head>
+  <body>
+    <template>
+      <style>
+        /*@common*/
+        .s7 .center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .s7 .big { display: block; font-family: "Adhesive Nr. Eight", Montserrat, sans-serif; font-weight: 400; font-synthesis: none; font-size: 360px; letter-spacing: 0; line-height: 0.9; color: #ece9e2; font-variant-numeric: tabular-nums; opacity: 0; }
+        .s7 .unit { display: block; font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 34px; letter-spacing: 0.3em; color: #c9a57e; margin-top: 26px; opacity: 0; }
+        .s7 .pills { display: flex; gap: 18px; margin-top: 70px; }
+        .s7 .pills .tag { font-size: 26px; padding: 14px 24px; opacity: 0; }
+        .s7 .wrap { position: absolute; inset: 0; }
+      </style>
+      <div id="root" data-composition-id="s7-stats" data-width="1920" data-height="1080">
+        <div class="s7">
+          <div class="wrap">
+            <div class="grid"></div>
+            <div class="vignette"></div>
+            <div class="center">
+              <div class="big">0</div>
+              <div class="unit">MCP TOOLS</div>
+              <div class="pills">
+                <div class="tag">native <span class="tan">B-Rep</span></div>
+                <div class="tag"><span class="tan">CDP</span> + WebSocket</div>
+                <div class="tag">Plasticity <span class="tan">26.1.3</span> · Windows</div>
+                <div class="tag"><span class="tan">--catalog=compact</span> · 26 tools / 5k tokens</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <script>
+        //@helpers
+        (() => {
+          const tl = gsap.timeline({ paused: true });
+          const q = (s) => document.querySelector(".s7 " + s);
+          const big = q(".big");
+          const proxy = { v: 0 };
+          tl.set(big, { opacity: 1 }, 0.2);
+          // counting-dynamic-scale: number and scale share one position
+          tl.to(proxy, { v: 144, duration: 1.6, ease: "power3.out", onUpdate: () => { big.textContent = String(Math.round(proxy.v)); } }, 0.2);
+          tl.fromTo(big, { scale: 0.7 }, { scale: 1, duration: 1.6, ease: "power3.out" }, 0.2);
+          tl.set(q(".unit"), { opacity: 1 }, 1.4);
+          tl.fromTo(q(".unit"), { y: 12 }, { y: 0, duration: 0.4, ease: "power3.out" }, 1.4);
+          const pills = Array.from(document.querySelectorAll(".s7 .pills .tag"));
+          pills.forEach((p, i) => {
+            const t = 2.2 + i * 0.16;
+            tl.set(p, { opacity: 1 }, t);
+            tl.fromTo(p, { y: 24, scale: 0.94 }, { y: 0, scale: 1, duration: 0.45, ease: "back.out(1.6)" }, t);
+          });
+          tl.to(q(".wrap"), { opacity: 0, duration: 0.3, ease: "power1.in" }, 5.7);
+          window.__timelines["s7-stats"] = tl;
+          tl.seek(0);
+        })();
+      </script>
+    </template>
+  </body>
+</html>

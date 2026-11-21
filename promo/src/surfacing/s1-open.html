@@ -1,0 +1,50 @@
+<!doctype html>
+<html>
+  <head><meta charset="UTF-8" /></head>
+  <body>
+    <template>
+      <style>
+        /*@common*/
+        .s1 .prompt { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); padding: 0 180px; }
+        .s1 .line { font-family: "Owners", sans-serif; font-size: 40px; line-height: 1.4; color: #ece9e2; white-space: nowrap; display: flex; align-items: baseline; }
+        .s1 .ps { color: #c9a57e; margin-right: 22px; }
+        .s1 .cur { display: inline-block; width: 24px; height: 50px; background: #ece9e2; margin-left: 6px; transform: translateY(8px); }
+        .s1 .line2 { margin-top: 28px; font-size: 28px; color: #a0a0a0; opacity: 0; }
+        .s1 .line2 .tan { color: #c9a57e; }
+        .s1 .ok { display: inline-flex; align-items: center; gap: 10px; color: #2fd27a; opacity: 0; margin-left: 22px; }
+        .s1 .brand { position: absolute; left: 56px; top: 44px; font-family: "Owners", sans-serif; font-size: 22px; color: #858585; letter-spacing: 0.1em; opacity: 0; }
+        .s1 .brand b { color: #c9a57e; font-weight: 500; }
+        .s1 .wrap { position: absolute; inset: 0; }
+      </style>
+      <div id="root" data-composition-id="s1-open" data-width="1920" data-height="1080">
+        <div class="s1">
+          <div class="wrap">
+            <div class="grid"></div>
+            <div class="brand">Plasticity<b>MCP</b></div>
+            <div class="prompt">
+              <div class="line"><span class="ps">&gt;</span><span class="txt"></span><span class="cur"></span></div>
+              <div class="line line2"><span>plasticity-mcp · 145 tools · <span class="tan">free-form surfacing</span></span><span class="ok"><svg class="ic" viewBox="0 0 16 16"><path d="M2.5 8.6l3.6 3.4L13.5 4.2"/></svg>connected</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <script>
+        //@helpers
+        (() => {
+          const tl = gsap.timeline({ paused: true });
+          const q = (s) => document.querySelector(".s1 " + s);
+          tl.fromTo(q(".brand"), { opacity: 0, y: -8 }, { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" }, 0.15);
+          tl.fromTo(q(".cur"), { opacity: 1 }, { opacity: 0, duration: 0.42, ease: "steps(1)", repeat: 8, yoyo: true }, 0);
+          const end = typeText(tl, q(".txt"), "model a Maserati 300S and a boat with free-form surfaces", 0.4, 40);
+          tl.set(q(".line2"), { opacity: 1 }, end + 0.25);
+          tl.fromTo(q(".line2"), { x: -12 }, { x: 0, duration: 0.3, ease: "power3.out" }, end + 0.25);
+          tl.set(q(".ok"), { opacity: 1 }, end + 0.8);
+          tl.fromTo(q(".ok"), { scale: 1.25 }, { scale: 1, duration: 0.25, ease: "power3.out" }, end + 0.8);
+          tl.to(q(".wrap"), { opacity: 0, duration: 0.3, ease: "power1.in" }, 4.15);
+          window.__timelines["s1-open"] = tl;
+          tl.seek(0);
+        })();
+      </script>
+    </template>
+  </body>
+</html>

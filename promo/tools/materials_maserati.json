@@ -1,0 +1,43 @@
+{
+  "Rosso": {
+    "match": ["Body"],
+    "principled": {"Base Color": "#b3121b", "Metallic": 0.0, "Roughness": 0.3, "Coat Weight": 1.0, "Coat Roughness": 0.03}
+  },
+  "Chrome": {
+    "match": ["Wheel_*", "Spinner_*", "Exhaust_*", "Mirror_head", "Grille_bar", "Catch_*", "Fuel_cap_*",
+              "Headlamp_bezel_*", "Gauge_*_bezel", "Maker_plate", "Pilot_light_ring", "Ignition_switch"],
+    "principled": {"Base Color": "#d9d9d9", "Metallic": 1.0, "Roughness": 0.08}
+  },
+  "Rubber": {
+    "match": ["Tyre_*"],
+    "principled": {"Base Color": "#1b1b1b", "Metallic": 0.0, "Roughness": 0.85}
+  },
+  "Glass": {
+    "match": ["Windscreen", "Headlamp_cover_*", "Headlamp_lens_*", "Pilot_light_lens"],
+    "principled": {"Base Color": "#ffffff", "Metallic": 0.0, "Roughness": 0.0, "IOR": 1.5, "Transmission Weight": 1.0}
+  },
+  "Taillight_red": {
+    "match": ["Taillight_*"],
+    "principled": {"Base Color": "#b0101a", "Metallic": 0.0, "Roughness": 0.05, "IOR": 1.5, "Transmission Weight": 0.9}
+  },
+  "Dark_metal": {
+    "match": ["Grille", "Badge_plate", "Ignition_key", "Horn_button", "Steering_column"],
+    "principled": {"Base Color": "#2b2b2b", "Metallic": 0.6, "Roughness": 0.4}
+  },
+  "Leather_red": {
+    "match": ["Seat_*"],
+    "principled": {"Base Color": "#5e1418", "Metallic": 0.0, "Roughness": 0.55}
+  },
+  "Wood": {
+    "match": ["Steering_rim"],
+    "principled": {"Base Color": "#8a5a2b", "Metallic": 0.0, "Roughness": 0.35, "Coat Weight": 0.6, "Coat Roughness": 0.1}
+  },
+  "Aluminium": {
+    "match": ["Dash_panel", "Steering_hub_spokes", "Column_bracket"],
+    "principled": {"Base Color": "#c8cbcf", "Metallic": 1.0, "Roughness": 0.3}
+  },
+  "Gauge_face": {
+    "match": ["Gauge_*_face"],
+    "principled": {"Base Color": "#efe6cf", "Metallic": 0.0, "Roughness": 0.4}
+  }
+}

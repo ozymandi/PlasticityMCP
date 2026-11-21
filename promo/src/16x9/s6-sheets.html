@@ -1,0 +1,58 @@
+<!doctype html>
+<html>
+  <head><meta charset="UTF-8" /></head>
+  <body>
+    <template>
+      <style>
+        /*@common*/
+        .s6 .cols { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; display: flex; gap: 0; }
+        .s6 .col { position: relative; width: 480px; height: 1080px; overflow: hidden; opacity: 0; }
+        .s6 .col img { position: absolute; left: 0; top: 0; width: 480px; height: auto; display: block; }
+        .s6 .shade { position: absolute; inset: 0; pointer-events: none;
+          background: linear-gradient(rgba(22,22,22,0.9) 0%, rgba(22,22,22,0) 14%, rgba(22,22,22,0) 86%, rgba(22,22,22,0.9) 100%); }
+        .s6 .title { position: absolute; left: 60px; top: 44px; display: flex; gap: 14px; align-items: center; opacity: 0; }
+        .s6 .title .tag { font-size: 24px; padding: 10px 18px; }
+        .s6 .wrap { position: absolute; inset: 0; }
+      </style>
+      <div id="root" data-composition-id="s6-sheets" data-width="1920" data-height="1080">
+        <div class="s6">
+          <div class="wrap">
+            <div class="grid"></div>
+            <div class="cols">
+              <div class="col c1"><img src="assets/img/nes-sheet.png" alt="" /></div>
+              <div class="col c2"><img src="assets/img/tt-sheet.png" alt="" /></div>
+              <div class="col c3"><img src="assets/img/cam-sheet.png" alt="" /></div>
+              <div class="col c4"><img src="assets/img/bike-sheet.png" alt="" /></div>
+            </div>
+            <div class="shade"></div>
+            <div class="title">
+              <div class="tag"><span class="tan">export_drawing</span> → SVG</div>
+              <div class="tag">7 views per model · visible + hidden lines</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <script>
+        //@helpers
+        (() => {
+          const tl = gsap.timeline({ paused: true });
+          const q = (s) => document.querySelector(".s6 " + s);
+          // sheet heights at 480px wide: nes 2024, tt 2118, cam 2243, bike 2397
+          const H = { c1: 2024, c2: 2118, c3: 2243, c4: 2397 };
+          const D = 7.5;
+          Object.keys(H).forEach((c, i) => {
+            const y0 = -i * 110;
+            const travel = H[c] - 1080 + y0;
+            tl.fromTo(q("." + c), { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "power1.out" }, 0.1 + i * 0.15);
+            tl.fromTo(q("." + c + " img"), { y: y0 }, { y: y0 - travel, duration: D, ease: "none" }, 0);
+          });
+          tl.set(q(".title"), { opacity: 1 }, 0.6);
+          tl.fromTo(q(".title"), { y: -12 }, { y: 0, duration: 0.4, ease: "power3.out" }, 0.6);
+          tl.to(q(".wrap"), { opacity: 0, duration: 0.3, ease: "power1.in" }, D - 0.3);
+          window.__timelines["s6-sheets"] = tl;
+          tl.seek(0);
+        })();
+      </script>
+    </template>
+  </body>
+</html>

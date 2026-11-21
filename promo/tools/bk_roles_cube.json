@@ -1,0 +1,9 @@
+{
+  "Hull_main":     {"query": "carbon fiber",          "match": ["hull"], "slot": 0},
+  "Livery_yellow": {"query": "yellow car paint",      "match": ["hull"], "slot": 1},
+  "Livery_orange": {"query": "orange car paint",      "match": ["hull"], "slot": 2},
+  "Cowl":          {"query": "carbon fiber",          "match": ["outboard-cowl-*"]},
+  "Canopy":        {"query": "smoked tinted glass",   "match": ["canopy"]},
+  "Black_satin":   {"query": "black satin plastic",   "match": ["mast", "antenna", "canopy-arch", "bollard*", "bow-cleat", "outboard-lower-*", "outboard-prop-*", "rudder", "rudder-bearing"]},
+  "Signal_orange": {"query": "orange glossy plastic", "match": ["mast-light", "outboard-light-*", "transom-light"]}
+}
