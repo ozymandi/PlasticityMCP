@@ -59,3 +59,13 @@ Test pieces: a 1955 Maserati 300S from one side drawing and a 6 m boat from a si
 145 tools now. Code: https://github.com/ozymandi/PlasticityMCP
 
 #Plasticity #CAD #AI #MCP #IndustrialDesign
+
+## Threads (2 posts, each under 500 characters)
+
+1/ PlasticityMCP got free-form surfacing.
+
+The LLM in Plasticity no longer stops at solids: it patches openings with G2 continuity, lofts between edges, sweeps along rails, and checks its own seams. Test run: a 1955 Maserati 300S from one side drawing and a 6 m boat from a single photo. No mouse.
+
+https://youtu.be/lPXfhR7Ib30
+
+2/ Every surface in the video is native Plasticity B-Rep made through tool calls. 145 tools now, code on GitHub: https://github.com/ozymandi/PlasticityMCP
