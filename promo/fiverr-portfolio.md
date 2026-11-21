@@ -31,3 +31,39 @@ Stack: TypeScript / Node, Plasticity 2026.1, Blender for the brushed-steel rende
 5. `promo/assets/img/nes-sheet.png`, `promo/assets/img/tt-sheet.png` — drawing sheets
 
 Both covers: the 1920×1080 steel render scaled to 86 % and anchored to the bottom of a 1440×1080 canvas (#161616), title block top-left ("Plasticity" #ece9e2 + "MCP" #c9a57e in Adhesive Nr. Eight 132 px, subtitle "AI models real CAD in Plasticity" in Cascadia Mono 34 px as a stand-in for JetBrains Mono), then scaled to 1024×768.
+
+
+---
+
+# Fiverr portfolio entry — ZX Spectrum 128 promo (2026-10-26)
+
+**Project name** (46/50): `ZX Spectrum 128 — AI-built CAD to Octane promo`
+
+**Industry**: Industrial & Product Design, Software Development
+
+**Project duration**: 1–2 weeks (October 2026)
+
+**Project cost**: Designer's decision
+
+**Project started on**: 10 / 26
+
+**Project description** (≈1180/1400):
+
+A 1986 ZX Spectrum 128 "toastrack" built by an AI inside Plasticity through PlasticityMCP, then turned into a 44-second promo.
+
+The CAD part: from five reference photos the model drove Plasticity's own kernel to 188 solids: the two-part case with its seam and chamfers, 58 low keys with finger pads and the full 128K legend set, the finned heatsink with its notch, the rear edge connector, RGB DIN, RS232 and keypad sockets, screws, feet and vent slots. Every body is a valid B-rep with real fillets and chamfers, exported to STEP and to dimensioned drawing sheets.
+
+The render part: the model went over Plasticity's Blender bridge into Octane with scripted materials, a key-legend texture atlas and a 1 / 2 / 10 mm grid floor; six camera scenes (assembly, three slow fly-throughs with depth of field, a somersault, an axonometric hold) at 1000 samples per pixel.
+
+The cut: After Effects, opening with a pixel-exact Spectrum 128 boot — menu, 10 PRINT "hello speccy", LOAD "" — and a tape loader whose border stripes are simulated from the ROM loader's timing; the title frame loads as a SCREEN$ and the video starts in the same window. HUD labels, live timecode, section titles, progress bar, radial chromatic aberration, grain, and an 8-bit chiptune track.
+
+Stack: PlasticityMCP (TypeScript), Plasticity 2026.1, Blender 5.2 + Octane, After Effects 2026, Python for the Spectrum simulation.
+
+**Attachments** (first file = thumbnail, 1024×768, 4:3):
+
+1. `promo/assets/img/fiverr-cover-zx-1024x768.png` — axonometric Octane frame with the title block (thumbnail)
+2. `promo/videos/spectrum/spectrum-final-15mbps.mp4` — 44 s, 1080p30, 77 MB
+3. `examples/zx-spectrum-128/drawings/spectrum-presentation.png` — drawing sheet board
+4. `examples/zx-spectrum-128/detail-keys.png`, `detail-rear-ports.png` — Plasticity detail screenshots
+
+Cover: same recipe as the other two (1440×1080 #161616 canvas, image at 86 % anchored bottom, title block Adhesive Nr. Eight 132 px + Cascadia Mono 34 px, scaled to 1024×768), but the image is the Octane axonometric frame re-rendered without the floor with an alpha channel (`promo/assets/steel/zx-rgba.png`) so the Spectrum sits cut out on the background like the steel renders.
