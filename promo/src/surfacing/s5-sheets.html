@@ -1,0 +1,56 @@
+<!doctype html>
+<html>
+  <head><meta charset="UTF-8" /></head>
+  <body>
+    <template>
+      <style>
+        /*@common*/
+        .s5 .cols { position: absolute; left: 160px; top: 0; width: 1600px; height: 1080px; display: flex; gap: 40px; }
+        .s5 .col { position: relative; width: 780px; height: 1080px; overflow: hidden; opacity: 0; }
+        .s5 .col img { position: absolute; left: 0; top: 0; width: 780px; height: auto; display: block; }
+        .s5 .shade { position: absolute; inset: 0; pointer-events: none;
+          background: linear-gradient(rgba(22,22,22,0.92) 0%, rgba(22,22,22,0) 16%, rgba(22,22,22,0) 84%, rgba(22,22,22,0.92) 100%); }
+        .s5 .title { position: absolute; left: 160px; top: 44px; display: flex; gap: 14px; align-items: center; opacity: 0; }
+        .s5 .title .tag { font-size: 24px; padding: 10px 18px; display: inline-flex; align-items: center; gap: 12px; }
+        .s5 .wrap { position: absolute; inset: 0; }
+      </style>
+      <div id="root" data-composition-id="s5-sheets" data-width="1920" data-height="1080">
+        <div class="s5">
+          <div class="wrap">
+            <div class="grid"></div>
+            <div class="cols">
+              <div class="col c1"><img src="assets/img/maserati-sheet.png" alt="" /></div>
+              <div class="col c2"><img src="assets/img/cube-sheet-v2.png" alt="" /></div>
+            </div>
+            <div class="shade"></div>
+            <div class="title">
+              <div class="tag"><span class="tan">export_drawing</span><svg class="ic" viewBox="0 0 16 16"><path d="M2 8h11M9 4l4 4-4 4"/></svg>SVG</div>
+              <div class="tag">7 views per model · visible + hidden lines</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <script>
+        //@helpers
+        (() => {
+          const tl = gsap.timeline({ paused: true });
+          const q = (s) => document.querySelector(".s5 " + s);
+          // sheet heights at 780 px wide: maserati 1600x6350 -> 3096, cube 1600x6637 -> 3235
+          const H = { c1: 3096, c2: 3235 };
+          const D = 5;
+          Object.keys(H).forEach((c, i) => {
+            const y0 = -i * 140;
+            const travel = H[c] - 1080 + y0;
+            tl.fromTo(q("." + c), { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "power1.out" }, 0.1 + i * 0.15);
+            tl.fromTo(q("." + c + " img"), { y: y0 }, { y: y0 - travel, duration: D, ease: "none" }, 0);
+          });
+          tl.set(q(".title"), { opacity: 1 }, 0.5);
+          tl.fromTo(q(".title"), { y: -12 }, { y: 0, duration: 0.4, ease: "power3.out" }, 0.5);
+          tl.to(q(".wrap"), { opacity: 0, duration: 0.3, ease: "power1.in" }, D - 0.3);
+          window.__timelines["s5-sheets"] = tl;
+          tl.seek(0);
+        })();
+      </script>
+    </template>
+  </body>
+</html>

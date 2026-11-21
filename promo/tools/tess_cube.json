@@ -1,0 +1,14 @@
+{
+  "groups": [
+    {"name": "hero", "match": ["hull", "canopy", "canopy-arch", "outboard-cowl-*", "outboard-prop-*"], "tol": 0.0002, "angle": 0.05},
+    {"name": "detail", "match": ["mast", "mast-light", "outboard-lower-*", "outboard-light-*", "bow-cleat", "bollard*", "transom-light"], "tol": 0.0005, "angle": 0.08},
+    {"name": "rest", "match": ["*"], "tol": 0.001, "angle": 0.15}
+  ],
+  "link": [
+    ["outboard-cowl-stb", "outboard-cowl-port"],
+    ["outboard-lower-stb", "outboard-lower-port"],
+    ["outboard-light-stb", "outboard-light-port"],
+    ["outboard-prop-stb", "outboard-prop-port"],
+    ["bollard", "bollard.001"]
+  ]
+}

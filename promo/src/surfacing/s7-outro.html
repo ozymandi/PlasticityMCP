@@ -1,0 +1,56 @@
+<!doctype html>
+<html>
+  <head><meta charset="UTF-8" /></head>
+  <body>
+    <template>
+      <style>
+        /*@common*/
+        .s7 .bg { position: absolute; left: 50%; top: 50%; width: 1800px; margin-left: -900px; margin-top: -242px; opacity: 0.5; }
+        .s7 .bg svg.dr { width: 1800px; height: auto; }
+        .s7 .bg svg.dr .v path { stroke: #9a968e; stroke-width: 1.2; }
+        .s7 .center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .s7 .lock { display: flex; align-items: baseline; opacity: 0; }
+        .s7 .lock .a, .s7 .lock .b { font-family: "Adhesive Nr. Eight", "Owners", sans-serif; font-weight: 400; font-synthesis: none; font-size: 150px; letter-spacing: 0; line-height: 1; }
+        .s7 .lock .a { color: #ece9e2; }
+        .s7 .lock .b { color: #c9a57e; }
+        .s7 .url { font-family: "Owners", sans-serif; font-size: 34px; color: #bdbab3; margin-top: 34px; letter-spacing: 0.02em; opacity: 0; }
+        .s7 .url span { color: #6f6f6f; }
+        .s7 .small { font-family: "Owners", sans-serif; font-size: 20px; color: #8f8f8f; margin-top: 22px; letter-spacing: 0.12em; opacity: 0; }
+        .s7 .plate { position: absolute; left: 50%; top: 50%; width: 1240px; height: 440px; margin-left: -620px; margin-top: -220px; background: rgba(22,22,22,0.55);
+          backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-radius: 14px; opacity: 0; }
+        .s7 .wrap { position: absolute; inset: 0; }
+      </style>
+      <div id="root" data-composition-id="s7-outro" data-width="1920" data-height="1080">
+        <div class="s7">
+          <div class="wrap">
+            <div class="grid"></div>
+            <div class="bg"><!--@svg:maserati-side--></div>
+            <div class="plate"></div>
+            <div class="center">
+              <div class="lock"><span class="a">Plasticity</span><span class="b">MCP</span></div>
+              <div class="url"><span>github.com/</span>ozymandi/PlasticityMCP</div>
+              <div class="small">FREE-FORM SURFACING · UNOFFICIAL · PLASTICITY 26.1.3</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <script>
+        //@helpers
+        (() => {
+          const tl = gsap.timeline({ paused: true });
+          const q = (s) => document.querySelector(".s7 " + s);
+          drawOn(tl, ".s7 svg.dr .v path", 0, 2.2, 0.7, "power1.out");
+          tl.fromTo(q(".plate"), { opacity: 0 }, { opacity: 1, duration: 0.5 }, 0.5);
+          tl.set(q(".lock"), { opacity: 1 }, 0.6);
+          tl.fromTo(q(".lock"), { scale: 1.14, y: 10 }, { scale: 1, y: 0, duration: 0.55, ease: "power4.out" }, 0.6);
+          tl.set(q(".url"), { opacity: 1 }, 1.2);
+          tl.fromTo(q(".url"), { y: 14 }, { y: 0, duration: 0.4, ease: "power3.out" }, 1.2);
+          tl.set(q(".small"), { opacity: 1 }, 1.7);
+          tl.fromTo(q(".small"), { y: 10 }, { y: 0, duration: 0.4, ease: "power3.out" }, 1.7);
+          window.__timelines["s7-outro"] = tl;
+          tl.seek(0);
+        })();
+      </script>
+    </template>
+  </body>
+</html>

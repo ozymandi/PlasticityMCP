@@ -1,0 +1,61 @@
+{
+  "groups": [
+    {
+      "name": "hero",
+      "match": [
+        "Body",
+        "Headlamp_cover_*",
+        "Headlamp_lens_*",
+        "Headlamp_bezel_*",
+        "Windscreen",
+        "Mirror_head"
+      ],
+      "tol": 0.0002,
+      "angle": 0.05
+    },
+    {
+      "name": "wheel",
+      "match": [
+        "Wheel_*",
+        "Tyre_*",
+        "Spinner_*"
+      ],
+      "tol": 0.0005,
+      "angle": 0.08
+    },
+    {
+      "name": "rest",
+      "match": [
+        "*"
+      ],
+      "tol": 0.001,
+      "angle": 0.15
+    }
+  ],
+  "link": [
+    [
+      "Wheel_FL",
+      "Wheel_FR",
+      "Wheel_RL",
+      "Wheel_RR"
+    ],
+    [
+      "Wheel_FR",
+      "Wheel_RR"
+    ],
+    [
+      "Spinner_FL",
+      "Spinner_FR",
+      "Spinner_RL",
+      "Spinner_RR"
+    ],
+    [
+      "Tyre_FL",
+      "Tyre_FR"
+    ],
+    [
+      "Tyre_RL",
+      "Tyre_RR"
+    ]
+  ]
+}

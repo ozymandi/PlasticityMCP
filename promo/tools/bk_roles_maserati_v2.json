@@ -1,0 +1,4 @@
+{
+  "Body_paint": {"query": "red car paint", "assetBaseId": "184c431b-79ae-49a8-8512-ef664427cee3", "match": ["Body"]},
+  "Rubber":     {"query": "black rubber",  "assetBaseId": "2244c59b-7be4-4d9d-aa99-614b17adc777", "match": ["Tyre_*"]}
+}

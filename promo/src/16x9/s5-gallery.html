@@ -1,0 +1,120 @@
+<!doctype html>
+<html>
+  <head><meta charset="UTF-8" /></head>
+  <body>
+    <template>
+      <style>
+        /*@common*/
+        .s5 .i1 svg.dr .v path { stroke-width: 0.6; }
+        .s5 .i1 svg.dr .h path { stroke-width: 0.4; }
+        .s5 .i2 svg.dr .v path { stroke-width: 0.24; }
+        .s5 .i2 svg.dr .h path { stroke-width: 0.16; }
+        .s5 .i3 svg.dr .v path { stroke-width: 1.4; }
+        .s5 .i3 svg.dr .h path { stroke-width: 1.0; }
+        .s5 .item { position: absolute; inset: 0; opacity: 0; }
+        .s5 .stage { position: absolute; left: 90px; top: 90px; width: 1160px; height: 860px; display: flex; align-items: center; justify-content: center; }
+        .s5 .stage svg.dr { height: 820px; width: auto; max-width: 1160px; }
+        .s5 .stage svg.dr.wide { height: auto; width: 1160px; }
+        .s5 .render { position: absolute; inset: 0; opacity: 0; overflow: hidden; }
+        .s5 .render img { position: absolute; left: 50%; top: 50%; width: 1920px; height: auto; margin-left: -1320px; margin-top: -583px; display: block; }
+        .s5 .photo { position: absolute; inset: 0; opacity: 0; overflow: hidden; }
+        .s5 .photo img { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; object-fit: cover; display: block; }
+        .s5 .i3 .photo img { transform-origin: 62% 55%; }
+        .s5 .lab { position: absolute; left: 1290px; top: 350px; width: 600px; padding: 30px; border-radius: 16px; background: rgba(22,22,22,0.6); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+        .s5 .lab .pr { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 20px; color: #c9a57e; margin-top: 18px; letter-spacing: 0.08em; opacity: 0; }
+        .s5 .lab .num { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 20px; color: #858585; letter-spacing: 0.14em; margin-bottom: 18px; opacity: 0; }
+        .s5 .lab .h2 { font-size: 64px; opacity: 0; }
+        .s5 .lab .sub { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 22px; color: #8a8a8a; margin-top: 22px; line-height: 1.6; opacity: 0; }
+        .s5 .lab .sub b { color: #c9a57e; font-weight: 500; }
+        .s5 .foot { position: absolute; left: 90px; bottom: 44px; opacity: 0; }
+        .s5 .wrap { position: absolute; inset: 0; }
+      </style>
+      <div id="root" data-composition-id="s5-gallery" data-width="1920" data-height="1080">
+        <div class="s5">
+          <div class="wrap">
+            <div class="grid"></div>
+            <div class="vignette"></div>
+
+            <div class="item i1">
+              <div class="stage"><!--@svg:tt-iso--></div>
+              <div class="render"><img src="assets/img/tt-iso.png" alt="" /></div>
+              <div class="photo"><img src="assets/steel/tt-steel.png" alt="" /></div>
+              <div class="lab">
+                <div class="num">02 / 04</div>
+                <div class="h2">Technics<br />SL-1200 MK2</div>
+                <div class="sub">revolve_profile · array_radial<br /><b>unwrap_faces</b> → deform · knurled pitch knob</div>
+                <div class="pr">→ Cycles · brushed steel</div>
+              </div>
+            </div>
+
+            <div class="item i2">
+              <div class="stage"><!--@svg:cam-iso--></div>
+              <div class="render"><img src="assets/img/cam-iso.png" alt="" /></div>
+              <div class="photo"><img src="assets/steel/cam-steel.png" alt="" /></div>
+              <div class="lab">
+                <div class="num">03 / 04</div>
+                <div class="h2">Nikon F2<br />+ EL-Nikkor 50</div>
+                <div class="sub">loft_profiles · create_spiral<br /><b>sweep_profile</b> thread · import_step lens</div>
+                <div class="pr">→ Cycles · brushed steel</div>
+              </div>
+            </div>
+
+            <div class="item i3">
+              <div class="stage"><!--@svg:bike-iso--></div>
+              <div class="render"><img src="assets/img/bike-iso.png" alt="" /></div>
+              <div class="photo"><img src="assets/steel/bike-steel.png" alt="" /></div>
+              <div class="lab">
+                <div class="num">04 / 04</div>
+                <div class="h2">Mountain<br />bike</div>
+                <div class="sub">pipe · mirror_bodies · array_curve<br /><b>21 589</b> visible edges in the drawing</div>
+                <div class="pr">→ Cycles · brushed steel</div>
+              </div>
+            </div>
+
+            <div class="foot"><span class="tag">all four built by an LLM — through the MCP, from drawings &amp; photos</span></div>
+          </div>
+        </div>
+      </div>
+      <script>
+        //@helpers
+        (() => {
+          const tl = gsap.timeline({ paused: true });
+          const q = (s) => document.querySelector(".s5 " + s);
+          document.querySelector(".s5 .i3 svg.dr").classList.add("wide");
+          const SLOT = 6.1;
+          [".i1", ".i2", ".i3"].forEach((sel, i) => {
+            const at = i * SLOT;
+            tl.set(q(sel), { opacity: 1 }, at);
+            const hg = q(sel + " svg.dr .h");
+            if (hg) tl.set(hg, { opacity: 0.9 }, at);
+            drawOn(tl, ".s5 " + sel + " svg.dr .v path", at + 0.1, 2.1, 0.55, "power1.out");
+            drawOn(tl, ".s5 " + sel + " svg.dr .h path", at + 0.5, 1.9, 0.5, "none");
+            // label
+            tl.set(q(sel + " .num"), { opacity: 1 }, at + 0.3);
+            tl.set(q(sel + " .h2"), { opacity: 1 }, at + 0.45);
+            tl.fromTo(q(sel + " .h2"), { y: 30 }, { y: 0, duration: 0.5, ease: "power4.out" }, at + 0.45);
+            tl.set(q(sel + " .sub"), { opacity: 1 }, at + 0.8);
+            tl.fromTo(q(sel + " .sub"), { x: -14 }, { x: 0, duration: 0.3, ease: "power3.out" }, at + 0.8);
+            // dissolve to shaded render
+            tl.to(".s5 " + sel + " svg.dr .v path", { stroke: "#c9a57e", duration: 0.2 }, at + 2.4);
+            tl.to(q(sel + " .stage"), { opacity: 0, scale: 1.04, duration: 0.5, ease: "power2.in" }, at + 2.6);
+            tl.fromTo(q(sel + " .render"), { opacity: 0 }, { opacity: 1, duration: 0.6, ease: "power2.out" }, at + 2.7);
+            tl.fromTo(q(sel + " .render img"), { scale: 1.3 }, { scale: 1.42, duration: 2.0, ease: "none" }, at + 2.6);
+            // photoreal beat
+            tl.fromTo(q(sel + " .photo"), { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "power2.inOut" }, at + 4.2);
+            const pz = 1.0;
+            tl.fromTo(q(sel + " .photo img"), { scale: pz }, { scale: pz * 1.06, duration: 1.9, ease: "none" }, at + 4.2);
+            tl.set(q(sel + " .pr"), { opacity: 1 }, at + 4.6);
+            tl.fromTo(q(sel + " .pr"), { x: -14 }, { x: 0, duration: 0.3, ease: "power3.out" }, at + 4.6);
+            tl.to(q(sel), { opacity: 0, duration: 0.25, ease: "power1.in" }, at + SLOT - 0.25);
+          });
+          tl.set(q(".foot"), { opacity: 1 }, 0.6);
+          tl.fromTo(q(".foot"), { y: 14 }, { y: 0, duration: 0.4, ease: "power3.out" }, 0.6);
+          tl.to(q(".foot"), { opacity: 0, duration: 0.25 }, 3 * SLOT - 0.25);
+          window.__timelines["s5-gallery"] = tl;
+          tl.seek(0);
+        })();
+      </script>
+    </template>
+  </body>
+</html>

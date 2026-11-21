@@ -1,0 +1,67 @@
+<!doctype html>
+<html>
+  <head><meta charset="UTF-8" /></head>
+  <body>
+    <template>
+      <style>
+        /*@common*/
+        .v4 .mon { position: absolute; left: 40px; top: 420px; width: 1000px; height: 800px; border-radius: 16px; overflow: hidden;
+          border: 1px solid #3a3a3a; box-shadow: 0 30px 80px rgba(0,0,0,0.6); background: #111; opacity: 0; }
+        .v4 .mon video { position: absolute; left: 0; top: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+        .v4 .bar { position: absolute; left: 0; top: 0; right: 0; height: 40px; background: #1e1e1e; border-bottom: 1px solid #2c2c2c; display: flex; align-items: center; padding-left: 16px; gap: 8px; }
+        .v4 .bar i { width: 12px; height: 12px; border-radius: 50%; background: #3a3a3a; display: block; }
+        .v4 .bar span { margin-left: 14px; font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 16px; color: #8a8a8a; letter-spacing: 0.06em; }
+        .v4 .live { position: absolute; right: 16px; top: 10px; display: flex; align-items: center; gap: 8px; font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 15px; color: #2fd27a; letter-spacing: 0.1em; }
+        .v4 .live i { width: 9px; height: 9px; border-radius: 50%; background: #2fd27a; display: block; }
+        .v4 .head { position: absolute; left: 80px; top: 170px; }
+        .v4 .head .h2 { font-size: 84px; opacity: 0; }
+        .v4 .head .h2 span { color: #c9a57e; }
+        .v4 .logbox { position: absolute; left: 80px; top: 1290px; width: 920px; height: 420px; overflow: hidden; }
+        .v4 .log { font-size: 27px; line-height: 1.6; }
+        .v4 .caption { position: absolute; left: 80px; bottom: 150px; display: flex; flex-wrap: wrap; gap: 12px; opacity: 0; }
+        .v4 .caption .tag { font-size: 26px; padding: 12px 18px; }
+        .v4 .wrap { position: absolute; inset: 0; }
+      </style>
+      <div id="root" data-composition-id="v4-orbit" data-width="1080" data-height="1920">
+        <div class="v4">
+          <div class="wrap">
+            <div class="grid"></div>
+            <div class="vignette"></div>
+            <div class="head"><div class="h2">Real <span>B-Rep</span>,<br />live in Plasticity</div></div>
+            <div class="mon">
+              <video id="v4-orbit-video" src="assets/video/orbit-shorts.mp4" muted playsinline data-start="0" data-duration="7" data-media-start="1.5" data-playback-rate="1.3" data-track-index="1"></video>
+              <div class="bar"><i></i><i></i><i></i><span>Plasticity 26.1.3</span><div class="live"><i></i>LIVE · MCP</div></div>
+            </div>
+            <div class="logbox">
+              <div class="log">
+                <div class="ln"><span class="k">native_connect</span><span class="ok">127.0.0.1:9223</span></div>
+                <div class="ln"><span class="k">get_body_topology</span><span class="arg">box filter</span></div>
+                <div class="ln"><span class="k">fillet</span><span class="arg">r=1.0 · loop</span><span class="ok">✓</span></div>
+                <div class="ln"><span class="k">set_view</span><span class="arg">iso</span><span class="ok">✓</span></div>
+                <div class="ln"><span class="k">undo</span><span class="arg">→</span><span class="k">redo</span><span class="ok">✓</span></div>
+                <div class="ln"><span class="k">export_step</span><span class="arg">nes.step</span></div>
+              </div>
+            </div>
+            <div class="caption"><div class="tag">every step in Plasticity's <span class="tan">undo history</span></div></div>
+          </div>
+        </div>
+      </div>
+      <script>
+        //@helpers
+        (() => {
+          const tl = gsap.timeline({ paused: true });
+          const q = (s) => document.querySelector(".v4 " + s);
+          tl.set(q(".head .h2"), { opacity: 1 }, 0.1);
+          tl.fromTo(q(".head .h2"), { y: 40 }, { y: 0, duration: 0.5, ease: "power4.out" }, 0.1);
+          tl.fromTo(q(".mon"), { opacity: 0, scale: 0.96, y: 20 }, { opacity: 1, scale: 1, y: 0, duration: 0.6, ease: "power3.out" }, 0.2);
+          logIn(tl, ".v4 .log .ln", 0.8, 0.7, -14);
+          tl.set(q(".caption"), { opacity: 1 }, 5.2);
+          tl.fromTo(q(".caption"), { y: 16 }, { y: 0, duration: 0.4, ease: "power3.out" }, 5.2);
+          tl.to(q(".wrap"), { opacity: 0, duration: 0.25, ease: "power1.in" }, 6.75);
+          window.__timelines["v4-orbit"] = tl;
+          tl.seek(0);
+        })();
+      </script>
+    </template>
+  </body>
+</html>

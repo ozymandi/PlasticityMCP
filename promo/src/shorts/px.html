@@ -1,0 +1,32 @@
+<!doctype html>
+<html>
+  <head><meta charset="UTF-8" /></head>
+  <body>
+    <template>
+      <style>
+        #root { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+        /* grain */
+        .px-grain { position: absolute; left: -25%; top: -25%; width: 150%; height: 150%; opacity: 0.085; mix-blend-mode: overlay;
+          background: url("data:image/svg+xml,%3Csvg viewBox='0 0 300 300' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch' seed='7'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+          background-size: 300px 300px; }
+      </style>
+      <div id="root" data-composition-id="px" data-width="1080" data-height="1920">
+        <div class="px-grain"></div>
+      </div>
+      <script>
+        (() => {
+          const tl = gsap.timeline({ paused: true });
+          const g = document.querySelector("#root .px-grain");
+          // deterministic grain jumps: 12 fps, index-derived offsets, 80 s cover
+          const STEP = 1 / 12, N = Math.ceil(80 / STEP);
+          for (let i = 0; i < N; i++) {
+            const x = ((i * 37) % 23) - 11, y = ((i * 53) % 19) - 9;
+            tl.set(g, { x: x * 4, y: y * 4 }, i * STEP);
+          }
+          window.__timelines["px"] = tl;
+          tl.seek(0);
+        })();
+      </script>
+    </template>
+  </body>
+</html>

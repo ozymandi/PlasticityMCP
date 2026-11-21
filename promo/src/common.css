@@ -1,0 +1,42 @@
+@font-face { font-family: "Adhesive Nr. Eight"; src: url("assets/fonts/AdhesiveNrEight.otf") format("opentype"); font-weight: 400; font-style: normal; }
+#root { position: absolute; inset: 0; overflow: hidden; background: #161616; color: #ece9e2;
+  font-family: "Owners", sans-serif; }
+#root * { box-sizing: border-box; margin: 0; padding: 0; }
+.mono { font-family: "Owners", sans-serif; }
+.tan { color: #c9a57e; }
+.disp { font-family: "Adhesive Nr. Eight", "Owners", sans-serif; font-weight: 400; font-synthesis: none; letter-spacing: 0; }
+.green { color: #2fd27a; }
+.muted { color: #8a8a8a; }
+.abs { position: absolute; }
+.fill { position: absolute; inset: 0; }
+/* drawings */
+svg.dr { display: block; }
+svg.dr path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+svg.dr .v path { stroke: #ece9e2; stroke-width: 0.5; }
+svg.dr .h path { stroke: #6a6a6a; stroke-width: 0.32; }
+/* viewport grid, like Plasticity's floor */
+.grid { position: absolute; inset: 0; opacity: 0.26;
+  background-image:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='96' height='96'><path d='M48 42v12M42 48h12' stroke='%23585858' stroke-width='1.2' stroke-linecap='round'/></svg>"),
+    linear-gradient(#2c2c2c 1px, transparent 1px), linear-gradient(90deg, #2c2c2c 1px, transparent 1px),
+    linear-gradient(rgba(44,44,44,0.3) 1px, transparent 1px), linear-gradient(90deg, rgba(44,44,44,0.3) 1px, transparent 1px);
+  background-size: 96px 96px, 96px 96px, 96px 96px, 19.2px 19.2px, 19.2px 19.2px;
+  background-position: calc(50% - 48px) calc(50% - 48px), center, center, center, center; }
+.vignette { display: none; }
+/* tool log */
+.log { font-family: "Owners", sans-serif; font-size: 22px; line-height: 1.55; color: #bdbab3; }
+.log .ln { display: flex; gap: 14px; white-space: nowrap; opacity: 0; }
+.log .ln .k { color: #c9a57e; }
+.log .ln .ok { color: #2fd27a; }
+.log .ln .arg { color: #8a8a8a; }
+.tag { display: inline-block; font-family: "Owners", sans-serif; font-size: 20px; padding: 6px 14px;
+  border: 1px solid #3a3a3a; border-radius: 6px; background: rgba(22,22,22,0.6); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); color: #ece9e2; white-space: nowrap; }
+.cap { font-family: "Owners", sans-serif; font-size: 22px; letter-spacing: 0.04em; color: #8a8a8a; }
+.h1 { font-family: "Adhesive Nr. Eight", "Owners", sans-serif; font-weight: 400; font-synthesis: none; letter-spacing: 0; line-height: 0.95; }
+.h2 { font-family: "Adhesive Nr. Eight", "Owners", sans-serif; font-weight: 400; font-synthesis: none; letter-spacing: 0; line-height: 1.0; }
+.wm { position: absolute; left: 56px; bottom: 44px; font-family: "Owners", sans-serif;
+  font-size: 20px; color: #6f6f6f; letter-spacing: 0.08em; }
+.wm b { color: #c9a57e; font-weight: 500; }
+/* vector icons (never text glyphs) */
+.ic { display: inline-block; width: 0.9em; height: 0.9em; vertical-align: -0.12em; flex: none; }
+.ic path { fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }

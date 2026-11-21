@@ -1,0 +1,13 @@
+{
+  "Body_metal":   {"query": "polished steel metal",      "match": ["Body"]},
+  "Rubber":       {"query": "tire rubber",               "match": ["Tyre_*"]},
+  "Gold":         {"query": "gold polished",             "match": ["Wheel_*", "Spinner_*"]},
+  "Glass":        {"query": "clear glass",               "match": ["Windscreen", "Headlamp_cover_*", "Headlamp_lens_*", "Pilot_light_lens"]},
+  "Chrome":       {"query": "chrome",                    "match": ["Exhaust_*", "Mirror_head", "Grille_bar", "Catch_*", "Fuel_cap_*", "Headlamp_bezel_*", "Gauge_*_bezel", "Maker_plate", "Pilot_light_ring", "Ignition_switch"]},
+  "Taillight":    {"query": "red glass",                 "match": ["Taillight_*"]},
+  "Dark_metal":   {"query": "dark gunmetal",             "match": ["Grille", "Badge_plate", "Ignition_key", "Horn_button", "Steering_column"]},
+  "Leather":      {"query": "red leather",               "match": ["Seat_*"]},
+  "Wood":         {"query": "varnished wood",            "match": ["Steering_rim"]},
+  "Aluminium":    {"query": "brushed aluminium",         "match": ["Dash_panel", "Steering_hub_spokes", "Column_bracket"]},
+  "Gauge_face":   {"query": "cream paint",               "match": ["Gauge_*_face"]}
+}

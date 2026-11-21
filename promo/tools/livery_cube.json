@@ -1,0 +1,8 @@
+{
+  "object": "hull",
+  "slots": ["Hull_main", "Livery_yellow", "Livery_orange"],
+  "faces": {
+    "1": [78679, 85650],
+    "2": [83658, 85651, 83661, 85648]
+  }
+}

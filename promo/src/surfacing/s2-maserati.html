@@ -1,0 +1,70 @@
+<!doctype html>
+<html>
+  <head><meta charset="UTF-8" /></head>
+  <body>
+    <template>
+      <style>
+        /*@common*/
+        .s2 svg.dr .v path { stroke-width: 0.9; }
+        .s2 .stage { position: absolute; left: 70px; top: 120px; width: 1280px; height: 860px; display: flex; align-items: center; justify-content: center; }
+        .s2 svg.dr { width: 1260px; height: auto; }
+        .s2 .logbox { position: absolute; left: 1360px; top: 170px; width: 540px; }
+        .s2 .logbox .hd { font-family: "Owners", sans-serif; font-size: 18px; letter-spacing: 0.12em; color: #8f8f8f; margin-bottom: 18px; opacity: 0; }
+        .s2 .log { font-size: 21px; }
+        .s2 .log .ok { display: inline-flex; align-items: center; gap: 8px; }
+        .s2 .name { position: absolute; left: 70px; top: 64px; display: flex; gap: 14px; align-items: center; opacity: 0; }
+        .s2 .name .tag { font-size: 22px; padding: 8px 16px; }
+        .s2 .wrap { position: absolute; inset: 0; }
+      </style>
+      <div id="root" data-composition-id="s2-maserati" data-width="1920" data-height="1080">
+        <div class="s2">
+          <div class="wrap">
+            <div class="grid"></div>
+            <div class="name">
+              <div class="tag">Maserati <span class="tan">300S</span> · 1955</div>
+              <div class="tag">from a side drawing · 3 750 mm</div>
+            </div>
+            <div class="stage">
+              <!--@svg:maserati-iso-->
+            </div>
+            <div class="logbox">
+              <div class="hd">TOOL CALLS · FREE-FORM SURFACING</div>
+              <div class="log">
+                <div class="ln"><span class="k">create_spline</span><span class="arg">24 sections · polygon</span></div>
+                <div class="ln"><span class="k">loft_profiles</span><span class="arg">shoulder guide</span></div>
+                <div class="ln"><span class="k">mirror_bodies</span><span class="arg">+ join</span></div>
+                <div class="ln"><span class="k">patch</span><span class="arg">tail · G1</span><span class="ok"><svg class="ic" viewBox="0 0 16 16"><path d="M2.5 8.6l3.6 3.4L13.5 4.2"/></svg></span></div>
+                <div class="ln"><span class="k">patch</span><span class="arg">mouth · G0</span></div>
+                <div class="ln"><span class="k">boolean</span><span class="arg">wheel arches</span></div>
+                <div class="ln"><span class="k">fillet</span><span class="arg">arch lips · g2 · r20</span><span class="ok"><svg class="ic" viewBox="0 0 16 16"><path d="M2.5 8.6l3.6 3.4L13.5 4.2"/></svg></span></div>
+                <div class="ln"><span class="k">loft_edges</span><span class="arg">exhaust · clamped</span></div>
+                <div class="ln"><span class="k">loft_profiles</span><span class="arg">screen · thicken 6</span></div>
+                <div class="ln"><span class="k">pipe</span><span class="arg">wire wheels · 2 × 36</span></div>
+                <div class="ln"><span class="k">measure_continuity</span><span class="ok">G2 · 0.000002°</span></div>
+                <div class="ln"><span class="k">check_bodies</span><span class="ok">53 bodies · valid</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <script>
+        //@helpers
+        (() => {
+          const tl = gsap.timeline({ paused: true });
+          const q = (s) => document.querySelector(".s2 " + s);
+          tl.set(q(".name"), { opacity: 1 }, 0.2);
+          tl.fromTo(q(".name"), { y: -12 }, { y: 0, duration: 0.4, ease: "power3.out" }, 0.2);
+          drawOn(tl, ".s2 svg.dr .v path", 0.3, 5.4, 1.2, "power1.out");
+          tl.set(q(".logbox .hd"), { opacity: 1 }, 0.4);
+          logIn(tl, ".s2 .log .ln", 0.6, 0.45, -14);
+          // flash the finished drawing tan, then clear for the cut to the render
+          tl.to(".s2 svg.dr .v path", { stroke: "#c9a57e", duration: 0.25, ease: "power1.in" }, 6.4);
+          tl.to(".s2 svg.dr .v path", { stroke: "#ece9e2", duration: 0.5, ease: "power1.out" }, 6.7);
+          tl.to(q(".wrap"), { opacity: 0, duration: 0.35, ease: "power1.in" }, 7.6);
+          window.__timelines["s2-maserati"] = tl;
+          tl.seek(0);
+        })();
+      </script>
+    </template>
+  </body>
+</html>
